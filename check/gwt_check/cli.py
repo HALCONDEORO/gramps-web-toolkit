@@ -353,6 +353,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="print the result as JSON")
     live_opts(p)
 
+    p = sub.add_parser("insight", help="read-only reading aid: what citation and note texts say (possible mismatches, conflict notes, fill proposals, search order, witnesses); proves nothing")
+    p.add_argument("tree", nargs="?", help="dump file; without it the live tree is read")
+    p.add_argument("--only", help="comma-separated sections: citations, discrepancies, fill, frontier, witnesses")
+    p.add_argument("--archives", help="JSON file: {place name: {from, to, online}} for the frontier ordering")
+    p.add_argument("--searched", help="a gwt-ledger TSV: the frontier shows when each person was last searched")
+    p.add_argument("--csv", metavar="FILE", help="write the fill proposals to a new CSV with an empty decision column (never applies anything)")
+    p.add_argument("--json", action="store_true", help="print the result as JSON")
+    p.add_argument("--limit", type=int, default=15, help="lines printed per section (default 15)")
+    live_opts(p)
+
     sub.add_parser("selftest", help="plant every error kind in a synthetic tree and prove each check fires")
 
     args = ap.parse_args(argv)
