@@ -117,7 +117,7 @@ def main(argv=None) -> int:
     data = big_tree(a.people, a.seed)
     op = gzip.open if a.out.endswith(".gz") else open
     with op(a.out, "wt") as fh:
-        json.dump(data, fh)
+        json.dump({"tree": "synthetic", "objects": data}, fh)
     print({k: len(v) for k, v in data.items()})
     return 0
 
