@@ -936,13 +936,16 @@ class Applier:
                 raise Conflict(f"{self.label(place)} is enclosed by more than one place; not moved")
             if parent == place["handle"]:
                 raise Conflict(f"{self.label(place)} cannot enclose itself")
-            seen, up = set(), parent
-            while up and up not in seen:
+            seen, todo = set(), [parent]   # every place above the new parent, not only its first one
+            while todo:
+                up = todo.pop()
                 if up == place["handle"]:
                     raise Conflict(f"{s['enclosed_by']} is inside {self.label(place)}: that would make a loop")
+                if up in seen:
+                    continue
                 seen.add(up)
                 row = self.c.get("Place", up) or {}
-                up = next((r.get("ref") for r in row.get("placeref_list") or []), None)
+                todo += [r["ref"] for r in row.get("placeref_list") or [] if r.get("ref")]
             if not refs or refs[0].get("ref") != parent:
                 place["placeref_list"] = [{**(refs[0] if refs else {"_class": "PlaceRef"}), "ref": parent}]
         if place == before:
