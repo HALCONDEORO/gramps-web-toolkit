@@ -437,6 +437,41 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print_places(rep, args.limit)
             return 0
+        if args.cmd == "insight":
+            from .insight import SECTIONS, dumps, insight, print_insight, read_searched, write_proposals_csv
+            only = set(args.only.split(",")) if args.only else None
+            if only and only - set(SECTIONS):
+                raise BadInput(f"unknown section: {', '.join(sorted(only - set(SECTIONS)))}")
+            tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
+            if tree.partial:
+                raise BadInput(f"{tree.source}: a .gramps backup has no details; use a dump")
+            archives = None
+            if args.archives:
+                try:
+                    with open(args.archives, encoding="utf-8") as fh:
+                        archives = json.load(fh)
+                except (OSError, ValueError) as exc:
+                    raise BadInput(f"{args.archives}: {exc}") from exc
+            searched = None
+            if args.searched:
+                try:
+                    searched = read_searched(args.searched)
+                except OSError as exc:
+                    raise BadInput(f"{args.searched}: {exc}") from exc
+            if args.csv and only and "fill" not in only:
+                raise BadInput("--csv needs the fill section")
+            rep = insight(tree, only, archives, searched)
+            if args.csv:
+                try:
+                    n = write_proposals_csv(rep, args.csv)
+                except OSError as exc:
+                    raise BadInput(f"{args.csv}: {exc} (an existing file is never replaced)") from exc
+                print(f"{n} proposals written to {args.csv}; nothing was applied", file=sys.stderr)
+            if args.json:
+                print(dumps(rep))
+            else:
+                print_insight(rep, args.limit)
+            return 0
         if args.cmd == "repos":
             from .repos import print_repository_report, repository_report
             tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
