@@ -20,6 +20,7 @@ None.
 
 - The dated checks read a complete French Republican date as the day it falls on, instead of counting it as unread. A month-only, year-only or range date in that calendar stays unread.
 - `add_tag` puts a tag on an object the tree already has, for example a research mark such as `Hypothesis`.
+- `gwt-check republican` recomputes the Republican-to-Gregorian conversions written in notes, citation pages and event descriptions and lists the ones that differ; it exits 1 when one does.
 
 ## [0.2.3] - 2026-10-26
 
