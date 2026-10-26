@@ -282,3 +282,7 @@ gwt-check cites dump.json.gz --json   # the same rows as JSON
 - Only the page is read, never the citation's notes, so the rules work on any tree whatever its note style.
 - The words that name a kind of act are in one table, `ACT_WORDS`, at the top of `gwt_check/cites.py`, and the words of a marginal mention in `MARGINAL` beside it. A language that is not in them is not read. A word matches as a whole word, singular or plural (`nacimiento`, `nacimientos`), never inside a longer word (`birthplace` is not a birth act).
 - `fill-places` holds back every row `cites` lists: a place that only such a citation names is listed under `held_back`, not proposed.
+
+## Testing at scale
+
+`python -m gwt_check.synth 20000 big.json.gz` writes a seeded, invented tree (families over several generations, events with citations, places, sources, repositories, notes). Run any `gwt-check` command on it to look at time and memory before a change reaches a large tree.
