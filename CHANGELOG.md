@@ -16,6 +16,11 @@ None.
 - `update_place` can move a place under another one with `set.enclosed_by`, for example a department under its region. It refuses a place with more than one parent, a place under itself, and a loop.
 - `link_event` puts a person on an existing event in a role such as `Witness`, without editing the event.
 - `gwt-check repos --suggest` proposes, for each source with no repository, the repository its publication info starts with; `--ops FILE` writes the proposals as `link_repository` ops with an empty ruling.
+- `add_tag` puts a tag on an object the tree already has, for example a research mark such as `Hypothesis`.
+- `gwt-check republican` recomputes the Republican-to-Gregorian conversions written in notes, citation pages and event descriptions and lists the ones that differ; it exits 1 when one does.
+- `gwt-check check` reports `dup-media`: two media objects with the same checksum or the same path.
+- `python -m gwt_check.synth N out.json.gz` writes an invented tree of N people for scale tests.
+
 ### Fixed
 
 - The dated checks read a complete French Republican date as the day it falls on, instead of counting it as unread. A month-only, year-only or range date in that calendar stays unread.
