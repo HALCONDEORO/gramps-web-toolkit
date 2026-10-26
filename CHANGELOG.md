@@ -20,6 +20,7 @@ None.
 - `gwt-check republican` recomputes the Republican-to-Gregorian conversions written in notes, citation pages and event descriptions and lists the ones that differ; it exits 1 when one does.
 - `python -m gwt_check.synth N out.json.gz` writes an invented tree of N people for scale tests.
 - `python -m gwt_check.scale` runs every offline command on an invented tree and on a real dump side by side (time, memory, exit code, summary line); the real dump is only read.
+- `gwt-check check` reports `dup-media`: two media objects with the same checksum or the same path.
 
 ### Fixed
 

@@ -69,6 +69,7 @@ CHECKS = {
     "living-media-sensitive": "media of a possibly living person, not marked private, whose path, description or "
                               "attributes look like an ID document, passport or home address",
     "dup-repository": "two repositories with the same name, compared like people's names",
+    "dup-media": "two media objects with the same file: same checksum, or same path",
     "dup-citation": "two citations of one source with the same page text, ignoring case and spacing",
     "private": "object or sub-reference marked private",
     "place-no-coords": "place used by an event without coordinates",
@@ -260,6 +261,15 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
     R = T["repositories"]
     if R:
         info["sources without repository"] = sum(1 for o in T["sources"].values() if not o.get("reporef_list"))
+    # the same file entered twice: Gramps keeps a checksum per media object (empty until the file is read)
+    for field in ("checksum", "path"):
+        seen: dict[str, list[str]] = defaultdict(list)
+        for h, o in T["media"].items():
+            if (o.get(field) or "").strip():
+                seen[o[field].strip().lower() if field == "path" else o[field]].append(o.get("gramps_id") or h)
+        for ids in seen.values():
+            if len(ids) > 1:
+                out.add("dup-media", ",".join(sorted(ids, key=id_order)), f"same {field}")
     by_name: dict[str, list[str]] = defaultdict(list)
     for h, o in R.items():
         if norm(o.get("name") or ""):
