@@ -390,13 +390,14 @@ class LeadsTest(unittest.TestCase):
         self.assertTrue(L.weak_name(T['people']['lo']))
         self.assertFalse(L.weak_name(T['people']['r']))
         path = self.dump(T)
-        code, out, err = self.cli(path, '--root', 'I1', '--format', 'queue', '--skip-weak')
-        people = {json.loads(l)['person'] for l in out.splitlines()}
-        self.assertIn('I2', people)       # weak, but the root's father
-        self.assertNotIn('I9', people)    # weak and not an ancestor
-        self.assertIn('skipped 1 people with no given name or no surname: I9', err)
-        code, out, err = self.cli(path, '--root', 'I1', '--format', 'queue')
-        self.assertIn('I9', {json.loads(l)['person'] for l in out.splitlines()})  # opt-in only
+        for flags in (['--skip-weak'], []):  # default since 2026-10; --skip-weak kept for compatibility
+            code, out, err = self.cli(path, '--root', 'I1', '--format', 'queue', *flags)
+            people = {json.loads(l)['person'] for l in out.splitlines()}
+            self.assertIn('I2', people)       # weak, but the root's father
+            self.assertNotIn('I9', people)    # weak and not an ancestor
+            self.assertIn('skipped 1 people whose name is too thin to search (research them by hand, or --keep-weak): I9', err)
+        code, out, err = self.cli(path, '--root', 'I1', '--format', 'queue', '--keep-weak')
+        self.assertIn('I9', {json.loads(l)['person'] for l in out.splitlines()})  # opt-out of the default skip
         code, out, _ = self.cli(path, '--format', 'json')
         self.assertTrue(all(json.loads(l)['weak'] for l in out.splitlines() if '"I9"' in l))
 
