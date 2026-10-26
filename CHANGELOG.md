@@ -6,6 +6,14 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ## [Unreleased]
 
+### Change lists
+
+None.
+
+### Fixed
+
+- The dated checks read a complete French Republican date as the day it falls on, instead of counting it as unread. A month-only, year-only or range date in that calendar stays unread.
+
 ## [0.2.3] - 2026-10-26
 
 ### Change lists
