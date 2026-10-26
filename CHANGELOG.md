@@ -6,6 +6,14 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ## [Unreleased]
 
+### Change lists
+
+None.
+
+### Added
+
+- `gwt-check repos --suggest` proposes, for each source with no repository, the repository its publication info starts with; `--ops FILE` writes the proposals as `link_repository` ops with an empty ruling.
+
 ## [0.2.3] - 2026-10-26
 
 ### Change lists

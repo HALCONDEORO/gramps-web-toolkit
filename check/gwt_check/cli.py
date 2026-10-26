@@ -316,7 +316,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--type", dest="rtype", help="repository type, e.g. Archive")
     p.add_argument("--unlinked", action="store_true", help="also list sources with no repository and repositories no source lists")
     p.add_argument("--json", action="store_true", help="print the result as JSON")
-    p.add_argument("--limit", type=int, default=30, help="sources listed with --unlinked (default 30)")
+    p.add_argument("--limit", type=int, default=30, help="sources listed with --unlinked or --suggest (default 30)")
+    p.add_argument("--suggest", action="store_true", help="instead of the list: for each source with no repository, the one repository its publication info starts with; proposals only")
+    p.add_argument("--ops", metavar="FILE", help="with --suggest, also write the proposals to a new file as gwt-apply link_repository ops with an empty ruling")
     live_opts(p)
 
     p = sub.add_parser("fill-places", help="for each event with no place, the place its own citations name, with the quote; proposals only")
@@ -414,6 +416,23 @@ def main(argv: list[str] | None = None) -> int:
             tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
             if tree.partial:
                 raise BadInput(f"{tree.source}: a .gramps backup has no repository details; use a dump")
+            if args.suggest:
+                from .repos import print_suggestions, suggest_links, write_link_ops
+                rep = suggest_links(tree)
+                if args.ops:
+                    try:
+                        n = write_link_ops(rep, args.ops)
+                    except OSError as exc:
+                        raise BadInput(f"{args.ops}: {exc} (an existing file is never replaced)") from exc
+                    print(f"{n} ops written to {args.ops} with an empty ruling; nothing was applied", file=sys.stderr)
+                if args.json:
+                    json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)
+                    print()
+                else:
+                    print_suggestions(rep, args.limit)
+                return 0
+            if args.ops:
+                raise BadInput("--ops goes with --suggest")
             rep = repository_report(tree, name=args.name, rtype=args.rtype)
             if args.json:
                 json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)
