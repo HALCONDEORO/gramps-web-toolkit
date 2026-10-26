@@ -10,11 +10,14 @@ hide:
 </p>
 
 <p align="center">
-  <a href="https://github.com/GeiserX/gramps-web-toolkit/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/GeiserX/gramps-web-toolkit/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/GeiserX/gramps-web-toolkit/blob/main/LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/github/license/GeiserX/gramps-web-toolkit?style=flat-square"></a>
+  <a href="https://github.com/HALCONDEORO/gramps-web-toolkit/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/HALCONDEORO/gramps-web-toolkit/ci.yml?branch=main&style=flat-square&label=CI"></a>
+  <a href="https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/github/license/HALCONDEORO/gramps-web-toolkit?style=flat-square"></a>
 </p>
 
 ---
+
+!!! note "This is the documentation of a fork"
+    This site documents [HALCONDEORO/gramps-web-toolkit](https://github.com/HALCONDEORO/gramps-web-toolkit), a fork of [GeiserX/gramps-web-toolkit](https://github.com/GeiserX/gramps-web-toolkit) by GeiserX. The fork adds checks and change-list operations of its own (see the [changelog](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/CHANGELOG.md)); the original project and its authors keep their copyright. Nothing here is the upstream project's official documentation.
 
 **gramps-web-toolkit** is a set of command-line tools for running AI research agents against a family tree in [Gramps Web](https://www.grampsweb.org) without letting them write guesses into it. Agents research in parallel and never touch the tree; a verifier checks each finding against its source, a judge decides, and one writer applies the rulings with a backup before each block and a whole-tree check after it. Each tool fixes a failure we hit while running about 30 research rounds over two trees of roughly 10,000 people each.
 
@@ -85,4 +88,4 @@ The toolkit works for genealogy in any country. `gwt-spanish-poller` and some `g
 
 ## License
 
-gramps-web-toolkit is released under the [GPL-3.0-or-later](https://github.com/GeiserX/gramps-web-toolkit/blob/main/LICENSE) license.
+gramps-web-toolkit is released under the [GPL-3.0-or-later](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/LICENSE) license, the same as the original [GeiserX/gramps-web-toolkit](https://github.com/GeiserX/gramps-web-toolkit), whose authors keep their copyright. This fork's changes are under the same license.

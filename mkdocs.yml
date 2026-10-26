@@ -1,8 +1,8 @@
 site_name: gramps-web-toolkit
-site_url: https://geiserx.github.io/gramps-web-toolkit/
+site_url: https://halcondeoro.github.io/gramps-web-toolkit/
 site_description: Command-line tools for running AI research agents against a Gramps Web family tree without letting them write guesses into it.
-repo_url: https://github.com/GeiserX/gramps-web-toolkit
-repo_name: GeiserX/gramps-web-toolkit
+repo_url: https://github.com/HALCONDEORO/gramps-web-toolkit
+repo_name: HALCONDEORO/gramps-web-toolkit
 edit_uri: edit/main/docs/
 
 # A warning is a broken link, a missing page or a page nobody can reach. All of
@@ -105,7 +105,7 @@ markdown_extensions:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/GeiserX/gramps-web-toolkit
+      link: https://github.com/HALCONDEORO/gramps-web-toolkit
 
 extra_css:
   - stylesheets/theme.css
