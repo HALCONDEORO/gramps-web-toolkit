@@ -34,10 +34,13 @@ EVENT_ACT = {"birth": "birth", "baptism": "birth", "death": "death", "burial": "
 MARGINAL = ("mencion marginal", "mention marginale", "marginal mention", "marginal note")
 
 
+_ACT_RX = {k: [re.compile(rf"(?<!\w){w}(?:s|es)?(?!\w)") for w in ws] for k, ws in ACT_WORDS.items()}
+
+
 def _acts(page: str) -> set[str]:
     """Which kinds of act the citation's own title (its page) names."""
     f = _fold(page)
-    return {k for k, ws in ACT_WORDS.items() if any(re.search(rf"(?<!\w){w}(?:s|es)?(?!\w)", f) for w in ws)}
+    return {k for k, rx in _ACT_RX.items() if any(r.search(f) for r in rx)}
 
 
 def citation_problem(event: dict, c: dict) -> tuple[str, str] | None:
