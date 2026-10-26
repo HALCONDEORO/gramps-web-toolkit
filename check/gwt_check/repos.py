@@ -58,6 +58,11 @@ def print_repository_report(rep: dict, *, unlinked: bool, limit: int) -> None:
             print(f"  ... {len(bare) - limit} more (--limit, or --json)")
 
 
+def _starts_with_name(pub: str, name: str) -> bool:
+    """The name opens the text as whole words: "archive, vol 2" names "Archive", "archivex" does not."""
+    return pub.startswith(name) and not (len(pub) > len(name) and pub[len(name)].isalnum())
+
+
 def suggest_links(tree: Tree) -> dict:
     """For each source with no repository, the repository whose name its own publication info starts with, when
     exactly one does. A source that names no repository, or two, is left out: proposals only, never a guess."""
@@ -67,7 +72,7 @@ def suggest_links(tree: Tree) -> dict:
         if s.get("reporef_list"):
             continue
         pub = norm(s.get("pubinfo") or "")
-        hit = [(rid, name) for rid, name in repos.values() if name and pub.startswith(norm(name))]
+        hit = [(rid, name) for rid, name in repos.values() if name and _starts_with_name(pub, norm(name))]
         if len(hit) == 1:
             proposals.append({"source": s.get("gramps_id"), "title": s.get("title", ""), "pubinfo": s.get("pubinfo", ""),
                               "repository": hit[0][0], "name": hit[0][1]})

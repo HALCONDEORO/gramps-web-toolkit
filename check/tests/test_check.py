@@ -698,14 +698,14 @@ def test_repos_suggest_links_only_a_source_whose_pubinfo_names_one_repository(tm
     data = selftest.clean_tree()
     selftest.p_source_no_repository(data)  # S0099, no publication info: left out
     base = selftest.clean_tree()["sources"][0]
-    for sid, pub in (("S0101", "Archivo Diocesano de Ejemplo, libro 3"), ("S0102", "Gmail del investigador")):
+    for sid, pub in (("S0101", "Archivo Diocesano de Ejemplo, libro 3"), ("S0102", "Gmail del investigador"), ("S0103", "Archivo Diocesano de Ejemploxyz, libro 4")):
         data["sources"].append({**copy.deepcopy(base), "handle": "h" + sid, "gramps_id": sid, "title": "Libro " + sid,
                                 "pubinfo": pub, "reporef_list": []})
     dump = _write(tmp_path, "t.json", data)
     ops = tmp_path / "links.jsonl"
     assert main(["repos", dump, "--suggest", "--ops", str(ops)]) == 0
     out = capsys.readouterr().out
-    assert "S0101 -> R0001" in out and "S0102" not in out and "S0099" not in out
+    assert "S0101 -> R0001" in out and "S0102" not in out and "S0103" not in out and "S0099" not in out
     row = json.loads(ops.read_text())
     assert (row["op"], row["source"], row["repository"], row["ruling"]) == ("link_repository", "S0101", "R0001", "")
     assert main(["repos", dump, "--suggest", "--ops", str(ops)]) == 2  # an existing file is never replaced
