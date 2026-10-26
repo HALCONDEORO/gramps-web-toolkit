@@ -7,10 +7,11 @@ the checks on that dump, and a 300-operation `gwt-apply` batch: dry run, apply, 
 must change nothing.
 
 ```sh
-LT_PASS='...' ./run_loadtest.sh <docker-network> [web-container]
+GWT_REF=<40-char commit> LT_PASS=... ./run_loadtest.sh <docker-network> [web-container]
 ```
 
-- `bench.py` refuses to run unless the server is the loadtest container and a tree named `LoadTest` exists.
+- `bench.py` refuses to run unless the host is exactly the loadtest web container, there is exactly one tree named `LoadTest`, and the login token is bound to it. It checks again before every phase and stops at the first failing step or if the second `gwt-apply` run is not idempotent.
+- `GWT_REF` pins the toolkit commit that is installed, so the run tests exactly that code.
 - Memory is capped at 1 GB with no swap. A dump that does not fit ends with exit 137, which is a result.
 - The password comes from the environment. Nothing is written to the repository.
 - Results go to `out/result.json`.
