@@ -6,6 +6,14 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ## [Unreleased]
 
+### Change lists
+
+None.
+
+### Added
+
+- `loadtest/` holds a script that runs the toolkit against a disposable Gramps Web tree named `LoadTest` in a memory-capped container and records timings, peak memory and request counts.
+
 ## [0.2.3] - 2026-10-26
 
 ### Change lists
