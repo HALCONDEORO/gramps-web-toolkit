@@ -6,6 +6,14 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ## [Unreleased]
 
+### Change lists
+
+None.
+
+### Added
+
+- `add_tag` puts a tag on an object the tree already has, for example a research mark such as `Hypothesis`.
+
 ## [0.2.3] - 2026-10-26
 
 ### Change lists
