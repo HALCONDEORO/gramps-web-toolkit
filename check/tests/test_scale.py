@@ -30,11 +30,19 @@ def test_the_report_order_does_not_depend_on_the_hash_seed(tmp_path):
 
 
 def test_common_surnames_do_not_make_the_duplicate_search_quadratic():
-    d = big_tree(6000, seed=7)
-    for p in d["people"]:
-        for s in p["primary_name"]["surname_list"]:
-            s["surname"] = "Comun"
+    # compared with the same tree where every surname differs, so a busy machine slows both runs alike
     import time
-    t = time.time()
-    run_checks(Tree(d))
-    assert time.time() - t < 8
+
+    def best_of_two(common):
+        d = big_tree(6000, seed=7)
+        for i, p in enumerate(d["people"]):
+            for s in p["primary_name"]["surname_list"]:
+                s["surname"] = "Comun" if common else f"Apellido{i}"
+        best = None
+        for _ in range(2):
+            t = time.perf_counter()
+            run_checks(Tree(d))
+            best = min(best or 1e9, time.perf_counter() - t)
+        return best
+
+    assert best_of_two(True) < 8 * best_of_two(False) + 0.5
