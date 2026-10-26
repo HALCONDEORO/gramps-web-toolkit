@@ -13,21 +13,27 @@ import json
 import re
 import unicodedata
 
+from functools import lru_cache
+
 from .dates import kind
 from .tree import Tree
 
 MIN_NAME = 4  # shorter names match inside too many words
 
 
+@lru_cache(maxsize=4096)
+def _fold_char(c: str) -> str:
+    b = "".join(x for x in unicodedata.normalize("NFD", c) if not unicodedata.combining(x))
+    b = b if len(b) == 1 else c  # Hangul and the like decompose into letters, not accents: kept whole
+    lo = b.lower()
+    return lo if len(lo) == 1 else b
+
+
 def _fold(text: str) -> str:
     """Lowercase without accents, one character for one, so a match's offsets still point into the text."""
-    out = []
-    for c in text:
-        b = "".join(x for x in unicodedata.normalize("NFD", c) if not unicodedata.combining(x))
-        b = b if len(b) == 1 else c  # Hangul and the like decompose into letters, not accents: kept whole
-        lo = b.lower()
-        out.append(lo if len(lo) == 1 else b)
-    return "".join(out)
+    if text.isascii():  # nothing to strip: the same as folding each character
+        return text.lower()
+    return "".join(map(_fold_char, text))
 
 
 def _name(place: dict) -> str:
