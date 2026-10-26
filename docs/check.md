@@ -174,6 +174,8 @@ gwt-check repos dump.json.gz --json                   # repositories with their 
 
 `--unlinked` adds the sources that list no repository and the repositories no source lists. Fix them with `link_repository` and `merge_repository` in [`gwt-apply`](apply.md).
 
+`--suggest` goes one step further and, for each source with no repository, names the one repository its publication info starts with (compared like people's names). A source that names no repository, or more than one, is left out. `--ops FILE` also writes the proposals as `link_repository` ops with an empty ruling: `gwt-apply` refuses the file until someone has read each source and written the ruling, and an existing file is never replaced.
+
 ## The checks
 
 | Check | Fires on |
