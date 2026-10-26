@@ -530,6 +530,16 @@ def test_update_place_moves_a_place_under_another_and_refuses_loops(fake):
     assert validate([dict(move[0], key="bad", set={"enclosed_by": "reg"})])  # a bare handle is refused
 
 
+def test_update_place_sees_a_loop_through_a_second_parent_of_the_new_parent(fake):
+    a = fake.add("places", {"handle": "pa", "name": {"value": "Aville"}, "place_type": "Town", "placeref_list": []})
+    fake.add("places", {"handle": "pc", "name": {"value": "Cshire"}, "place_type": "County", "placeref_list": []})
+    b = fake.add("places", {"handle": "pb", "name": {"value": "Bshire"}, "place_type": "County",
+                            "placeref_list": [{"ref": "pc"}, {"ref": "pa"}]})   # B sits under C and under A
+    loop = [{"op": "update_place", "key": "lp", "ruling": R, "place": a["gramps_id"], "set": {"enclosed_by": b["gramps_id"]}}]
+    assert run(fake, loop)[0].status == "conflict"
+    assert fake.store["places"]["pa"]["placeref_list"] == []
+
+
 def test_coordinates_that_are_not_numbers_are_a_validation_error():
     # float(None) is a TypeError: it must come out as a line in the error list, not a crash
     for bad in (None, "north", [1]):
