@@ -192,7 +192,7 @@ class LeadsTest(unittest.TestCase):
             self.assertEqual(code, 0, err)
             for gid in ('I2', 'I5', 'I6', 'I7', 'I8'):
                 self.assertNotIn('"%s"' % gid if fmt != 'tsv' else '\t%s\t' % gid, out, fmt)
-            self.assertIn('held back 5 people', err)
+            self.assertIn('held back 5 people (1 marked private, 4 who may be living', err)
             self.assertIn('I2 I5 I6 I7 I8', err)
             self.assertNotIn('Ana', err)  # ids only, never names
         code, out, err = self.cli(path, '--include-living', '--living-after', '1925')
@@ -524,6 +524,117 @@ class LeadsTest(unittest.TestCase):
         self.assertEqual(L.year(ev), 1850)
         self.assertEqual(L.date_gap({'date': {}}), 'has no date')
         self.assertIsNone(L.year({'date': {'modifier': 6, 'dateval': [0, 0, 1850, False]}}))
+
+
+    def test_unsupported_link_kind_lists_links_no_record_supports_and_never_calls_them_wrong(self):
+        T = tree()
+        links = {'rows': [{'family': 'F1', 'child': 'I1', 'level': 'cited, names neither', 'flags': []},
+                          {'family': 'F2', 'child': 'I3', 'level': 'birth record names both', 'flags': []}]}
+        rows, _ = L.leads(T, None, ('unsupported-link',), 1925, links=links)
+        self.assertEqual({(r['person'], r['gap']) for r in rows}, {('I1', 'link-F1')})
+        self.assertTrue(all('not shown wrong' in r['what'] for r in rows))
+        self.assertEqual(L.leads(T, None, ('unsupported-link',), 1925)[0], [])  # no report, no rows
+
+    def test_unsupported_link_holds_back_the_possibly_living_like_every_other_kind(self):
+        T = tree()
+        T['people']['r']['event_ref_list'] = []  # no dates, no death: may be living
+        links = {'rows': [{'family': 'F1', 'child': 'I1', 'level': 'cited, names neither', 'flags': []}]}
+        rows, held = L.leads(T, None, ('unsupported-link',), 1925, links=links)
+        self.assertEqual(rows, [])
+        self.assertIn('I1', held)
+
+    def test_cli_needs_links_and_the_kind_together_and_stops_on_a_bad_report(self):
+        d = self.dump(tree())
+        self.assertEqual(self.cli(d, '--kinds', 'unsupported-link')[0], 2)
+        bad = os.path.join(self.td.name, 'bad.json')
+        open(bad, 'w').write('[1]')
+        rc, _, err = self.cli(d, '--kinds', 'unsupported-link', '--links', bad)
+        self.assertEqual(rc, 2)
+        self.assertIn('not a gwt-check links report', err)
+        good = os.path.join(self.td.name, 'good.json')
+        json.dump({'rows': [{'family': 'F1', 'child': 'I1', 'level': 'cited, names neither'}]}, open(good, 'w'))
+        rc, out, _ = self.cli(d, '--kinds', 'unsupported-link', '--links', good, '--format', 'queue', '--include-living')
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out.splitlines()[0])['person'], 'I1')
+
+    def test_a_links_report_that_does_not_fit_the_dump_stops_instead_of_giving_wrong_or_no_tasks(self):
+        T = tree()
+        ok = {'family': 'F1', 'child': 'I1', 'level': 'a record names one', 'flags': []}
+        for bad in ({'rows': [dict(ok, level='A record names one')]},     # a renamed level: never a silent empty list
+                    {'rows': [1]},                                          # a row that is not an object
+                    {'rows': [{'child': 'I1', 'level': 'a record names one'}]},  # no family
+                    {'rows': [dict(ok, child='I3')]},                       # I3 is not a child of F1 here
+                    {'rows': [dict(ok, family='F7')]}):                     # no family F7 in this dump
+            with self.assertRaises(L.BadInput, msg=bad):
+                L.leads(T, None, ('unsupported-link',), 1925, hold=False, links=bad)
+        with self.assertRaisesRegex(L.BadInput, 'another tree or an older dump'):
+            L.leads(T, None, ('unsupported-link',), 1925, hold=False, links={'rows': [dict(ok, family='F2')]})
+        d = self.dump(T)
+        for bad in ({'rows': [1]}, {'rows': [dict(ok, level='a record names one (v2)')]}):
+            f = os.path.join(self.td.name, 'bad-links.json')
+            json.dump(bad, open(f, 'w'))
+            rc, out, err = self.cli(d, '--kinds', 'unsupported-link', '--links', f)
+            self.assertEqual((rc, out), (2, ''), err)
+            self.assertNotIn('Traceback', err)
+
+    def test_every_level_gwt_check_links_writes_is_accepted(self):
+        # a cited link is the first level gwt-check writes; a report with one used to stop the whole run
+        self.assertIn('the link itself is cited', L.LINK_NOT_GAPS)
+        # read the levels from gwt-check itself, so a level it adds later fails here instead of in a user's run;
+        # the mutant runner copies this package alone, without check/ beside it
+        if not os.path.isdir(os.path.join(HERE, '..', 'check', 'gwt_check')):
+            self.skipTest('gwt-check is not beside this package')
+        sys.path.insert(0, os.path.join(HERE, '..', 'check'))
+        from gwt_check.links import LEVELS
+        self.assertEqual(set(LEVELS), set(L.LINK_GAPS) | set(L.LINK_NOT_GAPS))
+
+    def test_a_gwt_check_links_report_with_a_cited_link_makes_no_task_and_does_not_stop(self):
+        def mutate(objects):
+            fam = next(f for f in objects['families'] if f['child_ref_list'])
+            cit = next(c for c in objects['citations'] if not c.get('private'))
+            fam['child_ref_list'][0]['citation_list'] = [cit['handle']]
+        if not os.path.isdir(os.path.join(HERE, '..', 'check', 'gwt_check')):
+            self.skipTest('gwt-check is not beside this package')
+        path = self.real_dump(mutate)
+        from gwt_check import tree as CT
+        from gwt_check.links import link_report
+        rep = link_report(CT.load(path))
+        cited = [r for r in rep['rows'] if r['level'] == 'the link itself is cited']
+        self.assertTrue(cited, 'the dump must carry a cited link')
+        rows, _ = L.leads(L.load(path), None, ('unsupported-link',), 1925, hold=False, links=rep)
+        on_cited = {(r['child'], 'link-' + r['family']) for r in cited}
+        self.assertFalse([r for r in rows if (r['person'], r['gap']) in on_cited])
+
+    def test_unsupported_link_skips_what_is_supported_not_by_birth_or_listed_by_another_kind(self):
+        T = tree()
+        def got(*rows):
+            return {(r['person'], r['gap']) for r in L.leads(T, None, ('unsupported-link',), 1925, hold=False,
+                                                              links={'rows': list(rows)})[0]}
+        one = {'family': 'F1', 'child': 'I1', 'level': 'a record names one', 'flags': []}
+        self.assertEqual(got(one), {('I1', 'link-F1')})
+        # F2 has a mother and no father: the record naming her names every parent the family has
+        self.assertEqual(got({'family': 'F2', 'child': 'I3', 'level': 'a record names one', 'flags': []}), set())
+        # no cited birth or baptism at all: uncited and missing-vital already list that person
+        self.assertEqual(got(dict(one, level='no record names a parent')), set())
+        T['families']['f1']['child_ref_list'][0]['frel'] = 'Adopted'  # not a birth link: nothing to prove by a birth record
+        self.assertEqual(got(dict(one, level='cited, names neither')), set())
+
+    def test_an_unsupported_link_task_says_what_to_do_carries_the_flags_and_is_a_verify_task(self):
+        flag = "another person in the tree bears the father's name"
+        links = {'rows': [{'family': 'F1', 'child': 'I1', 'level': 'a record names one', 'flags': [flag]}]}
+        rows, _ = L.leads(tree(), None, ('unsupported-link',), 1925, hold=False, links=links)
+        self.assertEqual(len(rows), 1)
+        self.assertIn('transcribe', rows[0]['what'])
+        self.assertIn(flag, rows[0]['what'])
+        self.assertEqual(L.queue_task(rows[0])['kind'], 'verify')  # record work, not a search for a new record
+
+    def test_links_alone_turns_the_kind_on(self):
+        d = self.dump(tree())
+        f = os.path.join(self.td.name, 'links.json')
+        json.dump({'rows': [{'family': 'F1', 'child': 'I1', 'level': 'cited, names neither'}]}, open(f, 'w'))
+        rc, out, err = self.cli(d, '--links', f, '--kinds', 'branch-end', '--format', 'json', '--include-living')
+        self.assertEqual(rc, 0, err)
+        self.assertIn('unsupported-link', {json.loads(x)['kind'] for x in out.splitlines()})
 
 
 if __name__ == '__main__':

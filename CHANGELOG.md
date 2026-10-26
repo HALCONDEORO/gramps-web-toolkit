@@ -6,7 +6,65 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ## [Unreleased]
 
-Everything since the first public commit. The first tag will be `v0.2.0`.
+### Change lists
+
+None.
+
+### Added
+
+- A date in a change list can be written in the French Republican calendar: `fr 0005-03-26` is 26 frimaire an V. It is stored in that calendar, with the serial day of the Gregorian day it falls on.
+
+## [0.2.3] - 2026-10-26
+
+### Change lists
+
+None.
+
+### Changed
+
+- `gwt-check dump` and `check` read the first page of every type together, then the remaining pages, instead of one type after another; the dump holds the same objects. `check --from` does not page the tree, so it gains nothing. The per-type progress lines now appear together once the read ends. On a 260-person tree the read went from 20 s to 14 s.
+- `gwt-leads` says how many of the people it held back are marked private and how many may be living, instead of one count for both.
+
+### Fixed
+
+- `gwt-leads --links` no longer stops with exit 2 on a links report that has a link that is itself cited (`the link itself is cited`), the first level `gwt-check links` writes.
+
+## [0.2.2] - 2026-10-26
+
+### Change lists
+
+None.
+
+### Changed
+
+- `gwt-apply --snapshot` and `--since` accept a `gwt-check` dump as well as a snapshot, so `gwt-apply LIST --verify --snapshot POST` works on the `--save-dump` of `gwt-check check --from PRE`. Before, a dump was refused with "is not a gwt-apply snapshot".
+
+### Fixed
+
+- apply: a timeout or busy answer in the whole-tree list reads before the first op is retried like an op's read (`--retries`, `--retry-wait`): the duplicate check's, and on an `--apply --snapshot` the check of what changed since the snapshot. Before, one slow read ended the run with exit 1 before any op ran.
+- apply: a timeout on the run's first login is retried the same way; only a login inside an op was retried before.
+- apply: `--retries` below 1 is refused with exit 2. With 0, a run took no lock, ran no op and reported every op done.
+
+## [0.2.1] - 2026-10-26
+
+### Change lists
+
+None.
+
+### Added
+
+- `gwt-check links`: a read-only report of which parent links have a source, on the link itself or in a record whose text names both parents. It never sets the exit code.
+- `gwt-check cites`: events whose citation's page names another kind of act (a marriage act under a birth) or a marginal mention in another act; a report that never fails.
+- `gwt-check act`: sets one transcribed act beside a dump and says, field by field, whether the tree's event agrees on date, place, parents and citation reference; `--person` names the subject. A report that always exits 0.
+- `gwt-leads --links FILE`: an opt-in `unsupported-link` kind that turns birth links no cited record supports, read from `gwt-check links --json`, into verify tasks. A report from another tree or an older dump stops with exit 2.
+
+### Changed
+
+- `gwt-check fill-places` no longer proposes a place that only a citation of another kind of act or a marginal mention names; the event appears under `held_back` instead, so an `--ops` file has fewer ops than before.
+
+## [0.2.0] - 2026-10-26
+
+The first release: everything since the first public commit.
 
 ### Change lists
 
@@ -24,16 +82,21 @@ Lists written for the first public commit of `gwt-apply` behave differently in t
 - A value of the wrong kind, a citation `confidence` outside 0-4, or a full date that is not a real calendar day (`1890-02-31`) is refused before the first write.
 - A write whose answer was lost (timeout, dropped connection, 5xx) but which landed reports `done` instead of `skip`.
 - `gwt-import-excel` stops with exit 2 on an unknown mapping field instead of dropping that column.
+- An `add_family` with both parents whose couple looks like a tree family's couple, or another `add_family` of the list, is flagged before the first write even when each parent carries `allow_namesake`; `allow_new_couple` with `new_couple_reason` and `new_couple_of` clears it.
+- New op `unlink_child` takes a child out of a family; a list that used it was refused as an unknown op before. `--revert` now makes a note the run deleted again instead of sending it to the backup.
 
 ### Added
 
 - `gwt`, one command for every Python tool (`gwt <tool> ...`), installed with one `pip install gramps-web-toolkit`; each `gwt-<tool>` command stays.
-- `gwt-apply`: offline planning on a snapshot (`--save-snapshot`, `--since`), merges of people, families and events through Gramps' own merge, DNA matches as associations, `attach_existing`, `dedupe_list`, `update_place`, repositories, `update_note`, `update_citation`, `update_family`, `update_child_ref`, `detach`, and `--revert` to undo one run from its log.
+- `gwt-apply --verify` proves a list landed: a dry run that exits 1 when any op would write, conflicts or errs, and names each missing object and each field that differs; a Gramps ID merged away is read on its winner. `--json FILE` writes one result per op. A dry-run op retried after a server error no longer reads its own first try's plan as already in the tree.
+- `gwt-apply`: offline planning on a snapshot (`--save-snapshot`, `--since`), merges of people, families and events through Gramps' own merge, DNA matches as associations, `attach_existing`, `dedupe_list`, `update_place`, repositories, `update_note`, `update_citation`, `update_family`, `update_child_ref`, `detach`, `unlink_child`, and `--revert` to undo one run from its log.
 - `gwt-check`: read-only whole-tree checks, `--baseline`, `--ignore-check`, accepted findings with a reason, disconnected family components, contradictory dates, living-people privacy checks, missing event places found in their citations, citations entered twice, and offline checks of saved snapshots.
 - `gwt-ledger` (shared search ledger, one file per lane), `gwt-gate` (one request pace per machine), `gwt-queue` (search tasks for parallel lanes), `gwt-leads` (tree gaps as queue tasks), `gwt-rank` (orders FamilySearch results), `gwt-import-excel` (workbooks to change lists), `gwt-rawstore` (originals in S3) and `gwt-mh` (MyHeritage through a signed-in browser).
 - Both Gramps Web clients send a toolkit User-Agent and log in with a sync token (`GWT_TOKEN`).
 - A documentation site at https://geiserx.github.io/gramps-web-toolkit/.
 - Tagged releases publish to PyPI, and `gwt --version` in a clone prints a version read from git.
+- `gwt-read familysearch`: FamilySearch record search and records with your own session token, through the cache and a slow per-account gate (one request every 30 s at best), stopping on a 403, 429, captcha, sign-in page or empty frame; it writes the same envelope and candidates files as `gwt-mh`, whose shared parts now live in `read/gwt_reader.py`.
+- `gwt-read pares`: search and descriptions from PARES, the Spanish state archives' catalogue, on the same reader shape, cache (`PARES_RULES`: searches 7 days, descriptions 90 days) and STOP rules, with its own gate (one request every 15 s at best); a page without the record text it asked for (an empty frame, the site's error page) is a STOP.
 
 ### Changed
 

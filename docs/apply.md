@@ -25,11 +25,11 @@ On a multi-tree server, the tree comes from the user: the login (`POST /api/toke
 
 Every request carries the User-Agent `gramps-web-toolkit/<version> (gwt-apply; +https://github.com/GeiserX/gramps-web-toolkit)`, so a server admin can tell the toolkit apart in the logs.
 
-Other flags: `--log PATH`, `--retries N` (default 5), `--retry-wait SECONDS` (default 30), `--snapshot FILE`, `--save-snapshot FILE` and `--since OLD` ([Snapshots](#snapshots)), `--tag NAME` ([Tags](#tags)), `--break-lock` (below).
+Other flags: `--verify` and `--json FILE` ([Prove a list landed](#prove-a-list-landed)), `--log PATH`, `--retries N` (default 5, at least 1), `--retry-wait SECONDS` (default 30), `--snapshot FILE`, `--save-snapshot FILE` and `--since OLD` ([Snapshots](#snapshots)), `--tag NAME` ([Tags](#tags)), `--break-lock` (below).
 
 Every run gets a run id, `<date>-<time>-<6 hex>`. The first line of output names it and the log, before the login, so a run whose login fails still says which run it was. The log path carries `(created once logged in)`: the file appears only after the login. See [The log](#the-log).
 
-Exit codes: `0` every op done or skipped; `1` a conflict or an error stopped the run; `2` the change list or the settings are invalid, or the change list file cannot be read (nothing was read or written).
+Exit codes: `0` every op done or skipped (with `--verify`: every op skipped); `1` a conflict or an error stopped the run (with `--verify`: also any op that is not in the tree); `2` the change list or the settings are invalid, or the change list file cannot be read (nothing was read or written).
 
 ## The log
 
@@ -89,8 +89,9 @@ References to other objects are either a **Gramps ID** (`I0042`, `P0007`, or wit
 | `update_family` | `family`, `set` | | `set` takes only `type` (for example `Married`) |
 | `update_child_ref` | `family`, `child` | `set`, `confirm_probable`, `expect` | `set` takes only `frel` and `mrel`. `confirm_probable` is the reason, the document that settles a `[probable]` link: the mark becomes `[confirmed] <reason> (was: [probable] <old reason>)`, so the doubt stays on the link. A link with no `[probable]` mark is a conflict, one already confirmed is skipped. `expect` is the mark's current text |
 | `detach` | `target`, `object` | | Takes a note, citation or media reference off a target (`{"note": "N0042"}`). The object stays in the tree, which `gwt-check` lists as an orphan, and `attach_existing` puts it back. A media reference that carries a region, notes, citations or attributes is a conflict, because `attach_existing` cannot put those back |
-| `add_family` | `father` or `mother` | `children`, `type`, `gramps_id` | New family, or the existing one with the same parents |
+| `add_family` | `father` or `mother` | `children`, `type`, `gramps_id`, `allow_new_couple` with `new_couple_reason` and `new_couple_of` | New family, or the existing one with the same parents. A family with both parents whose couple looks like a couple already in the tree, or made by another `add_family` of the list, stops the run before any write (see below). When it really is another couple, set `allow_new_couple: true`, say why in `new_couple_reason`, and list in `new_couple_of` the Gramps ID (or `key:<key>`) of every family you compared; one the op does not name is still flagged. A `key:<key>` from an earlier list still counts once that family is in the tree under a Gramps ID of its own |
 | `link_child` | `family`, `child` | `frel`, `mrel` (default `Birth`), `probable: true` with `probable_reason` | Adds a child to a family. With `probable`, the link also gets a `Research` note on its child_ref that reads `[probable] <probable_reason>`; a link that is already there gets the note if it has none starting with `[probable]` |
+| `unlink_child` | `family`, `child`, `reason` | `drop_link_sources` (`true` or `false`) | Takes a child out of a family linked by mistake: the child_ref off the family, then the family off the child's parent families. Nobody is deleted, and neither is the family; a family left with no father, no mother and no children gets a `warning:` line. `reason` goes on the child as a `Research` note `[unlinked from Family <F>] <reason>` (an identical note already on the child is reused). A note on the link that starts with `[probable]`, `[confirmed]` or `[wrong link]` and is attached nowhere else is deleted with it (the server must say so through its backlinks; when it names no holder at all, the note counts as other). Any other note or citation on the link is a conflict, because it would be lost; with `drop_link_sources: true` it is detached and stays in the tree, an orphan `gwt-check` lists. A child that neither side lists is a skip. When only one side lists it, that side is fixed and the action line says the tree was inconsistent |
 | `add_source` | `title` | `author`, `pubinfo`, `abbrev`, `gramps_id` | New source, or the existing one with the same title, author and publication info |
 | `add_repository` | `name`, `type` | `gramps_id`, `url`, `address` | New repository, or the existing one with the same name, ignoring case and accents. `type` is a non-empty string; the built-in ones are `Library`, `Cemetery`, `Church`, `Archive`, `Album`, `Web site`, `Bookstore`, `Collection`, `Safe`, and another name becomes a custom type. `url` starts with `http://` or `https://`; `address` takes some of `street`, `locality`, `city`, `county`, `state`, `country`, `postal`, `phone` |
 | `update_repository` | `repository`, `set` | | `set` takes only `name`, `type`, `url`, `address`. A `url` already listed is kept, `address` completes the first address, and a `name` another repository already has is a conflict (use `merge_repository`). A note goes on with `add_note` and `{"repository": ...}` as the target |
@@ -109,13 +110,13 @@ References to other objects are either a **Gramps ID** (`I0042`, `P0007`, or wit
 | `merge_family` | `winner`, `loser` | `reason` | Gramps' own family merge. Refused when the two families have different fathers or different mothers: merge those people first |
 | `merge_event` | `winner`, `loser` | `reason` | Gramps' own event merge, for two events that are one fact (a death entered once per citation): the loser's citations, notes, media and attributes move to the winner, every person and family that listed the loser lists the winner (once, when it already listed it in the same role), and the loser is deleted. Refused when the two differ in type, date (the whole date: `about 1884-05-02` is not `1884-05-02`), place or description, when the loser has one of those and the winner does not (the merge would lose it), and when a person or family lists both in different roles: correct one with `update_event` first. See [Merges](#merges) |
 
-`attach` and `target` take objects with one key, the kind of object: `{"person": "I0042"}`, `{"event": "key:birth-john"}`. Kinds: `person`, `family`, `event`, `citation`, `source`, `media`, `place`, `repository`, `association` and `child_ref`, the link between a child and a family, written `{"child_ref": {"family": "F0003", "child": "I0042"}}`. A child_ref carries citations and notes (no media, no attributes); that is where a doubtful parent link gets its source and its "probable" note. Mark the link with `probable` on `link_child` rather than with a separate `add_note`, so the mark cannot be left out. The child must already be in that family. An association is written `{"association": {"person": "I0042", "target": "I0107"}}`, with `"relation": "DNA"` when the person has more than one association with that target; it carries citations and notes (no media, no attributes) and must already exist.
+`attach` and `target` take objects with one key, the kind of object: `{"person": "I0042"}`, `{"event": "key:birth-john"}`. Kinds: `person`, `family`, `event`, `citation`, `source`, `media`, `place`, `repository`, `association` and `child_ref`, the link between a child and a family, written `{"child_ref": {"family": "F0003", "child": "I0042"}}`. A child_ref carries citations and notes (no media, no attributes); that is where a doubtful parent link gets its source and its "probable" note. Mark the link with `probable` on `link_child` rather than with a separate `add_note`, so the mark cannot be left out. A link found to be wrong but not taken out yet is best marked with a note on its child_ref starting with `[wrong link]`: `unlink_child` removes that note together with the link, and until then anyone reading the tree sees the doubt. The child must already be in that family. An association is written `{"association": {"person": "I0042", "target": "I0107"}}`, with `"relation": "DNA"` when the person has more than one association with that target; it carries citations and notes (no media, no attributes) and must already exist.
 
 Place names, place types and person names are compared without case, accents or repeated spaces: `Mónte  Alto` matches `monte alto`.
 
 Types (event, note, place, family, attribute, repository, media type) are Gramps' internal English names, whatever language the web UI shows: `Research`, `Transcript`, `Baptism`, `Parish`. A name the server does not recognise is stored as a new custom type, separate from the built-in one; whether a translated name is recognised depends on the server's language, so do not rely on it. Custom types the tree already uses are written as they are.
 
-Dates are written in this format: `1890`, `1890-03`, `1890-03-14`, optionally after `abt`, `bef` or `aft`, and optionally after `est` or `calc`. Ranges are `bet 1890 and 1895`, spans `from 1890 to 1895`. A full date must be a real calendar day: `1890-02-31` is refused, `1892-02-29` is not. Anything else is refused rather than stored as text.
+Dates are written in this format: `1890`, `1890-03`, `1890-03-14`, optionally after `abt`, `bef` or `aft`, and optionally after `est` or `calc`. Ranges are `bet 1890 and 1895`, spans `from 1890 to 1895`. A full date must be a real calendar day: `1890-02-31` is refused, `1892-02-29` is not. Anything else is refused rather than stored as text. A date an act gives in the French Republican calendar is written with `fr` (or `republican`) first and the year, month and day of that calendar: `fr 0005-03-26` is 26 frimaire an V, month 13 is the complementary days, and the year is 1 to 14. It is stored in that calendar, with the serial day of the same day in the Gregorian one, so sorting and `gwt-check` date comparisons keep working. The same event with the Gregorian form of that day is not the same date, so `update_event` writes it.
 
 ### Example
 
@@ -130,6 +131,7 @@ All people here are invented.
 {"op": "add_media", "key": "m-john-bapt", "ruling": "R-12", "file": "scans/smith-baptism-1890.jpg", "path": "sources/parish/smith-baptism-1890.jpg", "desc": "Baptism of John Smith, 1890", "attach": [{"citation": "key:c-john-bapt"}]}
 {"op": "add_note", "key": "n-john-parents", "ruling": "R-12", "type": "Research", "text": "[probable] Parents taken from the index only.", "attach": [{"child_ref": {"family": "F0003", "child": "key:p-john-smith"}}]}
 {"op": "add_note", "key": "n-john-godparents", "ruling": "R-12", "type": "Research", "text": "Godparents: Peter Brown and Mary Green.", "attach": [{"person": "key:p-john-smith"}]}
+{"op": "unlink_child", "key": "u-mary-parents", "ruling": "R-13", "family": "F0005", "child": "I0077", "reason": "The baptism of 1893 names another mother; this family came from a namesake."}
 {"op": "set_attribute", "key": "a-john-occupation", "ruling": "R-12", "target": {"person": "key:p-john-smith"}, "type": "Occupation", "value": "miller"}
 ```
 
@@ -204,6 +206,50 @@ The merge itself is the server's (`POST /api/people/<winner>/merge/<loser>`, `PO
 
 Before the merge, the winner gets a note that records it: `Merged Person I0042 (John Smith) into this person (ruling R-12). <reason>`. The note is how a rerun knows the merge is done: when the loser is gone and the winner has that note, the op is skipped; when the loser is gone and there is no note, the op is a conflict.
 
+## Prove a list landed
+
+`--verify` answers "is this list in the tree?". It is a dry run: it writes nothing and takes no lock. It exits `0` when every op comes out `skip`, and `1` when any op would write, conflicts or errs. Under each op that would write, it says why:
+
+- `missing: <class> key <key>`: the object the op makes does not exist. A merge that has not happened reads `missing: merge Person I0002 into I0001`, an association `missing: Person I0001 DNA association with I0007`.
+- `differs: <class> <ID> <field> <in the tree> != <the list>`: the object is there, and a field the op sets has another value.
+
+```
+$ gwt-apply changes.jsonl --verify
+VERIFY (nothing written) on tree example, run 20261025-101500-a1b2c3, reading the server, 3 op(s)
+[skip] n-census (add_note, ruling R-12)
+    skip: Note N0031 already made by key 'n-census'
+    skip: Person I0001 already has it in note_list
+[skip] c-folio (add_citation, ruling R-12)
+    ...
+[done] u-raise (update_citation, ruling R-12)
+    update Citation C0001: confidence: 1 -> 3
+    differs: Citation C0001 confidence 1 != 3
+1 done, 2 skip, 0 conflict, 0 error
+VERIFY: 2 of 3 op(s) in the tree; 1 not (see the missing, differs, conflict and error lines above)
+```
+
+A merge counts as applied when the loser is gone and the winner has the note the merge op wrote ([Merges](#merges)). A later op that names the loser by its Gramps ID is read on the winner instead of stopping with `no Person with Gramps ID ...`, and the plan says `Person I0002 was merged into I0001: reading it there`. So a list applied before a merge, and the merge list, both verify after the merge. Only `--verify` follows a merge this way; a plain dry run or `--apply` still stops on the missing ID.
+
+What it does not see:
+
+- A family Gramps merged on its own, because a person merge left two families with the same spouses. Our merge op wrote no note for it, so an op that names it is a `conflict`. Check those with `gwt-check` instead ([lesson 18](hard-won.md#18-a-merge-brings-the-losers-events-along-and-a-second-run-of-the-list-does-not-skip)).
+- An object a list made by key and that was later merged away: its key no longer finds it, so the op reads `missing`.
+- A field changed after the apply on an object a list made by key: the key finds the object and the op skips, as in any rerun ([Reuse only what is the same](#reuse-only-what-is-the-same)). An `update_*` op does compare its fields, so a value someone changed back reads `differs`.
+
+`--json FILE` writes one object per op of the list, in order, for scripts. It works with any run that has a change list, not only `--verify`:
+
+```json
+[
+ {"key": "n-census", "op": "add_note", "status": "skip", "reason": ""},
+ {"key": "c-folio", "op": "add_citation", "status": "skip", "reason": ""},
+ {"key": "u-raise", "op": "update_citation", "status": "done", "reason": "differs: Citation C0001 confidence 1 != 3"}
+]
+```
+
+`status` is `done`, `skip`, `conflict`, `error`, or `not run` for an op the run never reached (after a conflict, or when the pre-flight found likely duplicates). `reason` is the missing and differs lines joined with `; ` for `done`, the conflict or error line for those, and empty for `skip`.
+
+Use `--verify --snapshot` with a fresh snapshot to verify offline ([Checking an apply quickly](#checking-an-apply-quickly)).
+
 ## Snapshots
 
 A dry run against the server reads the tree op by op, which takes hours for a list of thousands of ops. With a snapshot it reads nothing from the server:
@@ -225,20 +271,30 @@ Then it applies, reading from the snapshot. Before each `PUT` of an object read 
 
 ### Checking an apply quickly
 
-After an apply, the usual check is to run the same list again as a dry run: every op must come out `skip`. Against the server that rereads the tree op by op. Instead, bring the snapshot taken before the apply up to date and run the dry run on it, offline:
+After an apply, prove it landed with `--verify` ([Prove a list landed](#prove-a-list-landed)). Against the server that rereads the tree op by op. Instead, bring the snapshot taken before the apply up to date and verify on it, offline:
 
 ```sh
 gwt-apply --save-snapshot tree-0413.json.gz --since tree-0412.json.gz   # only what changed since 0412
-gwt-apply changes.jsonl --snapshot tree-0413.json.gz                    # every op must say skip
+gwt-apply changes.jsonl --verify --snapshot tree-0413.json.gz           # exit 0: every op is in the tree
 ```
 
-`--since` reads one list of `change` stamps per class, then only the objects whose stamp moved and the new ones, and leaves out the deleted ones. The new file holds what a full `--save-snapshot` would, so the check is as strong as a dry run against the server: an object the list touched and someone changed afterwards, or one that went away, makes its op come out `done` or `conflict` instead of `skip`. That holds for any change since the older snapshot, not only the ones the list made, so the new snapshot is also the one to plan and apply the next list on. Gramps' `change` stamp counts seconds, so take the older snapshot while nothing writes to the tree, as an apply's lock guarantees.
+A `gwt-check` dump works anywhere a snapshot does (`--snapshot`, `--since`): `gwt-check dump`, or the `--save-dump` of a `gwt-check check --from PRE`, holds the same objects as the API returns them. So a writer that refreshes its dump after each apply with `gwt-check check --from PRE --save-dump POST` verifies on that same file, with no second read of the tree:
+
+```sh
+gwt-check check --from pre.json.gz --save-dump post.json.gz   # the gate: what the apply changed, read in seconds
+gwt-apply changes.jsonl --verify --snapshot post.json.gz       # exit 0: every op is in the tree
+```
+
+The header line dates a dump by when its read began (`read_started`), or by when it was written (`dumped_at`) if it has no `read_started`; that time is only shown, never compared. A dump that records no tree or lacks a type is refused with exit `2`: take a new one. A dump `gwt-check` marked `settled` stopped reading again while other writes went on, so it is not one moment's view of the whole tree: verify on it only when nothing else writes to that tree.
+
+`--since` reads one list of `change` stamps per class, then only the objects whose stamp moved and the new ones, and leaves out the deleted ones. The new file holds what a full `--save-snapshot` would, so the check is as strong as `--verify` against the server: an object the list touched and someone changed afterwards, or one that went away, makes its op come out `done` or `conflict` instead of `skip`. That holds for any change since the older snapshot, not only the ones the list made, so the new snapshot is also the one to plan and apply the next list on. Gramps' `change` stamp counts seconds, so take the older snapshot while nothing writes to the tree, as an apply's lock guarantees.
 
 ## Safety rules
 
 - **Dry-run by default.** Without `--apply` nothing is written. Reads run, so the plan reflects the real tree, and objects the plan would create are kept in memory so later ops can refer to them.
-- **The whole list is checked before the first request**: known ops and fields, a `ruling` and a unique `key` on each op, references that are Gramps IDs or keys, dates in the format above, media files that exist, a reason and the compared IDs on every `allow_namesake`, a reason on every `probable`, no two ops that are the same change under different keys (everything but `key` and `ruling` equal), and no two `add_citation` ops that cite the same page of the same source with a different `confidence` or `date`. Values have the right kind: every text field is a non-blank string (`surname` of `add_person` and `page` of `add_citation` may be `""`, and any optional text may be `""` or `null`, which means none), `children`, `attach` and `use_loser` are lists, `namesake_of` and `tag` are a name or a list of names, and `confidence` is a whole number from 0 to 4. A value of the wrong kind is reported here instead of failing halfway through the run, after earlier ops wrote.
+- **The whole list is checked before the first request**: known ops and fields, a `ruling` and a unique `key` on each op, references that are Gramps IDs or keys, dates in the format above, media files that exist, a reason and the compared IDs on every `allow_namesake` and `allow_new_couple` (which goes only on a family with both parents), a reason on every `probable`, no two ops that are the same change under different keys (everything but `key` and `ruling` equal), and no two `add_citation` ops that cite the same page of the same source with a different `confidence` or `date`. Values have the right kind: every text field is a non-blank string (`surname` of `add_person` and `page` of `add_citation` may be `""`, and any optional text may be `""` or `null`, which means none), `children`, `attach` and `use_loser` are lists, `namesake_of`, `new_couple_of` and `tag` are a name or a list of names, and `confidence` is a whole number from 0 to 4. A value of the wrong kind is reported here instead of failing halfway through the run, after earlier ops wrote.
 - **Duplicates are looked for before the first write.** After login, and before any op runs, every `add_person` is compared with everyone in the tree and with the other people the list makes. It is flagged when someone has the same first name and surname, or the same first given name and first surname and also a birth or baptism year within two years, a parent in common or a spouse in common. Every flag is printed at once and nothing is written; an op clears a flag by naming that person in `namesake_of`, with `allow_namesake` and a `namesake_reason`.
+  Couples are checked the same way: every `add_family` with a father and a mother is compared with every tree family that has both parents and with the other families the list makes. It is flagged when each spouse has the same given names as one of the other couple and shares a surname word with them (particles such as `de`, `la` or `y` do not count), either way round, so two couples that only share common given names are not flagged. Waiving each parent with `allow_namesake` keeps the person apart, not the couple: a list that adds a second Bob Example and a second Anna Example and marries them is flagged against the tree's Bob x Anna Example family until the `add_family` names that family in `new_couple_of`, with `allow_new_couple` and a `new_couple_reason`. Two `add_family` ops of one list need the waiver on only one of them, either one, and it still holds when the list is run again after a partial run already made the first family. An `add_family` whose father and mother already have a family together, in the tree or from an earlier `add_family` of the same list, is not compared at all, because the apply reuses that family (a father and mother written the other way round are not that family, and are compared). A one-parent `add_family` is not compared: when that parent already has a family with no partner, the apply reuses it.
 - **Read before every write, skip what exists.** The same event type and date on that person or family; the same page on that source; a media object with the same MD5; a note with the same text on a target; a family with the same parents; a place with the same name, type and parent; a source with the same title; a link that is already there.
 - **Reuse only what is the same.** An object found that way stands in for the new one only when every other field the op sets is equal too; otherwise the op is a conflict. See [Reuse only what is the same](#reuse-only-what-is-the-same).
 - **No silent namesakes.** A new person whose first name and surname already exist in the tree stops the run until the change list either uses the existing ID or says `allow_namesake`, with the reason and the IDs it compared. The reason goes into the plan and the log.
@@ -247,9 +303,9 @@ gwt-apply changes.jsonl --snapshot tree-0413.json.gz                    # every 
 - **One apply per tree.** `--apply` takes a lock before its first write and holds it to the end: a private note with a fixed handle and Gramps ID `GWTLOCK`, inside the tree, so it works whichever machine the apply runs on. Creating it is the test: the server refuses a second object with the same handle. The note says which run, host and process hold it and until when; the holder moves that time 15 minutes ahead while it works and deletes the note when it stops, also on Ctrl-C, `SIGTERM` or `SIGHUP`. A second `--apply` on the tree stops before writing and names the holder. A lock whose holder died (power cut, `kill -9`) expires after 15 minutes and the next apply takes it over and says so; `--break-lock` takes it at once, for when you know the holder is dead. A holder that finds its lock gone stops. A dry run takes no lock, and says so when an apply holds the tree. While the lock is held, an export of the tree includes the lock note.
 - **Stop at the first conflict or error.** Later ops are not run, because they may depend on this one.
 - **Writes are narrow.** Only a merge deletes anything, and only the loser: through Gramps' own merge, or for `merge_repository` with a `DELETE` once no source lists it. Objects are created with `POST /api/objects/`. Changes to an existing object are a `GET` followed by a `PUT` of the same object with only the named field changed. Right before the `PUT` the object is read again; if it changed since the op read it, the op starts over, so a concurrent edit is not overwritten.
-- **Busy server.** On "database is locked", any 5xx, a request that timed out or lost its connection, or an object that changed since it was read, the op waits `--retry-wait` seconds and starts over from fresh reads. A create whose answer never came is looked up again before the op tries it a second time, so a timeout cannot make an object twice. A login answered 429 (the server rate-limits logins) waits and tries again.
+- **Busy server.** On "database is locked", any 5xx, a request that timed out or lost its connection, or an object that changed since it was read, the op waits `--retry-wait` seconds and starts over from fresh reads. A create whose answer never came is looked up again before the op tries it a second time, so a timeout cannot make an object twice. A login answered 429 (the server rate-limits logins) waits and tries again; a login that times out, the run's first one included, is retried like a read. The whole-tree list reads before the first op retry the same way: the duplicate check, which lists every person, event and family, and on an `--apply --snapshot` the check of what changed since the snapshot. One slow list read does not end a run that has written nothing.
 - **A log of every call.** One JSONL line per API call with the op's `key` and `ruling`, the method, path, status, and the body of every write, between a `start` and an `end` line ([The log](#the-log)). The password and the token are never logged.
-- **Re-running is safe.** After a crash, run the same list again: what was written is skipped, and an object that was created but not yet linked gets linked.
+- **Re-running is safe.** After a crash, run the same list again with `--apply`: what was written is skipped, and an object that was created but not yet linked gets linked. A rerun without `--apply` is only a dry run, and it exits `0` even when ops would write; `--verify` is what proves a list landed.
 
 ## Speed
 
@@ -324,7 +380,8 @@ gwt-apply --revert run.<run id>.jsonl --pre before.json.gz --apply   # undo, the
 |---|---|
 | PUT of an object that exists in the pre-run copy | `restore`: the object goes back to its pre-run copy, once, however many times the run wrote it |
 | POST of a note, citation, event, place, source, repository or tag | `delete`, after every restore, and only once nothing points at it |
-| anything else: a person or family the run made, a merge, a delete, a media upload | `manual`: the server also edits the objects around these, so restore the backup |
+| DELETE of a note in the pre-run copy (the mark `unlink_child` removes with a link) | `recreate`: the note is made again from its pre-run copy, with the same handle and Gramps ID, before the objects that pointed at it are restored |
+| anything else: a person or family the run made, a merge, any other delete, a media upload | `manual`: the server also edits the objects around these, so restore the backup |
 
 The revert never overwrites anything that differs from what the run left:
 

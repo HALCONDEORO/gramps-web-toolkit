@@ -97,11 +97,70 @@ gwt-check fill-places dump.json.gz --json             # every proposal and every
 - A candidate is a place that some event of the tree already uses, so a country or province that only encloses other places is never proposed on its own. Names of fewer than 4 letters are left out.
 - Names are compared without case or accents, and only as whole words: `Villaejemplo` does not match inside `Villaejemplonuevo`.
 - When the text names a place and also one that encloses it (`Villaejemplo, Provincia Imaginaria`), the enclosing one is dropped. One place left is a proposal. More than one, such as two towns with the same name, is listed as ambiguous with each place ID, and nothing is proposed.
+- A place that only a flagged citation names (see `cites` below) is not proposed. It is listed under `held_back` in `--json` and counted in the text output. A place a clean citation of the same event also names is still proposed, from that citation's text.
 - A citation can name where the record was made rather than where the event happened: a census town, the parish of a death record, a newspaper's city. Read each proposal against the record before you apply it.
 
 `--ops FILE` writes one [`gwt-apply`](apply.md) `update_event` op per proposal, with `"ruling": ""`. `gwt-apply` refuses an op with no ruling, so the file applies only after someone has read each record, written the ruling and deleted the ops they reject. An `update_event` op replaces whatever place the event has when it is applied, so build the file from a fresh dump and apply it soon after; an event someone has placed in the meantime should have its op deleted. An existing file is never replaced.
 
 The output quotes citations and notes, so it is as private as the tree.
+
+## What the records say about parent links (`links`)
+
+`gwt-check links [DUMP]` lists, for each child of each family, whether the text of the records names both parents. It reads the tree (a dump, or the live tree) and writes nothing. It never sets the exit code and never marks a link probable, proven or wrong.
+
+```sh
+gwt-check links dump.json.gz                      # counts per level, then the first rows
+gwt-check links dump.json.gz --level flagged      # only the rows with a flag
+gwt-check links dump.json.gz --json
+```
+
+For each link it looks at the link itself first: a citation on the child_ref (the link between the child and the family) puts the link at the top level, and a note on the child_ref that starts with `[probable]`, `[confirmed]` or `[wrong link]` (the marks `gwt-apply` writes) is shown as the row's `mark`. Then it reads the page text and the notes of the citations of the child's own birth or baptism (events where the child's role is Primary, so a sibling's baptism where the child stood godparent does not count), then of the child's other events, the child's own citations and the family's. Citations and notes marked private are not read. A parent counts as named when one sentence of that text holds the parent's first surname and either every given name, or one of the given names and a filiation word (`hijo`, `hija`, `padres`, `son of`, `filius`...), ignoring case and accents and words of fewer than 3 letters. Old spellings, Latin forms and abbreviations of a name are not matched, so a parent written differently in the record shows a level lower: the matching stays strict on purpose.
+
+| Level | Meaning |
+|---|---|
+| the link itself is cited | the child_ref carries a citation |
+| birth record names both | the citations of the child's birth or baptism name both parents |
+| other record names both | both are named, but not both in the birth record |
+| a record names one | only one parent is named anywhere |
+| cited, names neither | the birth or baptism has a citation that names neither parent |
+| no record names a parent | no citation text names a parent |
+
+These are words in text. A record can name two people as parents of someone else, mention them in passing or deny the link, and a link proved by a document that is in no citation (an identity card, a family book) shows as the lowest level. Rows carry a flag to read first when:
+
+- the link is marked `[probable]` or `[wrong link]`;
+- the tree marks the relation as anything but by birth (adopted, foster, stepchild); empty and `Unknown` count as by birth, as in the other checks;
+- the child has more than one parental family (each is its own row);
+- a parent's name has no word of 3 or more letters, so it can never match.
+
+The output holds IDs, levels and flags only, no record text.
+
+## One act beside the tree (`act`)
+
+`gwt-check act ACT.json DUMP [--person GRAMPS_ID]` sets one transcribed act beside the tree and says, field by field, what agrees. It reads a dump (`gwt-check dump`, or `check --save-dump`) and writes nothing; one act is not worth a whole live read, and one dump serves every act you check that day. It never sets the exit code: a disagreement is something to read, not a failure.
+
+`ACT.json` is written by whoever read the act. Nothing here reads images.
+
+```json
+{"kind": "birth", "date": "1900-03-01", "place": "Villaejemplo", "reference": "folio 1",
+ "subject": {"given": "Lucia", "surname": "Ortega"},
+ "father": {"given": "Mateo", "surname": "Ortega"}, "mother": {"given": "Clara", "surname": "Sanz"}}
+```
+
+`date` is the day of the event the act records. `registered` (optional, same shapes) is the day the act was written. It is used only to explain a differing tree date: when the tree's date is that day and not the event's, the report says so. `kind` is `birth`, `baptism`, `death`, `burial` or `marriage` (a marriage names a `spouse` instead of parents). `date` is `YYYY`, `YYYY-MM` or `YYYY-MM-DD`; `place`, `reference`, `father` and `mother` are optional. `place` is one place name, as the tree spells it (`Villaejemplo`, not `Villaejemplo, Provincia Imaginaria`).
+
+```sh
+gwt-check act act.json dump.json.gz --person I0001
+gwt-check act act.json dump.json.gz --json
+```
+
+- `--person` names the tree person the act is about, and no name search is made; the report notes when the act's name does not fit that person. Without it, a person is a candidate when every word of the act's name is in the tree's primary name, ignoring case and accents. The act may give fewer names than the tree. For a marriage act, only namesakes who have a family with the named spouse are kept, unless none has one.
+- Only the person's own events count (event refs with role Primary): a godparent's ref to a baptism is not the godparent's baptism.
+- For each candidate's matching event, the report says whether the date is the same, compatible but not equal (a year against a day), different, or missing in the tree; whether the place is the same, encloses the tree's place (a province against a village) or differs; whether the parents have names that agree in at least one of the person's parental families (every family is read, and the report names which agree and which do not); and whether the page text or notes of a citation of the event contain the act's `reference` as whole words (`folio 1` does not match `folio 15`). Agreeing names are not proof that two people are the same or related, and a string found in a citation does not show the record was checked against the act.
+- A subject who is not in the tree is reported as absent. Nothing proposes a person, a family or a link from one act.
+- When the name fits two people, both are listed and neither is chosen. When no one fits but the tree has people whose names are shorter than the act's (the act says "Armand Francois", the tree "Armand"), they are listed with a note and none is taken as the subject.
+- A person marked private is counted, so a private namesake still keeps the verdict at "several", but only their ID is shown. Private citations and notes are not searched for the reference.
+- The text output lists 30 people (`--limit`); `--json` has all of them.
+- The report quotes the tree, so it is as private as the tree.
 
 ## Finding repositories
 
@@ -183,6 +242,8 @@ On a tree of 13,035 people, 3,874 families, 10,831 events, 9,120 citations, 5,58
 | 1000 per page, 4 in flight (default) | 69 | 109 s |
 | 1000 per page, 8 in flight | 69 | 64 s |
 
+The first page of every type goes out together, then every page still missing, `--workers` at a time. On a small tree (about 260 people, 2,000 notes, 10 types) that read took 20 s with the types in a row and 14 s with them together; the rest is the stamp pass that follows, one list per type, which still runs one type after another. `check --from` skips the paged read and runs only that stamp pass, so it is no faster.
+
 Each request costs about 1.3 s before the first object, so small pages waste most of the time. The checks themselves take under a second, and reading a saved dump about one. Large pages are safe without `profile=all`. It was `profile=all` that answered 500 on a whole-tree listing.
 
 A request that fails on the network (a timeout, a reset connection, an SSL read error) is tried again, the same as a 429 or a 5xx: up to 6 tries per request, waiting 5, 10, 20, 40 and then 60 s between them, or as long as a `Retry-After` header says. Only a page that fails all 6 stops the run, with exit code 2 and the last error. On a loaded server, where a 1000-object page can take minutes, read with `--pagesize 100 --workers 1`: smaller pages answer within the timeout, and nothing else competes with them.
@@ -190,3 +251,21 @@ A request that fails on the network (a timeout, a reset connection, an SSL read 
 ## A `.gramps` backup as the earlier tree
 
 `--since` reads a Gramps XML backup (`POST /api/exporters/gramps/file`) as well as a dump. From the backup it takes handles, IDs, change times and family links, which is all the diff and the Ahnentafel need. The checks themselves need a JSON dump, so a backup can only be the earlier tree.
+
+## Citations that do not fit their event (`cites`)
+
+`gwt-check cites [DUMP]` reads a dump (or the live tree) and writes nothing. It never sets the exit code. It lists each event whose citation's page (its title) says the citation is about another kind of act. Read the act before you act on a row.
+
+```sh
+gwt-check cites dump.json.gz          # one line per row
+gwt-check cites dump.json.gz --json   # the same rows as JSON
+```
+
+| rule | fires when |
+|---|---|
+| `other-act` | the citation's page names a kind of act (birth, death, marriage) and none of them is the event's kind; a birth event cited by a marriage act holds that act's place and date |
+| `marginal-mention` | a death or marriage is cited by a marginal mention in another act; the act's place and date are that act's |
+
+- Only the page is read, never the citation's notes, so the rules work on any tree whatever its note style.
+- The words that name a kind of act are in one table, `ACT_WORDS`, at the top of `gwt_check/cites.py`, and the words of a marginal mention in `MARGINAL` beside it. A language that is not in them is not read. A word matches as a whole word, singular or plural (`nacimiento`, `nacimientos`), never inside a longer word (`birthplace` is not a birth act).
+- `fill-places` holds back every row `cites` lists: a place that only such a citation names is listed under `held_back`, not proposed.
