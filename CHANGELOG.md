@@ -18,6 +18,14 @@ None.
 
 - `gwt-check check` reports `dup-media`: two media objects with the same checksum or path.
 
+### Added
+
+- `gwt-check republican` recomputes the Republican-to-Gregorian conversions written in notes, citation pages and event descriptions, and lists those that differ.
+
+### Fixed
+
+- The date checks read a complete French Republican date as the day it falls on, instead of counting it as unread.
+
 ## [0.2.3] - 2026-10-26
 
 ### Change lists

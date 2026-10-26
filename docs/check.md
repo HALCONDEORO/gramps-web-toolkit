@@ -162,6 +162,17 @@ gwt-check act act.json dump.json.gz --json
 - The text output lists 30 people (`--limit`); `--json` has all of them.
 - The report quotes the tree, so it is as private as the tree.
 
+## Checking Republican conversions
+
+`gwt-check republican` reads the notes, citation pages and event descriptions of a dump or the live tree, finds every "`14 germinal an 13 = 04/04/1805`" (day in digits, month name, year in digits or Roman numerals, then an equals sign and a Gregorian day), recomputes the day with the count Gramps uses (years 1 to 14) and lists the ones that differ. It never writes. It exits `1` when a conversion differs or is not a Republican day, `0` otherwise.
+
+```sh
+gwt-check republican dump.json.gz
+gwt-check republican --json
+```
+
+A day off in a hand conversion is easy to make and then gets copied into an event date; this finds it before that. Dates written in words ("le dix germinal an neuf") are not read.
+
 ## Finding repositories
 
 `gwt-check repos` reads a dump or the live tree and prints each repository with its source count. It never writes.
@@ -220,7 +231,7 @@ The report also gives, without failing: events without a place (in the whole tre
 
 ## Dated checks
 
-The dated checks read every date as the interval it may stand for, and report two facts only when their intervals cannot overlap, so a vague date never produces a contradiction. A day is one day, a month or a year is the whole month or year, a range runs from its first day to its last, and "before" and "after" are open on one side. An "about" or estimated date gets 2 years of slack either side, and a calculated one (usually worked out from a stated age) 1 year. A text-only date is read only when it is a plain ISO date (`1878`, `1878-05`, `c. 1878`). Dates in another calendar, with a new year other than 1 January, dual-dated (`1699/1700`), or "from" and "to" are not read; the report counts them (`dates not read`).
+The dated checks read every date as the interval it may stand for, and report two facts only when their intervals cannot overlap, so a vague date never produces a contradiction. A day is one day, a month or a year is the whole month or year, a range runs from its first day to its last, and "before" and "after" are open on one side. An "about" or estimated date gets 2 years of slack either side, and a calculated one (usually worked out from a stated age) 1 year. A text-only date is read only when it is a plain ISO date (`1878`, `1878-05`, `c. 1878`). A complete French Republican date is read as the day it falls on. Dates in another calendar (or a partial or ranged Republican date), with a new year other than 1 January, dual-dated (`1699/1700`), or "from" and "to" are not read; the report counts them (`dates not read`).
 
 The detail of each finding names the event types, IDs and dates behind it, and ends in `(firm)` when every date is a plain day, month or year, or `(soft)` when one has slack. A person with no Birth event is taken as born up to a year before their baptism, an infant baptism: a mother who died in childbirth and a child baptised the next day is no contradiction. A death with no Death event is bounded by the burial. Parent rules apply to children whose relation to that parent is `Birth`, `Unknown` or blank, so an adopted or stepchild is left out.
 
