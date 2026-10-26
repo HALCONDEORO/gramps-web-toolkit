@@ -18,10 +18,14 @@ None.
 - `gwt-check repos --suggest` proposes, for each source with no repository, the repository its publication info starts with; `--ops FILE` writes the proposals as `link_repository` ops with an empty ruling.
 - `add_tag` puts a tag on an object the tree already has, for example a research mark such as `Hypothesis`.
 - `gwt-check republican` recomputes the Republican-to-Gregorian conversions written in notes, citation pages and event descriptions and lists the ones that differ; it exits 1 when one does.
+- `python -m gwt_check.synth N out.json.gz` writes an invented tree of N people for scale tests.
+- `python -m gwt_check.scale` runs every offline command on an invented tree and on a real dump side by side (time, memory, exit code, summary line); the real dump is only read.
 
 ### Fixed
 
 - The dated checks read a complete French Republican date as the day it falls on, instead of counting it as unread. A month-only, year-only or range date in that calendar stays unread.
+- The duplicate search in `gwt-check check` no longer slows down on a tree where many people share a common surname: it walks the shorter of the surname and given-name indexes. On an invented 20,000-person tree the checks went from 22 s to under 2 s; findings are unchanged.
+- `gwt-check check` lists findings in the same order on every run (it depended on the hash seed).
 
 ## [0.2.3] - 2026-10-26
 
