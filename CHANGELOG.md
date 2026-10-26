@@ -13,6 +13,7 @@ None.
 ### Added
 
 - A date in a change list can be written in the French Republican calendar: `fr 0005-03-26` is 26 frimaire an V. It is stored in that calendar, with the serial day of the Gregorian day it falls on.
+- `add_tag` puts a tag on an object the tree already has, for example a research mark such as `Hypothesis`.
 
 ## [0.2.3] - 2026-10-26
 
