@@ -40,13 +40,11 @@ def main(argv=None) -> int:
     ap.add_argument("--people", type=int, default=20000)
     ap.add_argument("--real", help="a real dump, read only; same commands, results beside the invented tree")
     a = ap.parse_args(argv)
-    from .synth import big_tree
-    import gzip
-    import json
     with tempfile.TemporaryDirectory() as tmp:
         synth = os.path.join(tmp, "synth.json.gz")
-        with gzip.open(synth, "wt") as fh:
-            json.dump({"tree": "synthetic", "objects": big_tree(a.people)}, fh)
+        # written by a child, so this process stays small: a child inherits its parent's peak memory
+        subprocess.run([sys.executable, "-m", "gwt_check.synth", str(a.people), synth], check=True,
+                       capture_output=True)
         trees = [("invented", synth)] + ([("real", a.real)] if a.real else [])
         print(f"{'tree':9} {'command':12} {'sec':>6} {'MB':>5} exit  last line")
         bad = 0
