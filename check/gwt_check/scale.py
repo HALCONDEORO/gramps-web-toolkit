@@ -16,7 +16,7 @@ import sys
 import tempfile
 import time
 
-COMMANDS = (["check", "--limit", "0"], ["repos"], ["fill-places"], ["links"], ["cites"], ["republican"])
+COMMANDS = (["check", "--limit", "0"], ["repos"], ["fill-places"], ["links"], ["cites"])
 
 
 def run(cmd: list[str], tree: str) -> tuple[str, float, int, int, str]:
