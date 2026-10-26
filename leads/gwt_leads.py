@@ -468,10 +468,13 @@ def main(argv=None):
     p.add_argument('--per-gap', action='store_true', help='queue format: one task per gap instead of one per person')
     p.add_argument('--skip-weak', action='store_true',
                    help='queue format: leave out people with no given name or no surname, unless they are '
-                        'the root or one of its ancestors; their ids go to stderr')
+                        'the root or one of its ancestors; their ids go to stderr (default since 2026-10: kept for compatibility)')
+    p.add_argument('--keep-weak', action='store_true',
+                   help='queue format: also queue people whose name is too thin to search (a one-word name '
+                        'matches thousands of people); by default they are skipped and counted on stderr')
     args = p.parse_args(argv)
     if args.format != 'queue':
-        for flag, on in (('--source', args.source), ('--per-gap', args.per_gap), ('--skip-weak', args.skip_weak)):
+        for flag, on in (('--source', args.source), ('--per-gap', args.per_gap), ('--skip-weak', args.skip_weak), ('--keep-weak', args.keep_weak)):
             if on:
                 p.error('%s only applies to --format queue' % flag)
     kinds = tuple(k for k in args.kinds.split(',') if k)
@@ -503,11 +506,11 @@ def main(argv=None):
               'year, no death): %s' % (len(held), n_private, len(held) - n_private, args.living_after,
                                        ' '.join(sorted(held, key=id_order))), file=sys.stderr)
     if args.format == 'queue':
-        if args.skip_weak:
+        if not args.keep_weak:
             weak = sorted({r['person'] for r in rows if r['weak'] and r['generation'] is None}, key=id_order)
             rows = [r for r in rows if not (r['weak'] and r['generation'] is None)]
             if weak:
-                print('gwt-leads: skipped %d people with no given name or no surname: %s' % (len(weak), ' '.join(weak)),
+                print('gwt-leads: skipped %d people whose name is too thin to search (research them by hand, or --keep-weak): %s' % (len(weak), ' '.join(weak)),
                       file=sys.stderr)
         if not args.per_gap:
             rows = group_by_person(rows)
