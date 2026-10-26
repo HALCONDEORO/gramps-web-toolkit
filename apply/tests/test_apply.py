@@ -514,6 +514,32 @@ def test_update_place_sets_coordinates_on_an_existing_place(fake):
         assert validate([dict(ops[0], key="bad", set=bad)]), bad
 
 
+def test_update_place_moves_a_place_under_another_and_refuses_loops(fake):
+    region = fake.add("places", {"handle": "reg", "name": {"value": "Westshire"}, "place_type": "Region", "placeref_list": []})
+    county = fake.add("places", {"handle": "cty", "name": {"value": "Eastcounty"}, "place_type": "County", "placeref_list": [{"ref": "plc1"}]})
+    move = [{"op": "update_place", "key": "mv", "ruling": R, "place": county["gramps_id"], "set": {"enclosed_by": region["gramps_id"]}}]
+    assert run(fake, move)[0].status == "done"
+    assert [r["ref"] for r in fake.store["places"]["cty"]["placeref_list"]] == ["reg"]
+    assert run(fake, move)[0].status == "skip"
+    # the region under its own county would be a loop; a place under itself is refused too
+    loop = [{"op": "update_place", "key": "lp", "ruling": R, "place": region["gramps_id"], "set": {"enclosed_by": county["gramps_id"]}}]
+    assert run(fake, loop)[0].status == "conflict"
+    me = [{"op": "update_place", "key": "me", "ruling": R, "place": region["gramps_id"], "set": {"enclosed_by": region["gramps_id"]}}]
+    assert run(fake, me)[0].status == "conflict"
+    assert fake.store["places"]["reg"]["placeref_list"] == []
+    assert validate([dict(move[0], key="bad", set={"enclosed_by": "reg"})])  # a bare handle is refused
+
+
+def test_update_place_sees_a_loop_through_a_second_parent_of_the_new_parent(fake):
+    a = fake.add("places", {"handle": "pa", "name": {"value": "Aville"}, "place_type": "Town", "placeref_list": []})
+    fake.add("places", {"handle": "pc", "name": {"value": "Cshire"}, "place_type": "County", "placeref_list": []})
+    b = fake.add("places", {"handle": "pb", "name": {"value": "Bshire"}, "place_type": "County",
+                            "placeref_list": [{"ref": "pc"}, {"ref": "pa"}]})   # B sits under C and under A
+    loop = [{"op": "update_place", "key": "lp", "ruling": R, "place": a["gramps_id"], "set": {"enclosed_by": b["gramps_id"]}}]
+    assert run(fake, loop)[0].status == "conflict"
+    assert fake.store["places"]["pa"]["placeref_list"] == []
+
+
 def test_coordinates_that_are_not_numbers_are_a_validation_error():
     # float(None) is a TypeError: it must come out as a line in the error list, not a crash
     for bad in (None, "north", [1]):
