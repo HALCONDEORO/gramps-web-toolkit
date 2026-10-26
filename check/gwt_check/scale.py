@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import resource
 import subprocess
 import sys
@@ -52,6 +53,8 @@ def main(argv=None) -> int:
             for label, path in trees:
                 name, secs, peak, rc, last = run(cmd, path)
                 bad += rc > 1  # 1 is "findings"; more is a crash
+                if label == "real":  # a summary line can carry a name or an id: show only its numbers
+                    last = " ".join(re.findall(r"\d+", last))
                 print(f"{label:9} {name:12} {secs:6.1f} {peak:5d} {rc:4d}  {last}")
     return 1 if bad else 0
 

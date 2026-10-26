@@ -46,3 +46,12 @@ def test_common_surnames_do_not_make_the_duplicate_search_quadratic():
         return best
 
     assert best_of_two(True) < 8 * best_of_two(False) + 0.5
+
+
+def test_the_real_dump_summary_shows_only_digits(monkeypatch, capsys, tmp_path):
+    from gwt_check import scale
+    monkeypatch.setattr(scale, "COMMANDS", (["check"],))
+    monkeypatch.setattr(scale, "run", lambda cmd, tree: ("check", 0.1, 1, 0, "12 findings in Maria Garcia I0001"))
+    assert scale.main(["--people", "50", "--real", str(tmp_path / "x.json")]) == 0
+    real = [l for l in capsys.readouterr().out.splitlines() if l.startswith("real")]
+    assert real and "Maria" not in real[0] and "I0001" not in real[0] and real[0].endswith("12 0001")
