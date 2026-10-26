@@ -68,6 +68,8 @@ def _french(y: int, m: int, d: int) -> tuple[int, int] | None:
     day from year, month and day alone: (year * 1461) // 4 + (month - 1) * 30 + day, from an offset."""
     if not (1 <= y <= 14 and 1 <= m <= 13 and 1 <= d <= 30):
         return None
+    if m == 13 and d > (6 if y in (3, 7, 11) else 5):   # the complementary days: five, six in years 3, 7 and 11
+        return None
     o = (y * 1461) // 4 + (m - 1) * 30 + d + 2375474 - 1721425
     return o, o
 

@@ -93,8 +93,9 @@ def test_a_complete_french_republican_date_is_read_as_the_day_it_falls_on():
     assert fr.lo == fr.hi == dates.span(D(1796, 12, 16)).lo and fr.firm is True
     assert dates.span(D(13, 7, 14, calendar=3)).lo == dates.span(D(1805, 4, 4)).lo
     assert dates.span(D(11, 4, 21, mod=1, calendar=3)).hi == dates.span(D(1803, 1, 11)).lo
+    assert dates.span(D(3, 13, 6, calendar=3)) is not None   # year 3 has six complementary days
     for unreadable in (D(5, 3, calendar=3), D(5, calendar=3), D(15, 1, 1, calendar=3), D(5, 14, 1, calendar=3),
-                       D(5, 3, 26, mod=4, calendar=3)):
+                       D(5, 3, 26, mod=4, calendar=3), D(5, 13, 6, calendar=3), D(4, 13, 6, calendar=3)):
         assert dates.span(unreadable) is None
 
 
