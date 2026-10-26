@@ -40,6 +40,7 @@ SPECS: dict[str, tuple[set[str], set[str]]] = {
     "update_family": ({"family", "set"}, set()),
     "update_child_ref": ({"family", "child"}, {"set", "confirm_probable", "expect"}),
     "detach": ({"target", "object"}, set()),
+    "link_event": ({"person", "event", "role"}, set()),
     "add_event": ({"type"}, {"person", "family", "role", "date", "place", "description", "gramps_id"}),
     "add_family": (set(), {"father", "mother", "children", "type", "gramps_id", "allow_new_couple", "new_couple_reason",
                            "new_couple_of"}),
@@ -57,6 +58,7 @@ SPECS: dict[str, tuple[set[str], set[str]]] = {
     "add_note": ({"text", "attach"}, {"type", "gramps_id"}),
     "add_transcription": ({"text", "margin_reading", "attach"}, {"gramps_id"}),
     "attach_existing": ({"object", "attach"}, set()),
+    "add_tag": ({"target", "name"}, set()),
     "dedupe_list": ({"target", "list"}, set()),
     "set_attribute": ({"target", "type", "value"}, set()),
     "merge_person": ({"winner", "loser"}, {"use_loser", "reason"}),
@@ -87,7 +89,7 @@ PERSON_FIELDS = {"first_name", "surname", "gender"}
 ADDRESS_KEYS = {"street", "locality", "city", "county", "state", "country", "postal", "phone"}
 REPOSITORY_FIELDS = {"name", "type", "url", "address"}
 EVENT_FIELDS = {"type", "date", "place", "description"}
-PLACE_FIELDS = {"lat", "long"}
+PLACE_FIELDS = {"lat", "long", "enclosed_by"}
 NOTE_FIELDS = {"text", "type"}
 CITATION_FIELDS = {"page", "confidence", "date"}
 FAMILY_FIELDS = {"type"}
@@ -287,7 +289,7 @@ def validate(ops: list[dict]) -> list[str]:
             errors.append(f"{where}: the same change as {payloads[payload]}; one change, one op")
         else:
             payloads[payload] = where
-        refs = [op.get(f) for f in ("person", "family", "father", "mother", "child", "source", "place", "enclosed_by",
+        refs = [op.get(f) for f in ("person", "family", "father", "mother", "child", "source", "place", "enclosed_by", "event",
                                     "winner", "loser", "repository", "note", "citation")]
         refs += list(op.get("children") or [])
         if name == "attach_existing":
@@ -373,11 +375,22 @@ def validate(ops: list[dict]) -> list[str]:
                 if s.get("place") and not (isinstance(s["place"], str) and (
                         s["place"].startswith("key:") or _GRAMPS_ID.match(s["place"]))):
                     raise ValueError(f"{s['place']!r} is neither key:<key> nor a Gramps ID (never a handle)")
+            if name == "link_event":
+                if not isinstance(op["role"], str) or not op["role"].strip():
+                    raise ValueError("role is a non-empty text, such as Witness")
+                if op["role"] in ("Primary", "Family"):
+                    raise ValueError(f"{op['role']} is the role of the event's own person or family: use add_event")
+
+            if name == "add_tag" and not (isinstance(op["name"], str) and op["name"].strip()):
+                raise ValueError("name is the non-empty name of the tag")
             if name == "update_place":
                 s = op.get("set")
                 if not isinstance(s, dict) or not s or set(s) - PLACE_FIELDS:
                     raise ValueError(f"set takes only {sorted(PLACE_FIELDS)}")
                 _check_coords(s)
+                if "enclosed_by" in s and not (isinstance(s["enclosed_by"], str) and (
+                        s["enclosed_by"].startswith("key:") or _GRAMPS_ID.match(s["enclosed_by"]))):
+                    raise ValueError(f"{s['enclosed_by']!r} is neither key:<key> nor a Gramps ID (never a handle)")
             if name == "update_note":
                 f = op.get("set")
                 if not isinstance(f, dict) or not f or set(f) - NOTE_FIELDS:
@@ -924,9 +937,26 @@ class Applier:
         place.setdefault("_class", "Place")
         before = copy.deepcopy(place)
         s = op["set"]
-        place["lat"], place["long"] = str(s["lat"]), str(s["long"])
+        if "lat" in s:
+            place["lat"], place["long"] = str(s["lat"]), str(s["long"])
+        if "enclosed_by" in s:
+            parent = self.resolve("Place", s["enclosed_by"])
+            refs = place.get("placeref_list") or []
+            if len(refs) > 1:
+                raise Conflict(f"{self.label(place)} is enclosed by more than one place; not moved")
+            if parent == place["handle"]:
+                raise Conflict(f"{self.label(place)} cannot enclose itself")
+            seen, up = set(), parent
+            while up and up not in seen:
+                if up == place["handle"]:
+                    raise Conflict(f"{s['enclosed_by']} is inside {self.label(place)}: that would make a loop")
+                seen.add(up)
+                row = self.c.get("Place", up) or {}
+                up = next((r.get("ref") for r in row.get("placeref_list") or []), None)
+            if not refs or refs[0].get("ref") != parent:
+                place["placeref_list"] = [{**(refs[0] if refs else {"_class": "PlaceRef"}), "ref": parent}]
         if place == before:
-            self.actions.append(f"skip: Place {self.label(place)} already has those coordinates")
+            self.actions.append(f"skip: Place {self.label(place)} already has those values")
             return
         self.save(before, place)
 
@@ -1001,6 +1031,24 @@ class Applier:
         if target_cls == "Person" and index_key and role == "Primary" and target.get(index_key, -1) == -1:
             target[index_key] = len(refs)
         self.save(before, target)
+
+    def link_event(self, op):
+        """A person takes part in an event the tree already has, in a role (a witness of a marriage): the event
+        reference on the person, nothing else. The event is never edited."""
+        person = self.obj("Person", op["person"])
+        event = self.obj("Event", op["event"])
+        person.setdefault("_class", "Person")
+        refs = person.get("event_ref_list") or []
+        for r in refs:
+            if r["ref"] == event["handle"]:
+                if r.get("role") == op["role"]:
+                    self.actions.append(f"skip: Person {self.label(person)} already has {event.get('gramps_id')} as {op['role']}")
+                    return
+                raise Conflict(f"{self.label(person)} already has {event.get('gramps_id')} in the role {r.get('role')!r}; "
+                               "not changed")
+        before = copy.deepcopy(person)
+        person["event_ref_list"] = [*refs, {"_class": "EventRef", "ref": event["handle"], "role": op["role"]}]
+        self.save(before, person)
 
     def add_family(self, op):
         father = self.resolve("Person", op["father"]) if op.get("father") else None
@@ -1631,6 +1679,20 @@ class Applier:
         """
         cls, ref, lst = _parse_object(op["object"])
         self.attach(op["attach"], lst, self.resolve(cls, ref))
+
+    def add_tag(self, op):
+        """Put a tag (made if the tree has none) on an object the tree already has: a research mark such as
+        `Hypothesis`. Nothing else on the object changes."""
+        cls, ref = _parse_target(op["target"])
+        target = self.obj(cls, ref)
+        target.setdefault("_class", cls)
+        handle = self.tag_handle(op["name"].strip())
+        if handle in (target.get("tag_list") or []):
+            self.actions.append(f"skip: {cls} {self.label(target)} already has the tag {op['name'].strip()!r}")
+            return
+        before = copy.deepcopy(target)
+        target["tag_list"] = [*(target.get("tag_list") or []), handle]
+        self.save(before, target)
 
     def dedupe_list(self, op):
         """Keep the first of each repeated reference in one list: the same citation twice on a person."""
