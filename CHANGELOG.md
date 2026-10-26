@@ -13,6 +13,13 @@ None.
 ### Added
 
 - A date in a change list can be written in the French Republican calendar: `fr 0005-03-26` is 26 frimaire an V. It is stored in that calendar, with the serial day of the Gregorian day it falls on.
+- `update_place` can move a place under another one with `set.enclosed_by`, for example a department under its region. It refuses a place with more than one parent, a place under itself, and a loop.
+- `link_event` puts a person on an existing event in a role such as `Witness`, without editing the event.
+- `gwt-check repos --suggest` proposes, for each source with no repository, the repository its publication info starts with; `--ops FILE` writes the proposals as `link_repository` ops with an empty ruling.
+### Fixed
+
+- The dated checks read a complete French Republican date as the day it falls on, instead of counting it as unread. A month-only, year-only or range date in that calendar stays unread.
+- `add_tag` puts a tag on an object the tree already has, for example a research mark such as `Hypothesis`.
 
 ## [0.2.3] - 2026-10-26
 

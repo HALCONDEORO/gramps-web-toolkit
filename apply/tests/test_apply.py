@@ -529,6 +529,49 @@ def test_update_place_sets_coordinates_on_an_existing_place(fake):
         assert validate([dict(ops[0], key="bad", set=bad)]), bad
 
 
+def test_update_place_moves_a_place_under_another_and_refuses_loops(fake):
+    region = fake.add("places", {"handle": "reg", "name": {"value": "Westshire"}, "place_type": "Region", "placeref_list": []})
+    county = fake.add("places", {"handle": "cty", "name": {"value": "Eastcounty"}, "place_type": "County", "placeref_list": [{"ref": "plc1"}]})
+    move = [{"op": "update_place", "key": "mv", "ruling": R, "place": county["gramps_id"], "set": {"enclosed_by": region["gramps_id"]}}]
+    assert run(fake, move)[0].status == "done"
+    assert [r["ref"] for r in fake.store["places"]["cty"]["placeref_list"]] == ["reg"]
+    assert run(fake, move)[0].status == "skip"
+    # the region under its own county would be a loop; a place under itself is refused too
+    loop = [{"op": "update_place", "key": "lp", "ruling": R, "place": region["gramps_id"], "set": {"enclosed_by": county["gramps_id"]}}]
+    assert run(fake, loop)[0].status == "conflict"
+    me = [{"op": "update_place", "key": "me", "ruling": R, "place": region["gramps_id"], "set": {"enclosed_by": region["gramps_id"]}}]
+    assert run(fake, me)[0].status == "conflict"
+    assert fake.store["places"]["reg"]["placeref_list"] == []
+    assert validate([dict(move[0], key="bad", set={"enclosed_by": "reg"})])  # a bare handle is refused
+
+
+def test_link_event_puts_a_person_on_an_existing_event_in_a_role(fake):
+    bride = fake.add("people", {"handle": "br", "gender": 0, "primary_name": {"first_name": "Anna", "surname_list": [{"surname": "Example", "primary": True}]}})
+    guest = fake.add("people", {"handle": "gu", "gender": 1, "primary_name": {"first_name": "Tom", "surname_list": [{"surname": "Sample", "primary": True}]}})
+    wedding = fake.add("events", {"handle": "wed", "type": "Marriage", "date": {"dateval": [1, 6, 1880, False], "modifier": 0, "quality": 0}})
+    link = [{"op": "link_event", "key": "w", "ruling": R, "person": guest["gramps_id"], "event": wedding["gramps_id"], "role": "Witness"}]
+    assert run(fake, link)[0].status == "done"
+    assert fake.store["people"]["gu"]["event_ref_list"] == [{"ref": "wed", "role": "Witness"}]
+    assert fake.store["events"]["wed"]["type"] == "Marriage"  # the event is not touched
+    assert run(fake, link)[0].status == "skip"
+    other = [dict(link[0], key="w2", role="Godfather")]
+    assert run(fake, other)[0].status == "conflict"
+    for bad in (dict(link[0], key="b1", role="Primary"), dict(link[0], key="b2", role=""), dict(link[0], key="b3", event="wed")):
+        assert validate([bad]), bad
+    assert bride["gramps_id"]
+
+def test_add_tag_puts_a_tag_on_an_existing_object_and_makes_it_once(fake):
+    ops = [{"op": "add_tag", "key": "t1", "ruling": R, "target": {"place": "P0001"}, "name": "Hypothesis"}]
+    assert run(fake, ops)[0].status == "done"
+    tags = [t for t in fake.store["tags"].values() if t["name"] == "Hypothesis"]
+    assert len(tags) == 1
+    assert fake.store["places"]["plc1"]["tag_list"] == [tags[0]["handle"]]
+    assert run(fake, ops)[0].status == "skip"
+    assert len([t for t in fake.store["tags"].values() if t["name"] == "Hypothesis"]) == 1
+    for bad in (dict(ops[0], key="b1", name=" "), dict(ops[0], key="b2", target={"place": "104cf6056a181aee4ab7376f062c"})):
+        assert validate([bad]), bad
+
+
 def test_coordinates_that_are_not_numbers_are_a_validation_error():
     # float(None) is a TypeError: it must come out as a line in the error list, not a crash
     for bad in (None, "north", [1]):
