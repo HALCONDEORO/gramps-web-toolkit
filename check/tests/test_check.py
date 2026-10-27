@@ -1286,7 +1286,7 @@ def test_repos_classify_sorts_sources_with_no_repository_by_what_they_name(tmp_p
     dump = _write(tmp_path, "t.json", data)
     rep = repositories.classify_repositories(load(dump))
     assert [(x["source"], x["repositories"], x["certain"]) for x in rep["names_existing"]] == [("S0201", ["R0001"], True)]
-    assert rep["names_other"][0] == {"institution": "mairie villa inventada", "sources": ["S0203", "S0204"]}
+    assert rep["names_other"][0]["sources"] == ["S0203", "S0204"] and rep["names_other"][0]["institution"] == "mairie villa inventada"
     assert "S0205" in rep["names_nothing"] and "S0202" not in [x["source"] for x in rep["names_existing"]]
     assert rep["repositories_without_url_or_address"] == ["R0001"]
     linked = base["gramps_id"]   # already has a repository: in no group
@@ -1315,3 +1315,49 @@ def test_repos_classify_matches_a_web_host_only_as_the_exact_host(tmp_path):
     rep = repositories.classify_repositories(load(_write(tmp_path, "t.json", data)))
     got = {x["source"] for x in rep["names_existing"]}
     assert got == {sid for sid, (_, hit) in cases.items() if hit}
+
+
+def test_repos_classify_ops_plan_links_and_new_repositories_but_never_a_letter(tmp_path, capsys):
+    data = selftest.clean_tree()   # R0001 "Archivo Diocesano de Ejemplo"
+    base = data["sources"][0]
+    def add(sid, **kw):
+        data["sources"].append({**copy.deepcopy(base), "handle": "h" + sid, "gramps_id": sid, "title": "Libro " + sid,
+                                "author": "", "pubinfo": "", "reporef_list": [], **kw})
+    add("S0201", title="Registro del Archivo Diocesano de Ejemplo")
+    add("S0202", title="Solicitud al Archivo Diocesano de Ejemplo", pubinfo="Gmail")      # a letter: held
+    add("S0203", author="Mairie d\u2019Villa Inventada")
+    add("S0204", title="Mairie d\u2019Villa Inventada")
+    add("S0205", title="Demande a la Mairie de Otra Villa")                                # one source, and a letter
+    add("S0206", title="Mairie de Villa Sola")                                             # one source: no new repository
+    dump = _write(tmp_path, "t.json", data)
+    ops = tmp_path / "plan.jsonl"
+    assert main(["repos", dump, "--classify", "--ops", str(ops)]) == 0
+    got = [json.loads(l) for l in ops.read_text().splitlines()]
+    assert [(o["op"], o.get("source") or o.get("name")) for o in got] == [
+        ("link_repository", "S0201"), ("add_repository", "Mairie d\u2019Villa Inventada"),
+        ("link_repository", "S0203"), ("link_repository", "S0204")]
+    assert all(o["ruling"] == "" for o in got) and got[2]["repository"] == "key:" + got[1]["key"]
+    assert "left out" in capsys.readouterr().err
+    assert main(["repos", dump, "--classify", "--ops", str(ops)]) == 2   # an existing file is never replaced
+    assert main(["repos", dump, "--ops", str(tmp_path / "x.jsonl")]) == 2
+
+
+def test_repos_plan_leaves_out_a_letter_in_spanish_english_or_french_and_keeps_a_register(tmp_path):
+    data = selftest.clean_tree()   # R0001 "Archivo Diocesano de Ejemplo"
+    base = data["sources"][0]
+    cases = {"S0401": ("Carta al Archivo Diocesano de Ejemplo", "", False),
+             "S0402": ("Letter to Archivo Diocesano de Ejemplo", "", False),
+             "S0403": ("Lettre au Archivo Diocesano de Ejemplo", "", False),
+             "S0404": ("Cartas recibidas del Archivo Diocesano de Ejemplo", "", False),
+             "S0405": ("Libro de Bautismos", "Archivo Diocesano de Ejemplo, letters 1890", False),
+             "S0406": ("Demandes au Archivo Diocesano de Ejemplo", "", False),
+             "S0407": ("Libro de registro, Archivo Diocesano de Ejemplo", "Mairie en cartel", True),
+             "S0408": ("Registre paroissial", "Archivo Diocesano de Ejemplo, 1890", True)}
+    for sid, (title, pub, _) in cases.items():
+        data["sources"].append({**copy.deepcopy(base), "handle": "h" + sid, "gramps_id": sid, "title": title,
+                                "author": "", "pubinfo": pub, "reporef_list": []})
+    rep = repositories.classify_repositories(load(_write(tmp_path, "t.json", data)))
+    ops = tmp_path / "plan.jsonl"
+    repositories.write_plan(rep, str(ops))
+    got = {json.loads(l)["source"] for l in ops.read_text().splitlines()}
+    assert got == {sid for sid, (_, _, keep) in cases.items() if keep}

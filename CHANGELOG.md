@@ -28,6 +28,7 @@ None.
 
 - A date in a change list can be written in the French Republican calendar: `fr 0005-03-26` is 26 frimaire an V. It is stored in that calendar, with the serial day of the Gregorian day it falls on.
 - `gwt-check repos --classify` sorts the sources with no repository by what they name (a repository the tree has, another institution, nothing) and reports repositories with no URL or address, two on one web host, and linked sources with no call number. Report only.
+- `gwt-check repos --classify --ops FILE` writes the classification as `gwt-apply` ops with an empty ruling: links to repositories the tree has, and new repositories for institutions at least two sources name. Letters, e-mails and requests are left out.
 
 ## [0.2.3] - 2026-10-26
 
