@@ -6,6 +6,20 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ## [Unreleased]
 
+### Change lists
+
+None.
+
+### Added
+
+- `python -m gwt_check.synth N out.json.gz` writes an invented tree of N people for scale tests.
+- `python -m gwt_check.scale` runs every offline command on an invented tree and on a real dump side by side (time, memory, exit code, summary line); the real dump is only read.
+
+### Fixed
+
+- The duplicate search in `gwt-check check` no longer slows down on a tree where many people share a common surname: it walks the shorter of the surname and given-name indexes. On an invented 20,000-person tree the checks went from 22 s to under 2 s; findings are unchanged.
+- `gwt-check check` lists findings in the same order on every run (it depended on the hash seed).
+
 ## [0.2.3] - 2026-10-26
 
 ### Change lists
