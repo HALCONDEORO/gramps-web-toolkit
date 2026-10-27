@@ -3,7 +3,7 @@
 A date becomes the interval it may stand for: an exact day, a month, a year, a range, or a span widened by
 the slack of an "about", estimated or calculated date. Two facts contradict each other only when their
 intervals are disjoint, so a vague date can never produce a contradiction a plain reading would not.
-Dates this module cannot read safely (another calendar, a non-January new year, a dual-dated year,
+Dates this module cannot read safely (a calendar other than Gregorian and the complete French Republican dates, a non-January new year, a dual-dated year,
 "from" and "to", free text other than a plain ISO date) give None: they are counted, never guessed.
 """
 
@@ -63,6 +63,17 @@ def _part(y: int, m: int, d: int) -> tuple[int, int] | None:
     return _ord(y, 1, 1), _ord(y, 12, 31)
 
 
+def _french(y: int, m: int, d: int) -> tuple[int, int] | None:
+    """(lo, hi) of a complete French Republican date, as the Gregorian ordinal of that day. Gramps counts the
+    day from year, month and day alone: (year * 1461) // 4 + (month - 1) * 30 + day, from an offset."""
+    if not (1 <= y <= 14 and 1 <= m <= 13 and 1 <= d <= 30):
+        return None
+    if m == 13 and d > (6 if y in (3, 7, 11) else 5):   # the complementary days: five, six in years 3, 7 and 11
+        return None
+    o = (y * 1461) // 4 + (m - 1) * 30 + d + 2375474 - 1721425
+    return o, o
+
+
 def _label(y: int, m: int, d: int) -> str:
     return f"{y:04d}" + (f"-{m:02d}" if m else "") + (f"-{d:02d}" if m and d else "")
 
@@ -74,7 +85,8 @@ def span(date: dict | None) -> Span | None:
     dv = list(date.get("dateval") or [])
     dv += [0, 0, 0, False, 0, 0, 0, False][len(dv):]
     mod, qual = date.get("modifier") or 0, date.get("quality") or 0
-    if date.get("calendar") or date.get("newyear") or dv[3] or mod in (7, 8):
+    french = date.get("calendar") == 3 and mod in (0, 1, 2, 3) and not dv[3] and not date.get("newyear")
+    if (date.get("calendar") and not french) or date.get("newyear") or dv[3] or mod in (7, 8):
         return None
     if mod == 6:  # text only: the plain ISO shapes, nothing else
         m = _TEXT.match(date.get("text") or "")
@@ -84,11 +96,11 @@ def span(date: dict | None) -> Span | None:
         slack = ABOUT_YEARS * 366 if m["c"] else 0
         return Span(got[0] - slack, got[1] + slack, False, (date.get("text") or "").strip())
     d, mo, y = dv[0], dv[1], dv[2]
-    first = _part(y, mo, d)
+    first = _french(y, mo, d) if french else _part(y, mo, d)
     if not first:
         return None
     lo, hi = first
-    text = _label(y, mo, d)
+    text = ("fr " if french else "") + _label(y, mo, d)
     slack = 366 * max(ABOUT_YEARS if mod == 3 or qual == 1 else 0, CALCULATED_YEARS if qual == 2 else 0)
     prefix = {1: "est. ", 2: "calc. "}.get(qual, "")
     if mod in (4, 5):

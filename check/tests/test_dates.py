@@ -88,6 +88,17 @@ def test_dates_it_cannot_read_safely_are_left_unread(date):
     assert dates.span(date) is None
 
 
+def test_a_complete_french_republican_date_is_read_as_the_day_it_falls_on():
+    fr = dates.span(D(5, 3, 26, calendar=3))   # 26 frimaire an V
+    assert fr.lo == fr.hi == dates.span(D(1796, 12, 16)).lo and fr.firm is True
+    assert dates.span(D(13, 7, 14, calendar=3)).lo == dates.span(D(1805, 4, 4)).lo
+    assert dates.span(D(11, 4, 21, mod=1, calendar=3)).hi == dates.span(D(1803, 1, 11)).lo
+    assert dates.span(D(3, 13, 6, calendar=3)) is not None   # year 3 has six complementary days
+    for unreadable in (D(5, 3, calendar=3), D(5, calendar=3), D(15, 1, 1, calendar=3), D(5, 14, 1, calendar=3),
+                       D(5, 3, 26, mod=4, calendar=3), D(5, 13, 6, calendar=3), D(4, 13, 6, calendar=3)):
+        assert dates.span(unreadable) is None
+
+
 def test_calculated_and_estimated_dates_are_soft_with_slack():
     plain, calc, est, about = (dates.span(D(1850, q=q, mod=m)) for q, m in ((0, 0), (2, 0), (1, 0), (0, 3)))
     assert calc.firm is False and est.firm is False and about.firm is False

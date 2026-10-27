@@ -346,6 +346,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="print the result as JSON")
     live_opts(p)
 
+    p = sub.add_parser("republican", help="recompute the Republican-to-Gregorian conversions written in notes; exits 1 when one differs")
+    p.add_argument("tree", nargs="?", help="dump file; without it the live tree is read")
+    p.add_argument("--json", action="store_true", help="print the result as JSON")
+    live_opts(p)
+
     sub.add_parser("selftest", help="plant every error kind in a synthetic tree and prove each check fires")
 
     args = ap.parse_args(argv)
@@ -381,6 +386,17 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print_act(rep, args.limit)
             return 0
+        if args.cmd == "republican":
+            from .republican import print_republican, republican_report
+            tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
+            if tree.partial:
+                raise BadInput(f"{tree.source}: a .gramps backup has no note text; use a dump")
+            rep = republican_report(tree)
+            if args.json:
+                print(json.dumps(rep, ensure_ascii=False, indent=1))
+            else:
+                print_republican(rep)
+            return 1 if rep["differs"] or rep["unreadable"] else 0
         if args.cmd == "cites":
             from .cites import cites_report, print_cites
             tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
