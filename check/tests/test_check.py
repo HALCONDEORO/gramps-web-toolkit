@@ -1313,3 +1313,24 @@ def test_repos_classify_sorts_sources_with_no_repository_by_what_they_name(tmp_p
     assert main(["repos", dump, "--classify"]) == 0
     assert "sources that name no institution" in capsys.readouterr().out
     assert main(["repos", dump, "--classify", "--suggest"]) == 2
+
+
+def test_repos_classify_matches_a_web_host_only_as_the_exact_host(tmp_path):
+    data = selftest.clean_tree()
+    base = data["sources"][0]
+    data["repositories"][0]["name"] = "Fondo Sin Parecido"
+    data["repositories"][0]["urls"] = [{"path": "https://www.archives.example.org/fonds", "type": "Web Home"}]
+    cases = {"S0301": ("See https://archives.example.org.evil.invalid/document", False),   # suffixed domain
+             "S0302": ("See https://archives.example.com/document", False),                  # look-alike domain
+             "S0303": ("See https://archives.example.org@evil.invalid/document", False),     # host is after the @
+             "S0304": ("See https://evil.invalid/archives.example.org", False),              # host only in the path
+             "S0305": ("See https://evil.invalid/?u=archives.example.org", False),
+             "S0306": ("See https://user:pw@archives.example.org:8443/x", True),             # credentials and port, same host
+             "S0307": ("Copy at WWW.Archives.Example.ORG.", True),                           # bare host, case, www, full stop
+             "S0308": ("the archives.example.organisation page", False)}
+    for sid, (text, _) in cases.items():
+        data["sources"].append({**copy.deepcopy(base), "handle": "h" + sid, "gramps_id": sid, "title": "Libro " + sid,
+                                "author": "", "pubinfo": text, "reporef_list": []})
+    rep = repositories.classify_repositories(load(_write(tmp_path, "t.json", data)))
+    got = {x["source"] for x in rep["names_existing"]}
+    assert got == {sid for sid, (_, hit) in cases.items() if hit}
