@@ -1340,3 +1340,24 @@ def test_repos_classify_ops_plan_links_and_new_repositories_but_never_a_letter(t
     assert "left out" in capsys.readouterr().err
     assert main(["repos", dump, "--classify", "--ops", str(ops)]) == 2   # an existing file is never replaced
     assert main(["repos", dump, "--ops", str(tmp_path / "x.jsonl")]) == 2
+
+
+def test_repos_plan_leaves_out_a_letter_in_spanish_english_or_french_and_keeps_a_register(tmp_path):
+    data = selftest.clean_tree()   # R0001 "Archivo Diocesano de Ejemplo"
+    base = data["sources"][0]
+    cases = {"S0401": ("Carta al Archivo Diocesano de Ejemplo", "", False),
+             "S0402": ("Letter to Archivo Diocesano de Ejemplo", "", False),
+             "S0403": ("Lettre au Archivo Diocesano de Ejemplo", "", False),
+             "S0404": ("Cartas recibidas del Archivo Diocesano de Ejemplo", "", False),
+             "S0405": ("Libro de Bautismos", "Archivo Diocesano de Ejemplo, letters 1890", False),
+             "S0406": ("Demandes au Archivo Diocesano de Ejemplo", "", False),
+             "S0407": ("Libro de registro, Archivo Diocesano de Ejemplo", "Mairie en cartel", True),
+             "S0408": ("Registre paroissial", "Archivo Diocesano de Ejemplo, 1890", True)}
+    for sid, (title, pub, _) in cases.items():
+        data["sources"].append({**copy.deepcopy(base), "handle": "h" + sid, "gramps_id": sid, "title": title,
+                                "author": "", "pubinfo": pub, "reporef_list": []})
+    rep = repositories.classify_repositories(load(_write(tmp_path, "t.json", data)))
+    ops = tmp_path / "plan.jsonl"
+    repositories.write_plan(rep, str(ops))
+    got = {json.loads(l)["source"] for l in ops.read_text().splitlines()}
+    assert got == {sid for sid, (_, _, keep) in cases.items() if keep}

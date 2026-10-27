@@ -96,8 +96,11 @@ def _hosts_in(text: str) -> set[str]:
 
 # Words in a source's title or publication info that mark a letter, an e-mail or a request: such a source names an
 # archive without being kept there, so the plan never links it.
-CORRESPONDENCE_WORDS = ("gmail", "e-mail", "email", "correo", "courriel", "courrier", "solicitud", "demande",
-                        "request", "respuesta", "reponse", "reply", "consulta")
+CORRESPONDENCE_WORDS = (
+    "gmail", "mail", "mails", "e-mail", "e-mails", "email", "emails", "message", "messages", "mensaje", "mensajes",
+    "correo", "correos", "carta", "cartas", "solicitud", "solicitudes", "respuesta", "respuestas", "consulta", "consultas",
+    "courriel", "courriels", "courrier", "courriers", "lettre", "lettres", "demande", "demandes", "reponse", "reponses",
+    "letter", "letters", "request", "requests", "reply", "replies", "enquiry", "enquiries")
 
 
 def _correspondence(source: dict) -> bool:
