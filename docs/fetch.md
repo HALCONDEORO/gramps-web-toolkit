@@ -13,6 +13,7 @@ gwt-fetch gazeta search (--text WORDS | --title WORDS) [--from YYYY-MM-DD] [--to
 gwt-fetch gazeta fetch BOE-A-YYYY-N [...] [--out DIR]
 gwt-fetch boe search (--text WORDS | --title WORDS) [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N]
 gwt-fetch boe fetch BOE-A-YYYY-N [...] [--out DIR]
+gwt-fetch names Given/Surname1\ Surname2 [...] [--spell OTHER] [--source gazeta|boe] [--from Y-M-D] [--to Y-M-D] [--out DIR]
 gwt-fetch europeana QUERY [--provider any|NAME] [--data-provider NAME] [--country NAME] [--year-from Y] [--year-to Y] [--iiif-only] [--rows N]
 gwt-fetch geo PLACE [...] [--types Municipio,poblacion] [--province NAME] [--limit N]
 gwt-fetch --delay 2 ...   # seconds between requests to one host, default 1
@@ -109,6 +110,20 @@ $ gwt-fetch gazeta fetch BOE-A-1890-676 --out research/raw/fuentes/gaceta
 ```
 $ gwt-fetch boe search --text '"Surname1 Surname2, Name"' --from 1975-01-01
 $ gwt-fetch boe fetch BOE-A-1978-478 --out research/raw/fuentes/boe
+```
+
+## `names`: one person, every spelling, both collections
+
+`names` is the search a person-first researcher repeats by hand: one person, the spellings of the surname, the Gaceta and the modern BOE. Write each person as `Given/Surname1 Surname2`; add `--spell` for another spelling of the first surname (the search already ignores accents, so `Garcia` and `García` are one query).
+
+For every spelling it searches the two orders the gazettes print names in, `"Given Sur1 Sur2"` and `"Sur1 Sur2, Given"`, in `gazeta` and `boe`, merges the hits by reference, downloads each item (PDF and text, as `gazeta fetch` does) and prints the words around the match. Columns: `person`, `ref`, `date`, `source`, `query`, `context`.
+
+- A hit says that the words occur in the item. `context` is the text around the first place the whole given name stands next to the full surname, in either order (`Given Sur1 Sur2` or `Sur1 Sur2, Given`), matching whole words only: `Juanita` is not `Juan` and `Ejemplote` is not `Ejemplo`. `(given name not adjacent)` means the full surname appears but not next to that given name; `(surname not in the OCR text: open the PDF)` means the OCR missed it, so read the page. None of this proves kinship; the command says so on every run.
+- A common name returns many items. Narrow with `--from` and `--to` rather than reading all of them.
+- Search a person only when the tree already treats them as dead. The command does not check.
+
+```
+$ gwt-fetch names 'Given/Surname1 Surname2' --spell Surnameone --from 1940-01-01 --to 1946-12-31 --out research/raw/fuentes/boe
 ```
 
 ## `europeana`: Spanish records with a manifest
