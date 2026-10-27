@@ -60,8 +60,15 @@ def token_tree(tok):
 
 
 def login():
-    r = api("/token/", data=json.dumps({"username": USER, "password": PASS}).encode())
-    return json.load(r)["access_token"]
+    """One login per run. A 429 is waited out (Retry-After, else 30 s, 60 s, 120 s) and then the run stops."""
+    for wait in (30, 60, 120, None):
+        try:
+            r = api("/token/", data=json.dumps({"username": USER, "password": PASS}).encode())
+            return json.load(r)["access_token"]
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or wait is None:
+                raise
+            time.sleep(int(e.headers.get("Retry-After") or wait) if e.headers else wait)
 
 
 def step(name, cmd, env=None, timeout=3600, ok_codes=(0,)):
@@ -99,9 +106,9 @@ res["tree"] = {"name": "LoadTest"}
 
 
 def assert_tree():
-    """Called before every phase: a fresh login must still land in the LoadTest tree."""
-    if token_tree(login()) != TREE:
-        fatal("a login no longer lands in the LoadTest tree")
+    """Called before every phase: the token in use is still bound to the LoadTest tree. No new login: logins are rate limited."""
+    if token_tree(tok) != TREE:
+        fatal("the token is no longer bound to the LoadTest tree")
 
 
 assert_tree()
