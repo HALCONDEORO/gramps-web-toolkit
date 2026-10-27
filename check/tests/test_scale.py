@@ -55,3 +55,18 @@ def test_the_real_dump_summary_shows_only_digits(monkeypatch, capsys, tmp_path):
     assert scale.main(["--people", "50", "--real", str(tmp_path / "x.json")]) == 0
     real = [l for l in capsys.readouterr().out.splitlines() if l.startswith("real")]
     assert real and "Maria" not in real[0] and "I0001" not in real[0] and real[0].endswith("12 0001")
+
+
+def test_findings_of_one_check_come_out_in_id_order():
+    from gwt_check.checks import id_order
+    d = big_tree(300, seed=5)
+    for i, q in enumerate(d["people"]):
+        q["primary_name"]["surname_list"][0]["surname"] = "Apellido" + str(i % 4)
+    d["people"].reverse()   # the dump lists people backwards: only the sort can put the findings in order
+    items = run_checks(Tree(d))[0]
+    by_check = {}
+    for f in items:
+        by_check.setdefault(f["check"], []).append(f["key"])
+    assert len(items) > 5
+    for keys in by_check.values():
+        assert keys == sorted(keys, key=id_order)
