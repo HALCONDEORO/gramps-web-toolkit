@@ -14,6 +14,10 @@ None.
 
 - `gwt-check` folds accents faster on large dumps: each character is folded once and cached, and ASCII text is lowercased directly. Output is unchanged.
 
+### Added
+
+- `gwt-check check` reports `dup-media`: two media objects with the same checksum or path.
+
 ## [0.2.3] - 2026-10-26
 
 ### Change lists
