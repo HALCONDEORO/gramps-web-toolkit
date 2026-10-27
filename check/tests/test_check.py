@@ -1341,3 +1341,33 @@ def test_place_vs_description_skips_place_names_under_four_letters():
     st._get(d, "events", "E0001")["description"] = "Nacimiento en Ala"
     findings, _ = checks.run_checks(Tree(d))
     assert [f for f in findings if f["check"] == "place-vs-description"] == []
+
+
+def _fork_tree(refs, loop=False):
+    from gwt_check import selftest as st
+
+    d = st.clean_tree()
+    st._other_place(d)
+    p1 = st._get(d, "places", "P0001")
+    p1["placeref_list"] = [{"ref": r, "date": st._date()} for r in refs]
+    if loop:
+        st._get(d, "places", "P0002")["placeref_list"] = [{"ref": "hP0001", "date": st._date()}]
+    return d
+
+
+def test_place_vs_description_follows_every_enclosing_place_not_only_the_first():
+    from gwt_check import selftest as st
+
+    d = _fork_tree(["hP0003", "hP0002"])
+    st._get(d, "events", "E0001")["description"] = "Nacimiento en la Provincia Imaginaria"
+    findings, _ = checks.run_checks(Tree(d))
+    assert [f for f in findings if f["check"] == "place-vs-description"] == []
+
+
+def test_place_vs_description_survives_places_that_enclose_each_other():
+    from gwt_check import selftest as st
+
+    d = _fork_tree(["hP0002"], loop=True)
+    st._get(d, "events", "E0001")["description"] = "Nacimiento en Otropueblo"
+    findings, _ = checks.run_checks(Tree(d))
+    assert [f["key"] for f in findings if f["check"] == "place-vs-description"] == ["E0001"]

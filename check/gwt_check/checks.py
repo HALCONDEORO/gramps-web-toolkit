@@ -530,14 +530,18 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
             out.add("place-no-coords", pl.get("gramps_id") or h)
     # an event whose description names a place of the tree, but not the one it points at
     def chain_names(h: str) -> set[str]:
+        """The place's own name and the names of every place that encloses it, by every placeref."""
         seen: set[str] = set()
         names: set[str] = set()
-        while h in T["places"] and h not in seen:
+        todo = [h]
+        while todo:
+            h = todo.pop()
+            if h in seen or h not in T["places"]:
+                continue
             seen.add(h)
             pl = T["places"][h]
             names.add(norm(re.sub(r"[^\w]+", " ", (pl.get("name") or {}).get("value") or "")))
-            refs = pl.get("placeref_list") or []
-            h = refs[0].get("ref") if refs else ""
+            todo += [r.get("ref") for r in pl.get("placeref_list") or []]
         return names - {""}
 
     place_words = {}
