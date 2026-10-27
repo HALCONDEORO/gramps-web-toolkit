@@ -12,6 +12,7 @@ None.
 
 ### Added
 
+- `gwt-fetch boe search` and `boe fetch` search and download the BOE from 1960 onwards, which `gazeta` does not cover. `gazeta fetch` also reads the PDF link of modern documents.
 - A date in a change list can be written in the French Republican calendar: `fr 0005-03-26` is 26 frimaire an V. It is stored in that calendar, with the serial day of the Gregorian day it falls on.
 - `update_place` can move a place under another one with `set.enclosed_by`, for example a department under its region. It refuses a place with more than one parent, a place under itself, and a loop.
 - `link_event` puts a person on an existing event in a role such as `Witness`, without editing the event.
