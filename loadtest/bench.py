@@ -159,7 +159,7 @@ def ops(n, tag, prefix):
 
 
 # 2. full dump (may hit the container memory limit: exit 137 is the finding)
-rc, _ = step("gwt-check dump (4 workers)", ["gwt-check", "dump", "/tmp/full.json.gz", "--config", cfg])
+rc, _ = step("gwt-check dump", ["gwt-check", "dump", "/tmp/full.json.gz", "--config", cfg])
 have_dump = os.path.exists("/tmp/full.json.gz")
 if have_dump:
     step("gwt-check check on the dump", ["gwt-check", "check", "/tmp/full.json.gz", "--limit", "0"], ok_codes=(0, 1))  # 1 is findings
