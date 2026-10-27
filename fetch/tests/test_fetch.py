@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from gwt_fetch import boe, digibib, europeana, gazeta, geo, iiif
+from gwt_fetch import boe, digibib, europeana, gazeta, geo, iiif, names
 from gwt_fetch.store import Store, slug
 
 
@@ -314,6 +314,50 @@ def test_gazeta_fetch_reads_the_pdf_link_of_a_modern_document(tmp_path):
                     "https://www.boe.es/boe/dias/1978/01/10/pdfs/A00461-00470.pdf": Resp(b"%PDF", "application/pdf")})
     assert boe.run(argparse.Namespace(action="fetch", refs=["BOE-A-1978-9001"], out=str(tmp_path)), c) == 0
     assert (tmp_path / "BOE-A-1978-9001.pdf").read_bytes() == b"%PDF"
+
+
+# ---------------------------------------------------------------- names
+
+NAMES_DOC = """<h3 class="documento-tit">Lista de ejemplo.</h3>
+<dl><dt>Publicado en:</dt><dd>«Gaceta de Madrid» núm. 1, de 1 de enero de 1900, páginas 1 a 1</dd></dl>
+<li class="puntoPDF"><a href="/datos/pdfs/BOE//1900/001/A00001-00001.pdf">PDF</a></li>
+<div id="textoxslt"><p>Pedro Gómez Ruiz. Juan Ejemplo Uno, de Luis y Ana. Otro Nombre Distinto.</p></div>
+<!-- #textoxslt -->"""
+
+
+def test_names_queries_cover_both_orders_and_spellings_once():
+    q = names.queries("Juan", "Ejemplo Uno", ["Ejenplo", "Ejémplo"])
+    assert q == ['"Juan Ejemplo Uno"', '"Ejemplo Uno, Juan"', '"Juan Ejenplo Uno"', '"Ejenplo Uno, Juan"']
+
+
+def test_names_person_needs_given_and_surname():
+    assert names.parse_person("Juan/Ejemplo Uno") == ("Juan", "Ejemplo Uno")
+    for bad in ("Juan Ejemplo", "/Ejemplo", "Juan/ "):
+        with pytest.raises(SystemExit):
+            names.parse_person(bad)
+
+
+def test_names_context_wants_the_given_name_next_to_the_surname():
+    text = "Ana Ejemplo Dos, de Luis. Más abajo, Juan Éjemplo Uno, de Luis y Ana."
+    assert "Juan Éjemplo Uno" in names.context(text, ["Ejemplo"], "Juan")
+    assert names.context("Ana Ejemplo Dos.", ["Ejemplo"], "Juan").startswith("(given name not adjacent)")
+    assert names.context("Nada.", ["Ejemplo"], "Juan") == ""
+
+
+def test_names_run_merges_sources_prints_context_and_flags_no_proof(tmp_path, capsys):
+    hit = lambda url, params: Resp(RESULTS.replace("Betanzos", "x")) if dict(params)["dato[4]"] == '"Juan Ejemplo Uno"' else Resp("")
+    c = FakeClient({gazeta.SEARCH: hit, boe.SEARCH: Resp(""),
+                    gazeta.DOC + "BOE-A-1870-1111": Resp(NAMES_DOC.replace("1900/001/A00001-00001", "1870/040/A00002-00002")),
+                    "https://www.boe.es/datos/pdfs/BOE//1870/040/A00002-00002.pdf": Resp(b"%PDF", "application/pdf")})
+    c.routes[gazeta.DOC + "BOE-A-1890-910"] = Resp("<html></html>")
+    args = argparse.Namespace(person=["Juan/Ejemplo Uno"], spell=[], source=["gazeta", "boe"], date_from=None,
+                              date_to=None, limit=50, out=str(tmp_path))
+    names.run(args, c)
+    out, err = capsys.readouterr()
+    rows_ = [l.split("\t") for l in out.strip().splitlines()[1:]]
+    first = next(r for r in rows_ if r[1] == "BOE-A-1870-1111")
+    assert first[3] == "gazeta" and "Juan Ejemplo Uno, de Luis y Ana" in first[5]
+    assert "not proof of kinship" in err
 
 
 # ---------------------------------------------------------------- europeana

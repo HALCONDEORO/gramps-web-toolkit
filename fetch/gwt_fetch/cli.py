@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import boe, digibib, europeana, gazeta, geo, iiif
+from . import boe, digibib, europeana, gazeta, geo, iiif, names
 from .net import Client
 
 
@@ -53,6 +53,15 @@ def parser() -> argparse.ArgumentParser:
     bf.add_argument("refs", nargs="+", metavar="BOE-A-YYYY-N")
     bf.add_argument("--out", default=".")
 
+    s = sub.add_parser("names", help="look people up by name in the Gaceta and the BOE, with the words around each hit")
+    s.add_argument("person", nargs="+", metavar="Given/Surname1 Surname2")
+    s.add_argument("--spell", action="append", default=[], help="another spelling of the first surname; repeatable")
+    s.add_argument("--source", action="append", choices=["gazeta", "boe"], help="default: both")
+    s.add_argument("--from", dest="date_from", help="YYYY-MM-DD")
+    s.add_argument("--to", dest="date_to", help="YYYY-MM-DD")
+    s.add_argument("--limit", type=int, default=50, help="hits per query and source")
+    s.add_argument("--out", default=".", help="where the PDFs and text are saved")
+
     s = sub.add_parser("europeana", help="search Europeana (needs EUROPEANA_KEY); prints TSV with manifests")
     s.add_argument("query")
     s.add_argument("--provider", default="any", help='aggregator, e.g. Hispana for Spain; default any (no filter)')
@@ -75,7 +84,9 @@ def parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
     client = Client(delay=args.delay)
-    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "europeana": europeana, "geo": geo}[args.cmd]
+    if args.cmd == "names" and not args.source:
+        args.source = ["gazeta", "boe"]
+    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "names": names, "europeana": europeana, "geo": geo}[args.cmd]
     try:
         return mod.run(args, client)
     except KeyboardInterrupt:
