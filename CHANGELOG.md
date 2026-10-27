@@ -12,6 +12,7 @@ None.
 
 ### Added
 
+- `gwt-check repos --classify` sorts the sources with no repository by what they name (a repository the tree has, another institution, nothing) and reports repositories with no URL or address, two on one web host, and linked sources with no call number. Report only.
 - A date in a change list can be written in the French Republican calendar: `fr 0005-03-26` is 26 frimaire an V. It is stored in that calendar, with the serial day of the Gregorian day it falls on.
 - `update_place` can move a place under another one with `set.enclosed_by`, for example a department under its region. It refuses a place with more than one parent, a place under itself, and a loop.
 - `link_event` puts a person on an existing event in a role such as `Witness`, without editing the event.

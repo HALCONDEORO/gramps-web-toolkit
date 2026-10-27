@@ -187,6 +187,8 @@ gwt-check repos dump.json.gz --json                   # repositories with their 
 
 `--suggest` goes one step further and, for each source with no repository, names the one repository its publication info starts with (compared like people's names). A source that names no repository, or more than one, is left out. `--ops FILE` also writes the proposals as `link_repository` ops with an empty ruling: `gwt-apply` refuses the file until someone has read each source and written the ruling, and an existing file is never replaced.
 
+`--classify` stands alone and only reports. It sorts the sources with no repository by what their own title, author and publication info say: sources that name a repository the tree has (by its name as whole words or by its web host; a letter or a request to an archive can name it without being kept there, so read each one before linking), institutions named that are not a repository of the tree (grouped, so one new repository can serve many sources; the opening words are in one table, `INSTITUTION_WORDS` in `gwt_check/repos.py`), and sources that name no institution. It also lists repositories with no URL and no address, two repositories on one web host, and how many linked sources have no call number. Nothing is written; link with `link_repository` in [`gwt-apply`](apply.md).
+
 ## The checks
 
 | Check | Fires on |
