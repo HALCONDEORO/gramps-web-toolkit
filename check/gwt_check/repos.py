@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+from urllib.parse import urlsplit
 
 from .checks import norm
 from .tree import Tree
@@ -103,11 +105,31 @@ INSTITUTION_WORDS = ("archives", "archive", "archivo", "archiv", "boletin oficia
 
 
 def _host(url: str) -> str:
+    """The host of a URL or bare address: no scheme, credentials, port, path or `www.`; lowercase."""
     url = (url or "").strip().lower()
-    for p in ("https://", "http://"):
-        if url.startswith(p):
-            url = url[len(p):]
-    return url.split("/")[0].removeprefix("www.")
+    if "://" not in url:
+        url = "//" + url
+    try:
+        host = urlsplit(url).hostname or ""
+    except ValueError:
+        return ""
+    return host.strip(".").removeprefix("www.")
+
+
+_ADDRESS = re.compile(r"(?:[a-z][a-z0-9+.-]*://)?[^\s|<>\"'()\[\]{},;]+")
+
+
+def _hosts_in(text: str) -> set[str]:
+    """Hosts a free text mentions: each address-looking token (a scheme, or a dot between name parts) is parsed on
+    its own, so `host.evil.invalid`, `host@evil.invalid` and `evil.invalid/host` are never the host."""
+    out = set()
+    for tok in _ADDRESS.findall((text or "").lower()):
+        tok = tok.rstrip(".:!?")
+        if "://" in tok or re.search(r"[a-z0-9]\.[a-z]{2,}", tok):
+            h = _host(tok)
+            if "." in h:
+                out.add(h)
+    return out
 
 
 def _fold(s: str) -> str:
@@ -147,7 +169,7 @@ def classify_repositories(tree: Tree) -> dict:
         fields = {k: _fold(s.get(k)) for k in ("title", "author", "pubinfo")}
         text = " | ".join(fields.values())
         hit = [(rid, f) for rid, name, hosts in known
-               for f in fields if _whole(fields[f], name) or any(h and h in fields[f].replace(" ", "") for h in hosts)]
+               for f in fields if _whole(fields[f], name) or (hosts & _hosts_in(s.get(f)))]
         if hit:
             ids = sorted({r for r, _ in hit})
             existing.append({"source": s.get("gramps_id"), "title": s.get("title", ""), "repositories": ids,
