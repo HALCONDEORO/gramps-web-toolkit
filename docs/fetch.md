@@ -118,7 +118,7 @@ $ gwt-fetch boe fetch BOE-A-1978-478 --out research/raw/fuentes/boe
 
 For every spelling it searches the two orders the gazettes print names in, `"Given Sur1 Sur2"` and `"Sur1 Sur2, Given"`, in `gazeta` and `boe`, merges the hits by reference, downloads each item (PDF and text, as `gazeta fetch` does) and prints the words around the match. Columns: `person`, `ref`, `date`, `source`, `query`, `context`.
 
-- A hit says that the words occur in the item. `context` is the text around the surname where the given name stands next to it. `(given name not adjacent)` means the surname appears but not next to that given name; `(surname not in the OCR text: open the PDF)` means the OCR missed it, so read the page. None of this proves kinship; the command says so on every run.
+- A hit says that the words occur in the item. `context` is the text around the first place the whole given name stands next to the full surname, in either order (`Given Sur1 Sur2` or `Sur1 Sur2, Given`), matching whole words only: `Juanita` is not `Juan` and `Ejemplote` is not `Ejemplo`. `(given name not adjacent)` means the full surname appears but not next to that given name; `(surname not in the OCR text: open the PDF)` means the OCR missed it, so read the page. None of this proves kinship; the command says so on every run.
 - A common name returns many items. Narrow with `--from` and `--to` rather than reading all of them.
 - Search a person only when the tree already treats them as dead. The command does not check.
 

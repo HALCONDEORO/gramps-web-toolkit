@@ -337,11 +337,31 @@ def test_names_person_needs_given_and_surname():
             names.parse_person(bad)
 
 
-def test_names_context_wants_the_given_name_next_to_the_surname():
+def test_names_context_wants_the_given_name_next_to_the_full_surname():
     text = "Ana Ejemplo Dos, de Luis. Más abajo, Juan Éjemplo Uno, de Luis y Ana."
-    assert "Juan Éjemplo Uno" in names.context(text, ["Ejemplo"], "Juan")
-    assert names.context("Ana Ejemplo Dos.", ["Ejemplo"], "Juan").startswith("(given name not adjacent)")
-    assert names.context("Nada.", ["Ejemplo"], "Juan") == ""
+    assert "Juan Éjemplo Uno" in names.context(text, ["Ejemplo Uno"], "Juan")
+    assert names.context("Ana Ejemplo Uno.", ["Ejemplo Uno"], "Juan").startswith("(given name not adjacent)")
+    assert names.context("Nada.", ["Ejemplo Uno"], "Juan") == ""
+
+
+def test_names_context_accepts_the_second_order_with_separators():
+    assert names.context("Ejemplo Uno, Juan.", ["Ejemplo Uno"], "Juan").startswith("Ejemplo Uno, Juan")
+    assert names.context("Ejemplo   Uno ,  Juan", ["Ejemplo Uno"], "Juan") == "Ejemplo Uno , Juan"
+
+
+def test_names_context_is_not_fooled_by_a_longer_word_or_a_longer_surname():
+    cx = lambda text: names.context(text, ["Ejemplo Uno"], "Juan")
+    assert cx("Juanita Ejemplo Uno.") == "(given name not adjacent) Juanita Ejemplo Uno."
+    assert cx("Juan Ejemplote Uno.") == ""
+    assert cx("Juan Ejemplo Unos.") == ""
+    assert cx("Pedro Juan Ejemplo Dos.") == ""
+    assert cx("Rejuan Ejemplo Uno.") == "(given name not adjacent) Rejuan Ejemplo Uno."
+
+
+def test_names_context_prefers_the_whole_word_match_even_when_it_is_further_away():
+    text = "Juanita Ejemplo Uno. " + "lejos " * 60 + "Juan Ejemplo Uno, de Luis."
+    out = names.context(text, ["Ejemplo Uno"], "Juan")
+    assert "lejos" in out and "Juan Ejemplo Uno, de Luis" in out and "Juanita" not in out
 
 
 def test_names_run_merges_sources_prints_context_and_flags_no_proof(tmp_path, capsys):

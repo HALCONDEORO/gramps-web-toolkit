@@ -42,14 +42,33 @@ def queries(given: str, surnames: str, spellings=()) -> list[str]:
     return out
 
 
+def fold_chars(s: str) -> str:
+    """Fold accents and case one character at a time, so positions in the result match the original."""
+    out = []
+    for c in s:
+        f = "".join(x for x in unicodedata.normalize("NFKD", c.lower()) if not unicodedata.combining(x))
+        out.append(f if len(f) == 1 else c.lower())
+    return "".join(out)
+
+
 def context(text: str, surnames, given: str, width: int = 100) -> str:
-    """The words around the first place the surname stands next to the given name; else around the surname."""
-    flat, low = re.sub(r"\s+", " ", text), fold(re.sub(r"\s+", " ", text))
-    giv, sur = fold(given), "|".join(re.escape(fold(x)) for x in surnames)
-    for m in re.finditer(sur, low):
-        if giv in low[max(0, m.start() - len(giv) - 4): m.end() + len(giv) + 4]:
+    """The words around the first place a full surname stands next to the whole given name.
+
+    `surnames` are complete spellings such as `Ejemplo Uno`. Both orders the gazettes print are
+    accepted, `Given Sur1 Sur2` and `Sur1 Sur2, Given`, with whole words only: `Juanita` is not
+    `Juan` and `Ejemplote` is not `Ejemplo`. When the full surname is there but not next to the
+    given name, the first such place comes back marked.
+    """
+    flat = re.sub(r"\s+", " ", text)
+    low = fold_chars(flat)
+    giv = re.escape(fold_chars(given))
+    sur = "|".join(re.escape(fold_chars(x)).replace(r"\ ", r"\s+") for x in surnames)
+    edge, gap = r"(?<!\w)", r"[\s.,;:-]{1,4}"
+    for pat in (rf"{edge}{giv}{gap}(?:{sur})(?!\w)", rf"{edge}(?:{sur}){gap}{giv}(?!\w)"):
+        m = re.search(pat, low)
+        if m:
             return flat[max(0, m.start() - width): m.end() + width]
-    m = re.search(sur, low)
+    m = re.search(rf"{edge}(?:{sur})(?!\w)", low)
     return ("(given name not adjacent) " + flat[max(0, m.start() - width): m.end() + width]) if m else ""
 
 
@@ -70,7 +89,8 @@ def run(args, client) -> int:
         for ref, (name, r, q) in sorted(found.items(), key=lambda kv: kv[1][1]["date"]):
             failed += gazeta.fetch(client, ref, store) != 0
             path = store.find(ref + "_text")
-            ctx = context(path.read_text(errors="ignore"), [surnames.split()[0], *args.spell], given) if path else ""
+            full = [" ".join([first, *surnames.split()[1:]]) for first in [surnames.split()[0], *args.spell]]
+            ctx = context(path.read_text(errors="ignore"), full, given) if path else ""
             rows.append({"person": spec, "ref": ref, "date": r["date"], "source": name, "query": q,
                          "context": ctx or ("(surname not in the OCR text: open the PDF)" if path else "(no text: open the PDF)")})
     print("\t".join(COLUMNS))
