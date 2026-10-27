@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from gwt_fetch import digibib, europeana, gazeta, geo, iiif
+from gwt_fetch import boe, digibib, europeana, gazeta, geo, iiif
 from gwt_fetch.store import Store, slug
 
 
@@ -264,6 +264,56 @@ def test_gazeta_fetch_writes_pdf_and_html_text(tmp_path):
     assert (tmp_path / "BOE-A-1870-1111_text.txt").read_text() == "Primera línea.\n\nSegunda á."
     assert [r["file"] for r in rows(tmp_path / "manifest.tsv")] == ["BOE-A-1870-1111.pdf", "BOE-A-1870-1111_text.txt"]
     assert gazeta.fetch(c, "not-a-ref", Store(tmp_path)) == 1
+
+
+# ---------------------------------------------------------------- boe (modern collection)
+
+BOE_RESULTS = """
+<ul><li class="resultado-busqueda">
+  <p class="linea-dem">Ministerio de Ejemplo</p>
+  <p class="linea-pub">BOE 8 de 10/01/1978
+   - II. Autoridades y personal</p>
+  <p>Orden de 29 de diciembre de 1977 por la que se aprueba un expediente de ejemplo.</p>
+  <a href="../buscar/doc.php?id=BOE-A-1978-9001" class="resultado-busqueda-link-defecto" title="Ref. BOE-A-1978-9001"></a>
+  <ul><li class="puntoHTML"><a href="../buscar/doc.php?id=BOE-A-1978-9001">Más...</a></li></ul>
+</li></ul></li></ul>
+<ul><li class="resultado-busqueda">
+  <p class="linea-pub">BOE 246 de 13/10/1979
+   - V-B. Anuncios</p>
+  <a href="../buscar/doc.php?id=BOE-B-1979-9002" class="resultado-busqueda-link-defecto" title="Ref. BOE-B-1979-9002"></a>
+  <ul><li class="puntoHTML"><a href="../buscar/doc.php?id=BOE-B-1979-9002">Más...</a></li></ul>
+</li></ul>"""
+
+MODERN_DOC = """<h3 class="documento-tit">Orden de ejemplo.</h3>
+<dl><dt>Publicado en:</dt><dd>« BOE » núm. 8, de 10 de enero de 1978, páginas 461 a 470</dd></dl>
+<ul class="enlaces-doc"><li class="puntoPDF2">
+  <a title="Documento PDF de la publicación original" href="/boe/dias/1978/01/10/pdfs/A00461-00470.pdf">PDF</a></li></ul>
+<div id="textoxslt"> Texto no disponible. Consulte el documento PDF de esta disposición. </div>
+<!-- #textoxslt -->"""
+
+
+def test_boe_parse_results_with_and_without_department_and_title():
+    r = boe.parse_results(BOE_RESULTS)
+    assert r[0] == {"ref": "BOE-A-1978-9001", "date": "1978-01-10", "number": "8",
+                    "department": "Ministerio de Ejemplo",
+                    "title": "Orden de 29 de diciembre de 1977 por la que se aprueba un expediente de ejemplo.",
+                    "doc_url": "https://www.boe.es/buscar/doc.php?id=BOE-A-1978-9001"}
+    assert r[1]["ref"] == "BOE-B-1979-9002" and r[1]["department"] == "" and r[1]["title"] == ""
+
+
+def test_boe_search_params_send_every_field_and_iso_dates():
+    p = dict(boe.search_params(text='"Apellido Uno, Nombre"', date_from="1979-10-01", date_to="1979-12-31", limit=120))
+    assert p["dato[3]"] == '"Apellido Uno, Nombre"' and p["campo[3]"] == "DOC"
+    assert p["dato[6][0]"] == "1979-10-01" and p["dato[6][1]"] == "1979-12-31" and p["page_hits"] == "200"
+    assert [p[f"dato[0][{k}]"] for k in "12345T"] == list("12345T")
+    assert {"campo[1]", "campo[2]", "campo[4]", "campo[5]"} <= set(p)
+
+
+def test_gazeta_fetch_reads_the_pdf_link_of_a_modern_document(tmp_path):
+    c = FakeClient({gazeta.DOC + "BOE-A-1978-9001": Resp(MODERN_DOC),
+                    "https://www.boe.es/boe/dias/1978/01/10/pdfs/A00461-00470.pdf": Resp(b"%PDF", "application/pdf")})
+    assert boe.run(argparse.Namespace(action="fetch", refs=["BOE-A-1978-9001"], out=str(tmp_path)), c) == 0
+    assert (tmp_path / "BOE-A-1978-9001.pdf").read_bytes() == b"%PDF"
 
 
 # ---------------------------------------------------------------- europeana
