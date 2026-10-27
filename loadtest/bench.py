@@ -45,11 +45,20 @@ def api(path, token=None, data=None, method=None):
     return OPENER.open(req, timeout=120)
 
 
+def save():
+    """The result always reaches the console; the file is a bonus, so a read-only /out cannot lose a run."""
+    print("RESULT_JSON " + json.dumps(res), flush=True)
+    try:
+        os.makedirs(OUT, exist_ok=True)
+        json.dump(res, open(f"{OUT}/result.json", "w"), indent=1)
+    except OSError as e:
+        print(f"could not write {OUT}/result.json: {e}", flush=True)
+
+
 def fatal(msg):
     """Stop at the first failure and keep what was measured so far."""
     res["aborted"] = msg
-    os.makedirs(OUT, exist_ok=True)
-    json.dump(res, open(f"{OUT}/result.json", "w"), indent=1)
+    save()
     sys.exit("ABORT: " + msg)
 
 
@@ -178,6 +187,5 @@ for n in ("apply1", "apply2"):
     except OSError:
         pass
 print("api log lines (first apply, second apply):", res.get("apply1_log_lines"), res.get("apply2_log_lines"))
-os.makedirs(OUT, exist_ok=True)
-json.dump(res, open(f"{OUT}/result.json", "w"), indent=1)
-print("done; result in /out/result.json")
+save()
+print("done")

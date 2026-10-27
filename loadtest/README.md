@@ -17,3 +17,27 @@ GWT_REF=<40-char commit> LT_PASS=... ./run_loadtest.sh <docker-network> [web-con
 - Results go to `out/result.json`.
 
 Not tested against a live server yet; only syntax and the install from the zip were checked.
+
+## First run (27 October 2026)
+
+Toolkit commit `5c525bd` (current upstream `main`), invented tree of 100,000 people (31,835 families, 100,000 events; no places, citations, sources, notes or media), 1 CPU, 1 GiB RAM, no swap, nice 15, dump with 1 worker. Real Gramps was not contacted.
+
+| Step | Seconds | Result |
+| --- | ---: | --- |
+| `gwt-check dump` | 400 | exit 0, 250 requests |
+| `gwt-check check` on the dump | 139 | exit 1 (findings; read 4.9 s, checks 131 s) |
+| `gwt-apply` dry run, 2000 ops on the snapshot | 9 | 2000 done |
+| `gwt-apply` dry run, 300 ops, live reads | 20 | 300 done |
+| `gwt-apply --apply`, 300 ops | 72 | 300 done |
+| `gwt-apply --verify` | 29 | 300 of 300 in the tree |
+| same 300 ops again | 33 | 0 done, 300 skip |
+
+Page reads (first three pages of 1000, not the whole set): people 3.97 s, families 0.87 s, events 0.23 s per 1000 objects.
+
+Limits, stated plainly:
+
+- The tree has no media, citations, sources, notes or places, so it is not like a fully documented tree. Read and check times on a real one will differ.
+- The 944 MiB figure is the largest child process size reported by the harness, not the container's measured peak. A container sample during the check showed 892 MiB, which is not the peak either.
+- The harness could not write `result.json` (read-only output directory), so the figures above come from the console log. The harness now prints the whole result to the console as well.
+- The findings of the check were not kept, and the 1-worker dump is not comparable with a 4-worker one. Apply logs had 1209 and 609 lines: log lines, not API requests.
+- This run shows the dump, batch write, verify and repeat stages complete at this size. It does not claim the tools are correct, only measured.
