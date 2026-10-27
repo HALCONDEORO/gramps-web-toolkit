@@ -114,7 +114,7 @@ $ gwt-fetch boe fetch BOE-A-1978-478 --out research/raw/fuentes/boe
 
 ## `names`: one person, every spelling, both collections
 
-`names` is the search a person-first researcher repeats by hand: one person, the spellings of the surname, the Gaceta and the modern BOE. Write each person as `Given/Surname1 Surname2`; add `--spell` for another spelling of the first surname (the search already ignores accents, so `Tebar` and `Tébar` are one query).
+`names` is the search a person-first researcher repeats by hand: one person, the spellings of the surname, the Gaceta and the modern BOE. Write each person as `Given/Surname1 Surname2`; add `--spell` for another spelling of the first surname (the search already ignores accents, so `Garcia` and `García` are one query).
 
 For every spelling it searches the two orders the gazettes print names in, `"Given Sur1 Sur2"` and `"Sur1 Sur2, Given"`, in `gazeta` and `boe`, merges the hits by reference, downloads each item (PDF and text, as `gazeta fetch` does) and prints the words around the match. Columns: `person`, `ref`, `date`, `source`, `query`, `context`.
 

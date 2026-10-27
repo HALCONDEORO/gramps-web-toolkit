@@ -36,7 +36,7 @@ def queries(given: str, surnames: str, spellings=()) -> list[str]:
     for first in [parts[0], *spellings]:
         sur = " ".join([first, *parts[1:]])
         for q in (f'"{given} {sur}"', f'"{sur}, {given}"'):
-            if fold(q) not in seen:  # the search ignores accents, so Tebar and Tébar are one query
+            if fold(q) not in seen:  # the search ignores accents, so Garcia and García are one query
                 seen.add(fold(q))
                 out.append(q)
     return out
