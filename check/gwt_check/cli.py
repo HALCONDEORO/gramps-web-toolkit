@@ -318,6 +318,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="print the result as JSON")
     p.add_argument("--limit", type=int, default=30, help="sources listed with --unlinked or --classify (default 30)")
     p.add_argument("--classify", action="store_true", help="instead of the list: sort the sources with no repository by what their own text names (a repository the tree has, another institution, nothing) and report repository hygiene")
+    p.add_argument("--ops", metavar="FILE", help="with --classify, also write the proposals to a new file as gwt-apply ops with an empty ruling; letters, e-mails and requests are left out")
     live_opts(p)
 
     p = sub.add_parser("fill-places", help="for each event with no place, the place its own citations name, with the quote; proposals only")
@@ -434,12 +435,22 @@ def main(argv: list[str] | None = None) -> int:
             if args.classify:
                 from .repos import classify_repositories, print_classification
                 rep = classify_repositories(tree)
+                if args.ops:
+                    from .repos import write_plan
+                    try:
+                        done = write_plan(rep, args.ops)
+                    except OSError as exc:
+                        raise BadInput(f"{args.ops}: {exc} (an existing file is never replaced)") from exc
+                    print(f"{done['ops']} ops written to {args.ops} with an empty ruling; nothing was applied; "
+                          f"left out as letters, e-mails or uncertain: {len(done['held'])}", file=sys.stderr)
                 if args.json:
                     json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)
                     print()
                 else:
                     print_classification(rep, args.limit)
                 return 0
+            if args.ops:
+                raise BadInput("--ops goes with --classify")
             rep = repository_report(tree, name=args.name, rtype=args.rtype)
             if args.json:
                 json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)

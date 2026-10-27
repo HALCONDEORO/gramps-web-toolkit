@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from urllib.parse import urlsplit
 
@@ -93,6 +94,26 @@ def _hosts_in(text: str) -> set[str]:
     return out
 
 
+# Words in a source's title or publication info that mark a letter, an e-mail or a request: such a source names an
+# archive without being kept there, so the plan never links it.
+CORRESPONDENCE_WORDS = ("gmail", "e-mail", "email", "correo", "courriel", "courrier", "solicitud", "demande",
+                        "request", "respuesta", "reponse", "reply", "consulta")
+
+
+def _correspondence(source: dict) -> bool:
+    text = " | ".join(_fold(source.get(k)) for k in ("title", "pubinfo"))
+    return any(_whole(text, w) for w in CORRESPONDENCE_WORDS)
+
+
+def _display(source: dict, folded: str) -> str:
+    """The institution's name as the source spells it (accents and capitals kept), for a repository name."""
+    for k in ("title", "author", "pubinfo"):
+        for seg in re.split(r" / | - | \u2014 |\(|\|", source.get(k) or ""):
+            if folded and _fold(seg).strip(" ,;.-").startswith(folded):
+                return " ".join(seg.split()).strip(" ,;.-")[:60]
+    return ""
+
+
 def _fold(s: str) -> str:
     return norm((s or "").replace("\u2019", "'").replace("\u2018", "'"))
 
@@ -123,7 +144,7 @@ def classify_repositories(tree: Tree) -> dict:
         hosts = {_host(u.get("path") or "") for u in o.get("urls") or []} - {""}
         if name:
             known.append((o.get("gramps_id"), name, hosts))
-    existing, other, nothing = [], {}, []
+    existing, other, nothing, shown = [], {}, [], {}
     for s in sources.values():
         if s.get("reporef_list"):
             continue
@@ -134,7 +155,8 @@ def classify_repositories(tree: Tree) -> dict:
         if hit:
             ids = sorted({r for r, _ in hit})
             existing.append({"source": s.get("gramps_id"), "title": s.get("title", ""), "repositories": ids,
-                             "fields": sorted({f for _, f in hit}), "certain": len(ids) == 1})
+                             "fields": sorted({f for _, f in hit}), "certain": len(ids) == 1,
+                             "correspondence": _correspondence(s)})
             continue
         found = None
         for w in INSTITUTION_WORDS:
@@ -143,16 +165,19 @@ def classify_repositories(tree: Tree) -> dict:
                 found = (i, text[i:].split(" | ")[0].split(" / ")[0].split(" - ")[0].split(" \u2014 ")[0].split(" (")[0][:60].strip(" ,;.-"))
         if found:
             other.setdefault(found[1], []).append(s.get("gramps_id"))
+            shown.setdefault(found[1], _display(s, found[1]))
         else:
             nothing.append(s.get("gramps_id"))
     by_host: dict[str, list[str]] = {}
     for rid, _, hosts in known:
         for h in hosts:
             by_host.setdefault(h, []).append(rid)
+    held_ids = {x["gramps_id"] for x in sources.values() if _correspondence(x)}
     no_call = sum(1 for s in sources.values() for r in s.get("reporef_list") or [] if not (r.get("call_number") or "").strip())
     return {
         "names_existing": sorted(existing, key=lambda x: x["source"] or ""),
-        "names_other": [{"institution": k, "sources": sorted(v, key=lambda x: x or "")}
+        "names_other": [{"institution": k, "name": shown.get(k, ""), "sources": sorted(v, key=lambda x: x or ""),
+                         "correspondence": sorted(i for i in v if i in held_ids)}
                         for k, v in sorted(other.items(), key=lambda kv: (-len(kv[1]), kv[0]))],
         "names_nothing": sorted(nothing, key=lambda x: x or ""),
         "repositories_without_url_or_address": sorted(
@@ -178,3 +203,31 @@ def print_classification(rep: dict, limit: int) -> None:
         print(f"repositories on the same web host {h}: {', '.join(ids)}")
     print(f"linked sources with no call number: {rep['linked_sources_without_call_number']}")
     print("report only: nothing is changed; link with gwt-apply link_repository after reading each source")
+
+
+def write_plan(rep: dict, path: str, min_sources: int = 2) -> dict:
+    """The classification as `gwt-apply` ops, with an empty ruling, so `gwt-apply` refuses the file until someone has
+    read each source and written the ruling. `link_repository` for a source that names exactly one repository the tree
+    has; `add_repository` (type Archive) for an institution that at least `min_sources` sources name, then
+    `link_repository` for those sources through its key. A letter, e-mail or request is never in the plan: it names an
+    archive without being kept there. Refuses to replace a file that exists."""
+    ops, held = [], []
+    for x in rep["names_existing"]:
+        if x["correspondence"] or not x["certain"]:
+            held.append(x["source"])
+            continue
+        ops.append({"op": "link_repository", "key": f"link-repo-{x['source']}", "ruling": "",
+                    "source": x["source"], "repository": x["repositories"][0]})
+    for g in rep["names_other"]:
+        keep = [i for i in g["sources"] if i not in g["correspondence"]]
+        held += [i for i in g["sources"] if i in g["correspondence"]]
+        if len(keep) < min_sources or not g["name"]:
+            continue
+        key = "add-repo-" + re.sub(r"[^a-z0-9]+", "-", g["institution"]).strip("-")
+        ops.append({"op": "add_repository", "key": key, "ruling": "", "name": g["name"], "type": "Archive"})
+        ops += [{"op": "link_repository", "key": f"link-repo-{i}", "ruling": "", "source": i, "repository": "key:" + key}
+                for i in keep]
+    with open(path, "x", encoding="utf-8") as fh:
+        for op in ops:
+            fh.write(json.dumps(op, ensure_ascii=False) + "\n")
+    return {"ops": len(ops), "held": sorted(set(held))}
