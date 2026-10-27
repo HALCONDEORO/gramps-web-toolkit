@@ -65,7 +65,7 @@ def test_year_outside_event_only_compares_the_same_kind_of_act():
 
 def test_discrepancies_list_the_owner_the_citations_and_what_is_settled():
     d = base()
-    d["notes"] = [note("n1", "N1", "DISCREPANCIA: DNI 1923, libro 1922 (C000999)"), note("n2", "N2", "differs by a year, resuelto"), note("n3", "N3", "plain"), note("n4", "N4", "date differs by a year; se conserva la fecha civil")]
+    d["notes"] = [note("n1", "N1", "DISCREPANCIA: DNI 1923, libro 1922 (C000999)"), note("n2", "N2", "Conflict was resolved"), note("n3", "N3", "plain"), note("n4", "N4", "date differs by a year; se conserva la fecha civil")]
     d["citations"] = [cit("c1", "C1", "p", notes=["n1", "n2", "n3", "n4"])]
     r = discrepancies_report(Tree(d))
     assert (r["notes_with_a_conflict_marker"], r["open"], r["one reading kept"], r["resolved"]) == (3, 1, 1, 1)
@@ -231,3 +231,58 @@ def test_csv_writes_proposals_with_an_empty_decision_column_and_never_replaces_a
     assert main(["insight", str(dump), "--only", "citations", "--csv", str(tmp_path / "q.csv")]) == 2
     from gwt_check.insight import _cell
     assert _cell("=1+1") == "'=1+1" and _cell("plain") == "plain"
+
+
+@pytest.mark.parametrize("text", ["31/02/1850", "29/02/1850", "31/04/1850", "00/01/1850", "01/13/1850"])
+def test_impossible_calendar_dates_never_proposed(text):
+    d = base(); d["citations"] = [cit("c", "C1", text)]
+    d["events"] = [event("e", "E1", "Birth", cites=["c"])]
+    r = fill_report(Tree(d))
+    assert r["date_proposals"] == [] and r["invalid_date_candidates"] == 1
+
+@pytest.mark.parametrize("text,want", [("29/02/1848", "1848-02-29"), ("28/02/1850", "1850-02-28")])
+def test_valid_calendar_dates_still_proposed(text, want):
+    d = base(); d["citations"] = [cit("c", "C1", text)]
+    d["events"] = [event("e", "E1", "Birth", cites=["c"])]
+    assert fill_report(Tree(d))["date_proposals"][0]["date"] == want
+
+@pytest.mark.parametrize("text", [
+    "Conflict not resolved: still waiting for the original record.",
+    "Conflicto no resuelto: esperando el documento original.",
+    "Discrepancia sin resolver; se conserva la fecha civil.",
+    "Conflict unresolved; preferred reading remains.",
+    "Conflict isn't resolved.", "Conflicto aún no zanjado.",
+    "Conflict resolved? Not yet.", "Conflicto resuelto anteriormente; pendiente revisar.",
+])
+def test_negative_or_pending_resolution_stays_open(text):
+    d = base(); d["notes"] = [note("n", "N1", text)]
+    assert discrepancies_report(Tree(d))["items"][0]["status"] == "open"
+
+
+@pytest.mark.parametrize("text", [
+    "Conflict cannot be resolved without the original record.",
+    "Conflict remains to be resolved.",
+    "Conflicto debe ser resuelto mediante el acta original.",
+    "Conflict will be resolved.", "Conflict must be resolved.",
+    "Conflict may be resolved if the original arrives.",
+    "Conflict would be resolved with another record.",
+    "Conflicto será resuelto.", "Conflicto se resolverá.",
+    "Discrepancia podría ser resuelta.", "Conflicto por resolver.",
+    "Conflict resolved if the record agrees.",
+    "Conflict resolved after we obtain the act.",
+    "If the act arrives: Conflict resolved.", "¿Conflicto resuelto?",
+    "Conflict: resolved?", "Discrepancia: si llega el acta; resuelta.",
+    "Conflict to be resolved; preferred reading retained.",
+])
+def test_only_positive_completed_closure_not_modal_word_match(text):
+    d = base(); d["notes"] = [note("n", "N1", text)]
+    assert discrepancies_report(Tree(d))["items"][0]["status"] != "resolved"
+
+@pytest.mark.parametrize("text", [
+    "Conflict was resolved.", "Conflict has been resolved.", "Conflict resolved.",
+    "Conflicto fue resuelto.", "Discrepancia ha sido resuelta.",
+    "Discrepancia: resuelta.", "Conflict: settled.",
+])
+def test_exact_positive_completed_closure(text):
+    d = base(); d["notes"] = [note("n", "N1", text)]
+    assert discrepancies_report(Tree(d))["items"][0]["status"] == "resolved"

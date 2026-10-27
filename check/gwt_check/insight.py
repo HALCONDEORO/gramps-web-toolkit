@@ -20,6 +20,7 @@ Every finding quotes the text it came from. A reading that cannot be made safely
 from __future__ import annotations
 
 import csv
+import datetime
 import json
 import re
 import unicodedata
@@ -37,7 +38,16 @@ _YEAR = re.compile(r"\b(1[4-9]\d\d)\b")
 _URL = re.compile(r"https?://[^\s|)\]]+")
 _CITE_ID = re.compile(r"\bC\d{4,6}\b")
 _DISCREPANCY = re.compile(r"discrepan|diverg|difiere|differ|contradic|conflict|\bvs\.?\b|≠|no coincide|disagree", re.I)
-_RESOLVED = re.compile(r"\b(?:resuelt[ao]|resolved|zanjad[ao]|settled)\b", re.I)
+# A closure is an exact affirmative past/completed clause, never a word anywhere in prose.
+_CLOSED_CLAUSE = re.compile(r"(?:(?:conflict|discrepancy)(?:\s*:\s*| )(?:was |has been )?(?:resolved|settled)|(?:conflicto|discrepancia)(?:\s*:\s*| )(?:fue |ha sido )?(?:resuelt[ao]|zanjad[ao])|resolved|settled|resuelt[ao]|zanjad[ao])", re.I)
+
+def _closed(text):
+    if _UNRESOLVED.search(text):
+        return False
+    # Entire note must be an affirmative completed assertion. Any other prose stays open.
+    # Questions, semicolons and embedded condition clauses are deliberately not stripped.
+    return bool(_CLOSED_CLAUSE.fullmatch(text.strip().rstrip(".").strip()))
+_UNRESOLVED = re.compile(r"\b(?:unresolved|unsettled|not|never|no|sin|pendiente|pending|waiting|esperando|todav[ií]a|a[uú]n)\b|\b(?:isn|wasn|hasn|haven)[’']t\b", re.I)
 _KEPT = re.compile(r"se conserva|se mantiene|canónic|canonic|retained|we keep|kept as|preferred reading|se prefiere|se adopta", re.I)
 _NEGATIVE = re.compile(r"negativ|no hallad|not found|sin resultado|aucun r[ée]sultat|ningún", re.I)
 _WITNESS = re.compile(r"(?:t[ée]moins?|testigos?|witnesses|parrains?|padrinos?|godparents?)\s*:?\s*", re.I)
@@ -161,7 +171,7 @@ def discrepancies_report(tree: Tree) -> dict:
         found.append({
             "note": tree.gid("notes", h),
             "on": sorted(tree.gid(t, oh) for t, oh in owners.get(h, [])),
-            "status": "resolved" if _RESOLVED.search(text) else "one reading kept" if _KEPT.search(text) else "open",
+            "status": "open" if _UNRESOLVED.search(text) else "resolved" if _closed(text) else "one reading kept" if _KEPT.search(text) else "open",
             "citations_named": sorted(set(_CITE_ID.findall(text)))[:8],
             "quote": _snip(text, m.start(), 160),
         })
@@ -179,7 +189,7 @@ def fill_report(tree: Tree) -> dict:
 
     names = {h: pname(p) for h, p in places.items() if len(pname(p)) >= 4}
     out_place, out_date = [], []
-    no_place = no_date = 0
+    no_place = no_date = invalid_dates = 0
     for h, e in tree.objs["events"].items():
         text = ""
         for ch in e.get("citation_list") or []:
@@ -201,10 +211,15 @@ def fill_report(tree: Tree) -> dict:
             dates = {m[0]: m for m in _FULL_DATE.finditer(text)}
             if len(dates) == 1:
                 m = next(iter(dates.values()))
-                out_date.append({"event": gid, "kind": kind(e.get("type")), "date": f"{m[3]}-{int(m[2]):02d}-{int(m[1]):02d}",
-                                 "quote": _snip(text, m.start(), 110)})
+                try:
+                    candidate = datetime.date(int(m[3]), int(m[2]), int(m[1])).isoformat()
+                except ValueError:
+                    invalid_dates += 1
+                else:
+                    out_date.append({"event": gid, "kind": kind(e.get("type")), "date": candidate,
+                                     "quote": _snip(text, m.start(), 110)})
     return {"events_without_place": no_place, "events_without_readable_date": no_date,
-            "place_proposals": out_place, "date_proposals": out_date,
+            "place_proposals": out_place, "date_proposals": out_date, "invalid_date_candidates": invalid_dates,
             "note": "a proposal quotes the citation text it comes from; a citation that names several people or dates can point at the wrong one"}
 
 
