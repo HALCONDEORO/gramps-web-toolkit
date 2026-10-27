@@ -27,6 +27,7 @@ None.
 - The date checks read a complete French Republican date as the day it falls on, instead of counting it as unread.
 
 - A date in a change list can be written in the French Republican calendar: `fr 0005-03-26` is 26 frimaire an V. It is stored in that calendar, with the serial day of the Gregorian day it falls on.
+- `gwt-check repos --classify` sorts the sources with no repository by what they name (a repository the tree has, another institution, nothing) and reports repositories with no URL or address, two on one web host, and linked sources with no call number. Report only.
 
 ## [0.2.3] - 2026-10-26
 
