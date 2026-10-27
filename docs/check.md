@@ -212,6 +212,7 @@ gwt-check repos dump.json.gz --json                   # repositories with their 
 | `dup-repository` | Two repositories with the same name, compared like people's names (below) |
 | `dup-citation` | For information only. Two or more citations of one source with the same page text, ignoring case and repeated spaces (`folio 12v` and `folio 12` are different pages). Usually one record entered twice; merge them, or keep both with `--known` when they cite different entries on one page |
 | `place-no-coords` | A place that an event uses, without latitude or longitude |
+| `place-vs-description` | An event whose description names another place of the tree (whole words, accents and case ignored, names under 4 letters skipped) and does not name its own place or one enclosing it. Typical cause: an import that attached the wrong place to a described event. Naming both is fine. It reads the description only, never citations or notes, and it is not limited by `--since` (like `place-no-coords`). Accept a false positive with `--known` |
 | `surname-marker` | A surname containing `[`, such as `Vidal [¿?]` |
 | `missing-object` | With `--since`: an object of the earlier tree that is gone |
 | `ahnentafel-lost`, `ahnentafel-changed` | With `--since` and `--root`: a number that disappeared, or holds another person |
