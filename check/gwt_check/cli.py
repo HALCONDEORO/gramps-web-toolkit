@@ -316,7 +316,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--type", dest="rtype", help="repository type, e.g. Archive")
     p.add_argument("--unlinked", action="store_true", help="also list sources with no repository and repositories no source lists")
     p.add_argument("--json", action="store_true", help="print the result as JSON")
-    p.add_argument("--limit", type=int, default=30, help="sources listed with --unlinked or --classify (default 30)")
+    p.add_argument("--limit", type=int, default=30, help="sources listed with --unlinked, --suggest or --classify (default 30)")
+    p.add_argument("--suggest", action="store_true", help="instead of the list: for each source with no repository, the one repository its publication info starts with; proposals only")
+    p.add_argument("--ops", metavar="FILE", help="with --suggest, also write the proposals to a new file as gwt-apply link_repository ops with an empty ruling")
     p.add_argument("--classify", action="store_true", help="instead of the list: sort the sources with no repository by what their own text names (a repository the tree has, another institution, nothing)")
     live_opts(p)
 
@@ -478,6 +480,25 @@ def main(argv: list[str] | None = None) -> int:
             tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
             if tree.partial:
                 raise BadInput(f"{tree.source}: a .gramps backup has no repository details; use a dump")
+            if args.suggest and args.classify:
+                raise BadInput("--suggest and --classify are separate views; pick one")
+            if args.suggest:
+                from .repos import print_suggestions, suggest_links, write_link_ops
+                rep = suggest_links(tree)
+                if args.ops:
+                    try:
+                        n = write_link_ops(rep, args.ops)
+                    except OSError as exc:
+                        raise BadInput(f"{args.ops}: {exc} (an existing file is never replaced)") from exc
+                    print(f"{n} ops written to {args.ops} with an empty ruling; nothing was applied", file=sys.stderr)
+                if args.json:
+                    json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)
+                    print()
+                else:
+                    print_suggestions(rep, args.limit)
+                return 0
+            if args.ops:
+                raise BadInput("--ops goes with --suggest")
             if args.classify:
                 from .repos import classify_repositories, print_classification
                 rep = classify_repositories(tree)
