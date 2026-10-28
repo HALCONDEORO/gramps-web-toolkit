@@ -347,6 +347,21 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="print the result as JSON")
     live_opts(p)
 
+    p = sub.add_parser("republican", help="recompute the Republican-to-Gregorian conversions written in notes; exits 1 when one differs")
+    p.add_argument("tree", nargs="?", help="dump file; without it the live tree is read")
+    p.add_argument("--json", action="store_true", help="print the result as JSON")
+    live_opts(p)
+
+    p = sub.add_parser("insight", help="read-only reading aid: what citation and note texts say (possible mismatches, conflict notes, fill proposals, search order, witnesses); proves nothing")
+    p.add_argument("tree", nargs="?", help="dump file; without it the live tree is read")
+    p.add_argument("--only", help="comma-separated sections: citations, discrepancies, fill, frontier, witnesses")
+    p.add_argument("--archives", help="JSON file: {place name: {from, to, online}} for the frontier ordering")
+    p.add_argument("--searched", help="a gwt-ledger TSV: the frontier shows when each person was last searched")
+    p.add_argument("--csv", metavar="FILE", help="write the fill proposals to a new CSV with an empty decision column (never applies anything)")
+    p.add_argument("--json", action="store_true", help="print the result as JSON")
+    p.add_argument("--limit", type=int, default=15, help="lines printed per section (default 15)")
+    live_opts(p)
+
     sub.add_parser("selftest", help="plant every error kind in a synthetic tree and prove each check fires")
 
     args = ap.parse_args(argv)
@@ -382,6 +397,17 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print_act(rep, args.limit)
             return 0
+        if args.cmd == "republican":
+            from .republican import print_republican, republican_report
+            tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
+            if tree.partial:
+                raise BadInput(f"{tree.source}: a .gramps backup has no note text; use a dump")
+            rep = republican_report(tree)
+            if args.json:
+                print(json.dumps(rep, ensure_ascii=False, indent=1))
+            else:
+                print_republican(rep)
+            return 1 if rep["differs"] or rep["unreadable"] else 0
         if args.cmd == "cites":
             from .cites import cites_report, print_cites
             tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
@@ -409,6 +435,41 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(rep, ensure_ascii=False, indent=1))
             else:
                 print_places(rep, args.limit)
+            return 0
+        if args.cmd == "insight":
+            from .insight import SECTIONS, dumps, insight, print_insight, read_searched, write_proposals_csv
+            only = set(args.only.split(",")) if args.only else None
+            if only and only - set(SECTIONS):
+                raise BadInput(f"unknown section: {', '.join(sorted(only - set(SECTIONS)))}")
+            tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
+            if tree.partial:
+                raise BadInput(f"{tree.source}: a .gramps backup has no details; use a dump")
+            archives = None
+            if args.archives:
+                try:
+                    with open(args.archives, encoding="utf-8") as fh:
+                        archives = json.load(fh)
+                except (OSError, ValueError) as exc:
+                    raise BadInput(f"{args.archives}: {exc}") from exc
+            searched = None
+            if args.searched:
+                try:
+                    searched = read_searched(args.searched)
+                except OSError as exc:
+                    raise BadInput(f"{args.searched}: {exc}") from exc
+            if args.csv and only and "fill" not in only:
+                raise BadInput("--csv needs the fill section")
+            rep = insight(tree, only, archives, searched)
+            if args.csv:
+                try:
+                    n = write_proposals_csv(rep, args.csv)
+                except OSError as exc:
+                    raise BadInput(f"{args.csv}: {exc} (an existing file is never replaced)") from exc
+                print(f"{n} proposals written to {args.csv}; nothing was applied", file=sys.stderr)
+            if args.json:
+                print(dumps(rep))
+            else:
+                print_insight(rep, args.limit)
             return 0
         if args.cmd == "repos":
             from .repos import print_repository_report, repository_report

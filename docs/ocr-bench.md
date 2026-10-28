@@ -8,11 +8,11 @@ The score that matters most for genealogy is **names found**: of the person and 
 
 | File | What it does |
 |---|---|
-| [`setup.sh`](https://github.com/GeiserX/gramps-web-toolkit/blob/main/ocr-bench/setup.sh) | Builds one virtualenv per engine and downloads the models, all under `$BENCH_HOME`. |
-| [`stage.py`](https://github.com/GeiserX/gramps-web-toolkit/blob/main/ocr-bench/stage.py) | Copies each reference's page image to `PAGES/<page id>.<ext>`. |
-| [`run.sh`](https://github.com/GeiserX/gramps-web-toolkit/blob/main/ocr-bench/run.sh) | Runs the engines over `PAGES`, writing `OUT/<engine>/<page id>.txt` and `timing.tsv`. |
+| [`setup.sh`](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/ocr-bench/setup.sh) | Builds one virtualenv per engine and downloads the models, all under `$BENCH_HOME`. |
+| [`stage.py`](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/ocr-bench/stage.py) | Copies each reference's page image to `PAGES/<page id>.<ext>`. |
+| [`run.sh`](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/ocr-bench/run.sh) | Runs the engines over `PAGES`, writing `OUT/<engine>/<page id>.txt` and `timing.tsv`. |
 | `engines/` | One small adapter per engine, plus `llm_cli.sh` for an LLM reading. |
-| [`score.py`](https://github.com/GeiserX/gramps-web-toolkit/blob/main/ocr-bench/score.py) | Scores every folder in `OUT` against the references and prints the tables. |
+| [`score.py`](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/ocr-bench/score.py) | Scores every folder in `OUT` against the references and prints the tables. |
 | `samples/` | Two public pages with references, to try the whole loop. |
 
 ## Engines

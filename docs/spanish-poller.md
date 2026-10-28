@@ -4,7 +4,7 @@ Certificates requested from Spanish civil registries through the Ministerio de J
 
 `gwt-spanish-poller` logs in as each configured person with their client certificate, takes a snapshot of their sede cases and their DEHú inbox, and compares it with the previous snapshot. It prints what changed and tells you through the exit code.
 
-Node 18 or newer with Playwright (`npm install` in `spanish-poller/`, or point `NODE_PATH` at an existing `node_modules` that has `playwright`). Run it as [`spanish-poller/gwt-spanish-poller`](https://github.com/GeiserX/gramps-web-toolkit/blob/main/spanish-poller/gwt-spanish-poller). The code is in [`spanish-poller/gwt_spanish_poller.js`](https://github.com/GeiserX/gramps-web-toolkit/blob/main/spanish-poller/gwt_spanish_poller.js). Tests: `cd spanish-poller && node --test`.
+Node 18 or newer with Playwright (`npm install` in `spanish-poller/`, or point `NODE_PATH` at an existing `node_modules` that has `playwright`). Run it as [`spanish-poller/gwt-spanish-poller`](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/spanish-poller/gwt-spanish-poller). The code is in [`spanish-poller/gwt_spanish_poller.js`](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/spanish-poller/gwt_spanish_poller.js). Tests: `cd spanish-poller && node --test`.
 
 ```
 gwt-spanish-poller --config FILE [--only ID] [--dump DIR]    # or set GWT_SPANISH_POLLER_CONFIG

@@ -162,6 +162,17 @@ gwt-check act act.json dump.json.gz --json
 - The text output lists 30 people (`--limit`); `--json` has all of them.
 - The report quotes the tree, so it is as private as the tree.
 
+## Checking Republican conversions
+
+`gwt-check republican` reads the notes, citation pages and event descriptions of a dump or the live tree, finds every "`14 germinal an 13 = 04/04/1805`" (day in digits, month name, year in digits or Roman numerals, then an equals sign and a Gregorian day), recomputes the day with the count Gramps uses (years 1 to 14) and lists the ones that differ. It never writes. It exits `1` when a conversion differs or is not a Republican day, `0` otherwise.
+
+```sh
+gwt-check republican dump.json.gz
+gwt-check republican --json
+```
+
+A day off in a hand conversion is easy to make and then gets copied into an event date; this finds it before that. Dates written in words ("le dix germinal an neuf") are not read.
+
 ## Finding repositories
 
 `gwt-check repos` reads a dump or the live tree and prints each repository with its source count. It never writes.
@@ -197,6 +208,7 @@ gwt-check repos dump.json.gz --json                   # repositories with their 
 | `dup-vital-event` | One person (role `Primary`) or family (role `Family`) with two Birth, Death, Baptism, Burial or Marriage events |
 | `living-media-sensitive` | Media of a person with no death or burial event of their own (role `Primary`) who was born within 110 years (or has no dated birth), whose path, description or attributes hold an ID number or an ID or address word. Media already private (the person, the media or the reference) is skipped. It reads metadata only, never the image or its notes, and never prints the match. The patterns are Spanish-first: a DNI or NIE counts only with the right check letter, and the words are passport, home-address and ID-card terms in Spanish, English and French, plus `c/` before a street name. Another country adds its ID number to `ID_NUMBERS` and its words to `ID_WORDS` in `check/gwt_check/checks.py`. Accept a false positive with `--known` |
 | `private` | Any object or sub-reference marked private |
+| `dup-media` | Two media objects with the same file: the same checksum (a copy under another name) or the exact same path (compared letter for letter) |
 | `dup-repository` | Two repositories with the same name, compared like people's names (below) |
 | `dup-media` | Two media objects with the same checksum: the same file entered twice, often under another name. A media object whose file was never read has no checksum and is left out. A page scanned twice is two different files and is not found |
 | `dup-citation` | For information only. Two or more citations of one source with the same page text, ignoring case and repeated spaces (`folio 12v` and `folio 12` are different pages). Usually one record entered twice; merge them, or keep both with `--known` when they cite different entries on one page |
@@ -224,7 +236,7 @@ The report also gives, without failing: events without a place (in the whole tre
 
 ## Dated checks
 
-The dated checks read every date as the interval it may stand for, and report two facts only when their intervals cannot overlap, so a vague date never produces a contradiction. A day is one day, a month or a year is the whole month or year, a range runs from its first day to its last, and "before" and "after" are open on one side. An "about" or estimated date gets 2 years of slack either side, and a calculated one (usually worked out from a stated age) 1 year. A text-only date is read only when it is a plain ISO date (`1878`, `1878-05`, `c. 1878`). Dates in another calendar, with a new year other than 1 January, dual-dated (`1699/1700`), or "from" and "to" are not read; the report counts them (`dates not read`).
+The dated checks read every date as the interval it may stand for, and report two facts only when their intervals cannot overlap, so a vague date never produces a contradiction. A day is one day, a month or a year is the whole month or year, a range runs from its first day to its last, and "before" and "after" are open on one side. An "about" or estimated date gets 2 years of slack either side, and a calculated one (usually worked out from a stated age) 1 year. A text-only date is read only when it is a plain ISO date (`1878`, `1878-05`, `c. 1878`). A complete French Republican date is read as the day it falls on. Dates in another calendar (or a partial or ranged Republican date), with a new year other than 1 January, dual-dated (`1699/1700`), or "from" and "to" are not read; the report counts them (`dates not read`).
 
 The detail of each finding names the event types, IDs and dates behind it, and ends in `(firm)` when every date is a plain day, month or year, or `(soft)` when one has slack. A person with no Birth event is taken as born up to a year before their baptism, an infant baptism: a mother who died in childbirth and a child baptised the next day is no contradiction. A death with no Death event is bounded by the burial. Parent rules apply to children whose relation to that parent is `Birth`, `Unknown` or blank, so an adopted or stepchild is left out.
 
@@ -274,3 +286,29 @@ gwt-check cites dump.json.gz --json   # the same rows as JSON
 - Only the page is read, never the citation's notes, so the rules work on any tree whatever its note style.
 - The words that name a kind of act are in one table, `ACT_WORDS`, at the top of `gwt_check/cites.py`, and the words of a marginal mention in `MARGINAL` beside it. A language that is not in them is not read. A word matches as a whole word, singular or plural (`nacimiento`, `nacimientos`), never inside a longer word (`birthplace` is not a birth act).
 - `fill-places` holds back every row `cites` lists: a place that only such a citation names is listed under `held_back`, not proposed.
+
+## Reading the citations and notes (`insight`)
+
+`gwt-check insight [DUMP]` reads a dump (or the live tree) and writes nothing. It is a reading aid for a question the checks do not ask: given what is recorded, what do the citations and notes say, where do they seem to disagree, and where might the next search be worth making. It proves nothing and decides nothing. A reading that cannot be made safely is counted, not guessed. `--only` picks sections, `--json` prints the result, `--limit` caps the lines.
+
+**Its output is as private as the tree.** It quotes the citations and notes themselves and names the people in them, and it does not anonymise anything: the lines can name living people (for example as witnesses or in a note), because only the `frontier` section leaves possibly living people out. Keep the output in the same private place as the dump and never publish it, paste it into an issue or a pull request, or use it as a test fixture.
+
+| Section | What it reports |
+|---|---|
+| `citations` | How many citations state an act number, an image, a year and a link in their free text (and how many have a structured date of their own). Acts that several citations draw on. Possible mismatches to review: citations that say they are a birth, death or marriage act in the form `n°5/1851`, are not margin notes, and carry a year outside the event they back. An act of a child or a marriage can back a parent's event with its own year, so a line is a prompt to look, not an error. |
+| `discrepancies` | Notes that carry a conflict marker (discrepancy, differs, contradicts, `vs`, `≠`), with the object each sits on, the citations it names and a quote. The status is a heuristic read from words in the note, not proof: `resolved` (the note says so), `one reading kept` (it names the reading it keeps; the other is not necessarily closed) or `open` (neither). A note counts as `resolved` only when the whole note is one exact closing statement ("Conflict resolved", "Conflicto resuelto"); any other prose, including a negation or a pending word, stays `open`, so some notes a person would call closed are listed as open. Read the quote. |
+| `fill` | Events with no place or no readable date, and the passage of their own citations that names exactly one place or one full date. Several candidates are listed as ambiguous, never picked. A date that is not a real calendar day (31/02/1850) is never proposed; the report counts it as `invalid_date_candidates`. A proposal is text to read, not a change. |
+| `frontier` | People with no parents on record, ordered by what makes a search workable: a birth year, a birth place, citations, whether records are readable online there, and a lowered score for a recorded negative search. The online part needs `--archives FILE`, a JSON map of place name to `{"from", "to", "online"}` that you fill from what you have verified; **without it the order is partial** and ignores which records are available (the output says so). Only a person with a birth year after 1925 and no death event is left out; a person with no birth year stays in the list. |
+| `witnesses` | Names transcribed as witnesses or godparents in citations and their notes, and the names that appear in two or more citations. A recurring name may be a namesake and a witness is not a relative: it is a lead to check against the image. |
+
+`--searched FILE` reads a `gwt-ledger` TSV and shows, in the `frontier` section, when each person was last searched. `--csv FILE` writes the `fill` proposals to a new CSV with an empty `decision` column; an existing file is never replaced and nothing is applied.
+
+Nothing in the report goes into the tree without a document, through [`gwt-apply`](apply.md).
+
+## Testing at scale
+
+`python -m gwt_check.synth 20000 big.json.gz` writes a seeded, invented tree (families over several generations, events with citations, places, sources, repositories, notes). Run any `gwt-check` command on it to look at time and memory before a change reaches a large tree.
+
+### Rule: every scale test also runs on the real tree
+
+`python -m gwt_check.scale --people 20000 --real real-dump.json.gz` runs `check`, `repos`, `fill-places`, `links`, `cites` and `republican` on an invented tree and on the dump you give it, and prints seconds, peak memory, exit code and the last summary line of each, side by side. The real dump is only read; its path is not stored and nothing from it is written, so the output is counts and times. Use a dump taken with `gwt-check dump`, never the live tree. A change that is fast and correct on the invented tree and wrong or slow on the real one is not done. Exit code 1 is findings; 2 or more is a crash and fails the run.
