@@ -14,6 +14,7 @@ None.
 
 - `gwt-check repos --classify` sorts the sources with no repository by what they name (a repository the tree has, another institution, nothing), with the institutions grouped so one new repository can serve many sources. It only reports.
 - `gwt-check check` reports `dup-media`: two media objects with the same checksum, the same file entered twice.
+- `python -m gwt_check.synth N out.json.gz` writes an invented tree of N people for scale tests, and `python -m gwt_check.scale` runs the offline commands on it and, with `--real DUMP`, on a dump you give it, side by side (time, peak memory, exit code, summary line).
 
 ## [0.2.3] - 2026-10-26
 
