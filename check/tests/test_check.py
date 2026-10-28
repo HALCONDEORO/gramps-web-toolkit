@@ -694,6 +694,24 @@ def test_repos_command_finds_by_name_and_type_and_lists_unlinked(tmp_path, capsy
     assert [r["id"] for r in got["repositories"]] == ["R0099"]
 
 
+def test_repos_suggest_links_only_a_source_whose_pubinfo_names_one_repository(tmp_path, capsys):
+    data = selftest.clean_tree()
+    selftest.p_source_no_repository(data)  # S0099, no publication info: left out
+    base = selftest.clean_tree()["sources"][0]
+    for sid, pub in (("S0101", "Archivo Diocesano de Ejemplo, libro 3"), ("S0102", "Gmail del investigador")):
+        data["sources"].append({**copy.deepcopy(base), "handle": "h" + sid, "gramps_id": sid, "title": "Libro " + sid,
+                                "pubinfo": pub, "reporef_list": []})
+    dump = _write(tmp_path, "t.json", data)
+    ops = tmp_path / "links.jsonl"
+    assert main(["repos", dump, "--suggest", "--ops", str(ops)]) == 0
+    out = capsys.readouterr().out
+    assert "S0101 -> R0001" in out and "S0102" not in out and "S0099" not in out
+    row = json.loads(ops.read_text())
+    assert (row["op"], row["source"], row["repository"], row["ruling"]) == ("link_repository", "S0101", "R0001", "")
+    assert main(["repos", dump, "--suggest", "--ops", str(ops)]) == 2  # an existing file is never replaced
+    assert main(["repos", dump, "--ops", str(ops)]) == 2
+
+
 def test_a_source_with_no_repository_is_counted_not_a_finding(tmp_path, capsys):
     # linking only unambiguous sources leaves some unlinked for good: that must not fail the check
     data = selftest.clean_tree()
@@ -1269,6 +1287,127 @@ def test_fill_places_refuses_a_backup(tmp_path, capsys):
     backup.write_bytes(_to_xml(selftest.clean_tree()))
     assert main(["fill-places", str(backup)]) == 2
     assert "no citation text" in capsys.readouterr().err
+
+
+def _run_place_desc(description, own_place="hP0001", extra_place=True):
+    from gwt_check import selftest as st
+
+    d = st.clean_tree()
+    if extra_place:
+        st._other_place(d)
+    st._get(d, "events", "E0001").update(description=description, place=own_place)
+    findings, _ = checks.run_checks(Tree(d))
+    return [f for f in findings if f["check"] == "place-vs-description"]
+
+
+def test_place_vs_description_flags_another_place_of_the_tree_and_not_the_own_one():
+    found = _run_place_desc("Nacimiento en Otropueblo")
+    assert [f["key"] for f in found] == ["E0001"]
+    assert "otropuevlo" in found[0]["detail"]  # names are folded like people's (b to v)
+
+
+def test_place_vs_description_is_quiet_when_the_own_place_or_one_enclosing_it_is_named():
+    assert _run_place_desc("Nacimiento en Villaejemplo, parroquia de Otropueblo") == []
+    assert _run_place_desc("Nacimiento en la Provincia Imaginaria, cerca de Otropueblo") == []
+
+
+def test_place_vs_description_is_quiet_without_a_description_or_a_known_place():
+    assert _run_place_desc("") == []
+    assert _run_place_desc("Nacimiento en un lugar sin registrar") == []
+    assert _run_place_desc("Nacimiento en Otropuebloalto") == []
+
+
+def test_place_vs_description_skips_place_names_under_four_letters():
+    from gwt_check import selftest as st
+
+    d = st.clean_tree()
+    st._other_place(d)
+    st._get(d, "places", "P0003")["name"] = {"value": "Ala"}
+    st._get(d, "events", "E0001")["description"] = "Nacimiento en Ala"
+    findings, _ = checks.run_checks(Tree(d))
+    assert [f for f in findings if f["check"] == "place-vs-description"] == []
+
+
+def _fork_tree(refs, loop=False):
+    from gwt_check import selftest as st
+
+    d = st.clean_tree()
+    st._other_place(d)
+    p1 = st._get(d, "places", "P0001")
+    p1["placeref_list"] = [{"ref": r, "date": st._date()} for r in refs]
+    if loop:
+        st._get(d, "places", "P0002")["placeref_list"] = [{"ref": "hP0001", "date": st._date()}]
+    return d
+
+
+def test_place_vs_description_follows_every_enclosing_place_not_only_the_first():
+    from gwt_check import selftest as st
+
+    d = _fork_tree(["hP0003", "hP0002"])
+    st._get(d, "events", "E0001")["description"] = "Nacimiento en la Provincia Imaginaria"
+    findings, _ = checks.run_checks(Tree(d))
+    assert [f for f in findings if f["check"] == "place-vs-description"] == []
+
+
+def test_place_vs_description_survives_places_that_enclose_each_other():
+    from gwt_check import selftest as st
+
+    d = _fork_tree(["hP0002"], loop=True)
+    st._get(d, "events", "E0001")["description"] = "Nacimiento en Otropueblo"
+    findings, _ = checks.run_checks(Tree(d))
+    assert [f["key"] for f in findings if f["check"] == "place-vs-description"] == ["E0001"]
+
+def test_note_marker_no_tag_only_where_the_convention_is_used_and_not_when_tagged():
+    d = selftest.clean_tree()
+    selftest.p_note_marker_no_tag(d)
+    keys = {f["key"] for f in checks.run_checks(Tree(copy.deepcopy(d)))[0] if f["check"] == "note-marker-no-tag"}
+    assert keys == {"N0098 hipotesis"}
+    tagged = copy.deepcopy(d)
+    next(n for n in tagged["notes"] if n["gramps_id"] == "N0098")["tag_list"] = ["htag2"]
+    assert not [f for f in checks.run_checks(Tree(tagged))[0] if f["check"] == "note-marker-no-tag"]
+    no_tag = copy.deepcopy(d)
+    no_tag["tags"] = [t for t in no_tag["tags"] if t["handle"] != "htag2"]
+    assert not [f for f in checks.run_checks(Tree(no_tag))[0] if f["check"] == "note-marker-no-tag"]
+
+
+def test_note_marker_needs_the_whole_word():
+    def found(text):
+        d = selftest.clean_tree()
+        selftest.p_note_marker_no_tag(d)
+        d["tags"].append(selftest._base("", handle="htag3", name="Homonimo-sin-confirmar", color="#000000",
+                                        priority=0))
+        next(n for n in d["notes"] if n["gramps_id"] == "N0098")["text"]["string"] = text
+        return bool([f for f in checks.run_checks(Tree(d))[0] if f["check"] == "note-marker-no-tag"])
+
+    assert found("Dos hipótesis (?) y un homónimo")      # plural and singular are meant to match
+    assert found("Homónimos sin confirmar")
+    assert not found("hipotesista inventada")
+    assert not found("homonimología inventada")
+    assert not found("antihipotesis inventada")
+
+
+def test_note_marker_skips_a_note_that_discards_or_replaces_the_hypothesis():
+    def found(text):
+        d = selftest.clean_tree()
+        selftest.p_note_marker_no_tag(d)
+        next(n for n in d["notes"] if n["gramps_id"] == "N0098")["text"]["string"] = text
+        return bool([f for f in checks.run_checks(Tree(d))[0] if f["check"] == "note-marker-no-tag"])
+
+    assert found("Hipótesis: es el hermano (?)")
+    assert not found("Hipótesis descartada: el acta nombra a otro padre")
+    assert not found("La hipótesis quedó superada por el acta de 1851")
+    assert not found("Homónimo refutado con el acta")
+    assert not found("Hipotesis sustituida por la nota N0100")
+    assert found("Hipótesis sin descartar todavía")   # "sin descartar" does not discard it
+
+
+def test_note_marker_tag_name_needs_the_whole_word():
+    d = selftest.clean_tree()
+    selftest.p_note_marker_no_tag(d)
+    next(t for t in d["tags"] if t["handle"] == "htag2")["name"] = "Hipotesista"
+    assert not [f for f in checks.run_checks(Tree(d))[0] if f["check"] == "note-marker-no-tag"]
+    next(t for t in d["tags"] if t["handle"] == "htag2")["name"] = "hipotesis-1022"
+    assert [f for f in checks.run_checks(Tree(d))[0] if f["check"] == "note-marker-no-tag"]
 
 
 def test_repos_classify_sorts_sources_with_no_repository_by_what_they_name(tmp_path, capsys):

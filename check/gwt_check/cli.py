@@ -316,7 +316,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--type", dest="rtype", help="repository type, e.g. Archive")
     p.add_argument("--unlinked", action="store_true", help="also list sources with no repository and repositories no source lists")
     p.add_argument("--json", action="store_true", help="print the result as JSON")
-    p.add_argument("--limit", type=int, default=30, help="sources listed with --unlinked or --classify (default 30)")
+    p.add_argument("--limit", type=int, default=30, help="sources listed with --unlinked, --suggest or --classify (default 30)")
+    p.add_argument("--suggest", action="store_true", help="instead of the list: for each source with no repository, the one repository its publication info starts with; proposals only")
+    p.add_argument("--ops", metavar="FILE", help="with --suggest, also write the proposals to a new file as gwt-apply link_repository ops with an empty ruling")
     p.add_argument("--classify", action="store_true", help="instead of the list: sort the sources with no repository by what their own text names (a repository the tree has, another institution, nothing)")
     live_opts(p)
 
@@ -345,6 +347,18 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("cites", help="events cited by another kind of act or a marginal mention; a report, never fails")
     p.add_argument("tree", nargs="?", help="dump file; without it the live tree is read")
     p.add_argument("--json", action="store_true", help="print the result as JSON")
+    live_opts(p)
+
+    p = sub.add_parser("republican", help="recompute the Republican-to-Gregorian conversions written in notes; exits 1 when one differs")
+    p.add_argument("tree", nargs="?", help="dump file; without it the live tree is read")
+    p.add_argument("--json", action="store_true", help="print the result as JSON")
+    live_opts(p)
+
+    p = sub.add_parser("insight", help="read-only reading aid: what citation and note texts say (possible mismatches, conflict notes, witnesses); proves nothing")
+    p.add_argument("tree", nargs="?", help="dump file; without it the live tree is read")
+    p.add_argument("--only", help="comma-separated sections: citations, discrepancies, witnesses")
+    p.add_argument("--json", action="store_true", help="print the result as JSON")
+    p.add_argument("--limit", type=int, default=15, help="lines printed per section (default 15)")
     live_opts(p)
 
     sub.add_parser("selftest", help="plant every error kind in a synthetic tree and prove each check fires")
@@ -382,6 +396,17 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print_act(rep, args.limit)
             return 0
+        if args.cmd == "republican":
+            from .republican import print_republican, republican_report
+            tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
+            if tree.partial:
+                raise BadInput(f"{tree.source}: a .gramps backup has no note text; use a dump")
+            rep = republican_report(tree)
+            if args.json:
+                print(json.dumps(rep, ensure_ascii=False, indent=1))
+            else:
+                print_republican(rep)
+            return 1 if rep["differs"] or rep["unreadable"] else 0
         if args.cmd == "cites":
             from .cites import cites_report, print_cites
             tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
@@ -410,6 +435,20 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print_places(rep, args.limit)
             return 0
+        if args.cmd == "insight":
+            from .insight import SECTIONS, dumps, insight, print_insight
+            only = set(args.only.split(",")) if args.only else None
+            if only and only - set(SECTIONS):
+                raise BadInput(f"unknown section: {', '.join(sorted(only - set(SECTIONS)))}")
+            tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
+            if tree.partial:
+                raise BadInput(f"{tree.source}: a .gramps backup has no details; use a dump")
+            rep = insight(tree, only)
+            if args.json:
+                print(dumps(rep))
+            else:
+                print_insight(rep, args.limit)
+            return 0
         if args.cmd == "repos":
             from .repos import print_repository_report, repository_report
             if args.classify and (args.name or args.rtype or args.unlinked):
@@ -417,6 +456,8 @@ def main(argv: list[str] | None = None) -> int:
             tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
             if tree.partial:
                 raise BadInput(f"{tree.source}: a .gramps backup has no repository details; use a dump")
+            if args.classify and args.suggest:
+                raise BadInput("--classify and --suggest are two different reports; pick one")
             if args.classify:
                 from .repos import classify_repositories, print_classification
                 rep = classify_repositories(tree)
@@ -426,6 +467,23 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     print_classification(rep, args.limit)
                 return 0
+            if args.suggest:
+                from .repos import print_suggestions, suggest_links, write_link_ops
+                rep = suggest_links(tree)
+                if args.ops:
+                    try:
+                        n = write_link_ops(rep, args.ops)
+                    except OSError as exc:
+                        raise BadInput(f"{args.ops}: {exc} (an existing file is never replaced)") from exc
+                    print(f"{n} ops written to {args.ops} with an empty ruling; nothing was applied", file=sys.stderr)
+                if args.json:
+                    json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)
+                    print()
+                else:
+                    print_suggestions(rep, args.limit)
+                return 0
+            if args.ops:
+                raise BadInput("--ops goes with --suggest")
             rep = repository_report(tree, name=args.name, rtype=args.rtype)
             if args.json:
                 json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)

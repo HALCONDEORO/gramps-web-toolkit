@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+
+
 import re
 import unicodedata
 from urllib.parse import urlsplit
@@ -58,6 +61,44 @@ def print_repository_report(rep: dict, *, unlinked: bool, limit: int) -> None:
             print(f"  {s['id']}  {s['title']}")
         if len(bare) > limit:
             print(f"  ... {len(bare) - limit} more (--limit, or --json)")
+
+
+def suggest_links(tree: Tree) -> dict:
+    """For each source with no repository, the repository whose name its own publication info starts with, when
+    exactly one does. A source that names no repository, or two, is left out: proposals only, never a guess."""
+    repos = {h: (o.get("gramps_id"), o.get("name") or "") for h, o in tree.objs["repositories"].items()}
+    proposals, ambiguous = [], []
+    for s in tree.objs["sources"].values():
+        if s.get("reporef_list"):
+            continue
+        pub = norm(s.get("pubinfo") or "")
+        hit = [(rid, name) for rid, name in repos.values() if name and pub.startswith(norm(name))]
+        if len(hit) == 1:
+            proposals.append({"source": s.get("gramps_id"), "title": s.get("title", ""), "pubinfo": s.get("pubinfo", ""),
+                              "repository": hit[0][0], "name": hit[0][1]})
+        elif hit:
+            ambiguous.append({"source": s.get("gramps_id"), "repositories": [r for r, _ in hit]})
+    key = lambda x: x["source"] or ""
+    return {"proposals": sorted(proposals, key=key), "ambiguous": sorted(ambiguous, key=key)}
+
+
+def print_suggestions(rep: dict, limit: int) -> None:
+    for x in rep["proposals"][:limit]:
+        print(f"  {x['source']} -> {x['repository']} {x['name']}   (publication info: {x['pubinfo']})")
+    if len(rep["proposals"]) > limit:
+        print(f"  ... {len(rep['proposals']) - limit} more (--limit, or --json)")
+    print(f"proposed links: {len(rep['proposals'])}; sources naming more than one repository: {len(rep['ambiguous'])}")
+    print("proposals only: read each source before applying one")
+
+
+def write_link_ops(rep: dict, path: str) -> int:
+    """One gwt-apply link_repository op per proposal, with an empty ruling, so gwt-apply refuses the file until
+    someone has read each source and written the ruling. Refuses to replace a file that exists."""
+    with open(path, "x", encoding="utf-8") as fh:
+        for x in rep["proposals"]:
+            fh.write(json.dumps({"op": "link_repository", "key": f"link-repo-{x['source']}", "ruling": "",
+                                 "source": x["source"], "repository": x["repository"]}, ensure_ascii=False) + "\n")
+    return len(rep["proposals"])
 
 
 # Words that open the name of an institution that keeps records, lowercase and without accents. One table, so a

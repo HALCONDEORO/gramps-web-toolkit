@@ -18,7 +18,7 @@ gwt                                        # lists the tools
 gwt --version
 ```
 
-PyPI gets the package with the first release. Until then, install it from GitHub: `pipx install git+https://github.com/GeiserX/gramps-web-toolkit`. Plain `pip install` into a virtualenv works too.
+PyPI gets the package with the first release. Until then, install it from GitHub: `pipx install git+https://github.com/HALCONDEORO/gramps-web-toolkit`. Plain `pip install` into a virtualenv works too.
 
 The package installs one command, `gwt`. `gwt <tool> ...` runs that tool and loads nothing else, and `gwt <tool> --help` prints its options. Each tool also keeps its own `gwt-<tool>` command (`gwt-apply`, `gwt-check`, ...), so scripts written for those names keep working. The PyPI package named `gwt` is an unrelated project: install `gramps-web-toolkit`, never `gwt`.
 
@@ -75,7 +75,7 @@ gramps-web-toolkit/<version> (gwt-apply; +https://github.com/GeiserX/gramps-web-
 
     It plants every kind of error in a made-up tree and ends with `OK: <n> planted errors, 0 problem(s)`. Any other ending means a check did not fire.
 
-    To watch `gwt apply` refuse a duplicate before you connect a tree, run the offline demo in `examples/` of the clone (`./demo.sh`). Its 30-person tree and change lists are invented, and the [README quick start](https://github.com/GeiserX/gramps-web-toolkit#quick-start) lists its commands.
+    To watch `gwt apply` refuse a duplicate before you connect a tree, run the offline demo in `examples/` of the clone (`./demo.sh`). Its 30-person tree and change lists are invented, and the [README quick start](https://github.com/HALCONDEORO/gramps-web-toolkit#quick-start) lists its commands.
 
 2. Save the tree once, then check it offline:
 

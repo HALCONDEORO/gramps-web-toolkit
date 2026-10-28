@@ -111,6 +111,11 @@ _GAP = rf"(?:(?!(?:no|ni|sin|nada)\b)\w+{_SEP}){{0,3}}"
 NOTE_DISCARDED_AFTER = re.compile(rf"{_SEP}{_GAP}{_DISCARD}\b")
 NOTE_DISCARDED_BEFORE = re.compile(rf"\b{_DISCARD}{_SEP}{_GAP}$")
 
+# words in a note that a tag of the same stem is meant to mark; matched without accents, whole word
+NOTE_MARKERS = ("hipotesis", "homonimo")
+# a note that says the hypothesis was discarded or replaced no longer needs its tag
+NOTE_DISCARDED = re.compile(r"(?<!sin )\b(?:descartad[oa]s?|refutad[oa]s?|superad[oa]s?|sustituid[oa]s?|desmentid[oa]s?)\b")
+
 # limits of the dated checks
 POSTHUMOUS_DAYS = 300                       # a child can be born this long after the father's death
 PARENT_AGE = {"mother": (14, 52), "father": (14, 85)}
@@ -446,10 +451,13 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
 
     parts = {h: name_parts(p) for h, p in P.items()}
     by_surname: dict[str, list] = defaultdict(list)
+    by_given: dict[str, list] = defaultdict(list)
     for h, (g, s) in parts.items():
         if g and s:
             for t in s:
                 by_surname[t].append(h)
+            for t in g:
+                by_given[t].append(h)
     facts: dict[str, tuple] = {}
 
     def fact(h: str) -> tuple:
@@ -489,7 +497,10 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
     for h, (g, s) in parts.items():
         if not (g and s and touched(h)):
             continue
-        candidates = {c for t in s for c in by_surname[t]} - {h}
+        # a match shares a surname word and a given-name word: walk the shorter index, test the other
+        by_s, by_g = sum(len(by_surname[t]) for t in s), sum(len(by_given[t]) for t in g)
+        pool = (by_surname[t] for t in s) if by_s <= by_g else (by_given[t] for t in g)
+        candidates = {c for lst in pool for c in lst if parts[c][0] & g and parts[c][1] & s} - {h}
         for c in candidates:
             gc, sc = parts[c]
             if (g, s) == (gc, sc) or not ((g <= gc or gc <= g) and (s <= sc or sc <= s)):
@@ -675,6 +686,9 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
                     f"main component ({lowest[main]}) has {len(comps[main])}")
 
     dated_checks(T, out, info)
+    # the same tree gives the same report: checks keep their order, keys inside one check go in ID order
+    first = {c: i for i, c in reversed(list(enumerate(dict.fromkeys(i["check"] for i in out.items))))}
+    out.items.sort(key=lambda i: (first[i["check"]], id_order(i["key"])))
     return out.items, info
 
 

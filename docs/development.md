@@ -13,7 +13,7 @@ python3 .github/scripts/run_tests.py --only apply # one package (comma-separate 
 
 `run_tests.py` finds every top-level folder with Python tests (a `test_*.py` file or a `tests/` folder), runs `python -m pytest -q` inside it, then the folder's `ci-extra.sh` when there is one (`check/ci-extra.sh` runs the `gwt-check` self-test), and prints one `ok` or `FAIL` line per package. A new tool needs no CI edit: give its folder tests and CI runs them. A folder that ships a tool (a `gwt-*` wrapper or a `pyproject.toml`) with no tests fails the run, unless `UNTESTED` in the script names it with the reason.
 
-CI runs the same script on every pull request ([ci.yml](https://github.com/GeiserX/gramps-web-toolkit/blob/main/.github/workflows/ci.yml)), and `node --test` for `spanish-poller` in its own job.
+CI runs the same script on every pull request ([ci.yml](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/.github/workflows/ci.yml)), and `node --test` for `spanish-poller` in its own job.
 
 CI also builds the package in a `wheel` job: `.github/scripts/check_wheel.sh` installs the wheel into a clean virtualenv outside the clone and runs `gwt --version`, `gwt <tool> --help` and `gwt-<tool> --help` for every tool, then `gwt check selftest`. A new Python tool goes in three places: its module in `[tool.hatch.build.targets.wheel.force-include]` and its `gwt-<tool>` line in `[project.scripts]` of the root `pyproject.toml`, and a row in `TOOLS` in `core/gwt_core/cli.py`. Miss the first and the `wheel` job fails.
 
@@ -33,7 +33,7 @@ When you add a guard, add its row and a test that fails with the row applied. CI
 
 ## Releases and the changelog
 
-The version comes from git tags (hatch-vcs): a `v0.2.0` tag builds 0.2.0, and a commit after it builds `0.2.1.devN+g<sha>`. `gwt --version` in a clone prints the same shape, read from git. Pushing a `v*` tag runs [release.yml](https://github.com/GeiserX/gramps-web-toolkit/blob/main/.github/workflows/release.yml): it builds the sdist and wheel, publishes them to PyPI through trusted publishing, and creates the GitHub release from the tag's section of [CHANGELOG.md](https://github.com/GeiserX/gramps-web-toolkit/blob/main/CHANGELOG.md). It stops before publishing when that section is missing or has no `### Change lists` heading. A manual run of the workflow is a dry run that publishes a dev build to TestPyPI only. To release, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, merge that, then tag the merge commit and push the tag.
+The version comes from git tags (hatch-vcs): a `v0.2.0` tag builds 0.2.0, and a commit after it builds `0.2.1.devN+g<sha>`. `gwt --version` in a clone prints the same shape, read from git. Pushing a `v*` tag runs [release.yml](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/.github/workflows/release.yml): it builds the sdist and wheel, publishes them to PyPI through trusted publishing, and creates the GitHub release from the tag's section of [CHANGELOG.md](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/CHANGELOG.md). It stops before publishing when that section is missing or has no `### Change lists` heading. A manual run of the workflow is a dry run that publishes a dev build to TestPyPI only. To release, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, merge that, then tag the merge commit and push the tag.
 
 Every pull request that changes how an existing change list behaves (an op newly refused, a newly required field, a different skip or duplicate rule, a different default, in `gwt-apply` or in what `gwt-import-excel` writes) adds a line under `### Change lists` in the Unreleased section of `CHANGELOG.md`. Other user-facing changes go under Added, Changed or Fixed.
 
@@ -54,4 +54,4 @@ The build is strict: a broken link, a link to a missing heading, a page left out
 - Never commit a secret, a certificate or a configuration file with credentials.
 - A new trap goes into [Hard-won lessons](hard-won.md): what happened, why, and the rule.
 
-Security problems go through the [security policy](https://github.com/GeiserX/gramps-web-toolkit/blob/main/SECURITY.md), never a public issue. The toolkit is licensed [GPL-3.0-or-later](https://github.com/GeiserX/gramps-web-toolkit/blob/main/LICENSE).
+Security problems go through the [security policy](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/SECURITY.md), never a public issue. The toolkit is licensed [GPL-3.0-or-later](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/LICENSE).

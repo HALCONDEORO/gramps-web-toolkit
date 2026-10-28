@@ -49,6 +49,22 @@ None.
 - `gwt-apply` `update_place` takes `enclosed_by` in `set`: it moves a place under another parent, refusing a parent that does not exist or one inside the place. A rerun is a skip, and `--verify` reports a place moved back as differing.
 - `gwt-check repos --classify` sorts the sources with no repository by what they name (a repository the tree has, another institution, nothing), with the institutions grouped so one new repository can serve many sources. It only reports.
 - `gwt-check check` reports `dup-media`: two media objects with the same checksum, the same file entered twice.
+- `loadtest/` holds a script that runs the toolkit against a disposable Gramps Web tree named `LoadTest` in a memory-capped container and records timings, peak memory and request counts.
+
+### Changed
+
+- `gwt-check insight` keeps `citations`, `discrepancies` and `witnesses`. The `fill` and `frontier` sections, `--archives`, `--searched` and `--csv` are gone: `fill-places` and `gwt-leads` already do that work. `discrepancies` no longer states a status (open, resolved), which could not be read safely from the words of a note, and no longer counts a file name holding `vs` or a negated «no lo contradice».
+
+### Fixed
+
+- The dated checks read a complete French Republican date as the day it falls on, instead of counting it as unread. A month-only, year-only or range date in that calendar stays unread.
+- The duplicate search in `gwt-check check` no longer slows down on a tree where many people share a common surname: it walks the shorter of the surname and given-name indexes. On an invented 20,000-person tree the checks went from 22 s to under 2 s; findings are unchanged.
+- `gwt-check check` lists findings in the same order on every run (it depended on the hash seed).
+- `gwt-check cites` and `links` read text about a quarter faster on a large tree: accent folding is cached per character with a plain-ASCII shortcut, and the act-word patterns are compiled once. Same output (measured on an invented 20,000-person tree: cites 2.65 s to 1.95 s, links 3.07 s to 2.27 s, median of 5).
+- `gwt-check` reports `note-marker-no-tag`: a note that says «hipótesis» or «homónimo» without the tag of that name, in a tree that has such a tag. A note that says the hypothesis was discarded, replaced or refuted is not reported.
+
+
+- `gwt-check repos --classify` sorts the sources with no repository by what they name (a repository the tree has, another institution, nothing), with the institutions grouped so one new repository can serve many sources. It only reports.
 
 ## [0.2.3] - 2026-10-26
 
