@@ -20,7 +20,7 @@ None.
 - `gwt-check republican` recomputes the Republican-to-Gregorian conversions written in notes, citation pages and event descriptions and lists the ones that differ; it exits 1 when one does.
 - `python -m gwt_check.synth N out.json.gz` writes an invented tree of N people for scale tests.
 - `python -m gwt_check.scale` runs every offline command on an invented tree and on a real dump side by side (time, memory, exit code, summary line); the real dump is only read.
-- `gwt-check check` reports `dup-media`: two media objects with the same checksum or the same path.
+- `gwt-check check` reports `dup-media`: two media objects with the same checksum, the same file entered twice.
 - `loadtest/` holds a script that runs the toolkit against a disposable Gramps Web tree named `LoadTest` in a memory-capped container and records timings, peak memory and request counts.
 
 ### Fixed
@@ -30,6 +30,9 @@ None.
 - `gwt-check check` lists findings in the same order on every run (it depended on the hash seed).
 - `gwt-check cites` and `links` read text about a quarter faster on a large tree: accent folding is cached per character with a plain-ASCII shortcut, and the act-word patterns are compiled once. Same output (measured on an invented 20,000-person tree: cites 2.65 s to 1.95 s, links 3.07 s to 2.27 s, median of 5).
 - `gwt-check` reports `note-marker-no-tag`: a note that says «hipótesis» or «homónimo» without the tag of that name, in a tree that has such a tag.
+
+
+- `gwt-check repos --classify` sorts the sources with no repository by what they name (a repository the tree has, another institution, nothing), with the institutions grouped so one new repository can serve many sources. It only reports.
 
 ## [0.2.3] - 2026-10-26
 

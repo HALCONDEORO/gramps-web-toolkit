@@ -316,9 +316,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--type", dest="rtype", help="repository type, e.g. Archive")
     p.add_argument("--unlinked", action="store_true", help="also list sources with no repository and repositories no source lists")
     p.add_argument("--json", action="store_true", help="print the result as JSON")
-    p.add_argument("--limit", type=int, default=30, help="sources listed with --unlinked or --suggest (default 30)")
+    p.add_argument("--limit", type=int, default=30, help="sources listed with --unlinked, --suggest or --classify (default 30)")
     p.add_argument("--suggest", action="store_true", help="instead of the list: for each source with no repository, the one repository its publication info starts with; proposals only")
     p.add_argument("--ops", metavar="FILE", help="with --suggest, also write the proposals to a new file as gwt-apply link_repository ops with an empty ruling")
+    p.add_argument("--classify", action="store_true", help="instead of the list: sort the sources with no repository by what their own text names (a repository the tree has, another institution, nothing)")
     live_opts(p)
 
     p = sub.add_parser("fill-places", help="for each event with no place, the place its own citations name, with the quote; proposals only")
@@ -474,9 +475,22 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.cmd == "repos":
             from .repos import print_repository_report, repository_report
+            if args.classify and (args.name or args.rtype or args.unlinked):
+                raise BadInput("--classify stands alone; it takes no --name, --type or --unlinked")
             tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
             if tree.partial:
                 raise BadInput(f"{tree.source}: a .gramps backup has no repository details; use a dump")
+            if args.classify and args.suggest:
+                raise BadInput("--classify and --suggest are two different reports; pick one")
+            if args.classify:
+                from .repos import classify_repositories, print_classification
+                rep = classify_repositories(tree)
+                if args.json:
+                    json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)
+                    print()
+                else:
+                    print_classification(rep, args.limit)
+                return 0
             if args.suggest:
                 from .repos import print_suggestions, suggest_links, write_link_ops
                 rep = suggest_links(tree)

@@ -76,7 +76,7 @@ It trusts the stamps for everything else. A change that reaches the database wit
 | `--pagesize`, `--workers` | Objects per request (default 1000) and requests in flight (default 4) |
 | `--live` | The old strict read of the live tree, which stops when the tree changes during it |
 
-**Scope.** The structural and dated checks always run on the whole tree. The fuzzy duplicate checks (`dup-couple-names`, `dup-person-birth`, `dup-person-relative`, `dup-person-fuzzy`, `dup-vital-event`, `dup-citation`) report a pair only when at least one side is in scope, so a run is not blamed for duplicates that were already there. Without `--since` or `--tag`, everything is in scope.
+**Scope.** The structural and dated checks always run on the whole tree. The scoped duplicate checks (`dup-couple-names`, `dup-person-birth`, `dup-person-relative`, `dup-person-fuzzy`, `dup-vital-event`, `dup-citation`, `dup-media`) report a group only when at least one member is in scope, so a run is not blamed for duplicates that were already there. Without `--since` or `--tag`, everything is in scope.
 
 **Reasons.** Rows of a known file may carry a `reason`, and the report prints it (`known N0099: kept on purpose`). `gwt-check mark-known REPORT.json --check NAME --key KEY [--key KEY ...] --reason "..." --out known.json` adds findings of a report to a known file with the reason; it refuses a key the report does not have and a blank reason, and adding one twice changes nothing.
 
@@ -187,6 +187,9 @@ gwt-check repos dump.json.gz --json                   # repositories with their 
 
 `--suggest` goes one step further and, for each source with no repository, names the one repository its publication info starts with (compared like people's names). A source that names no repository, or more than one, is left out. `--ops FILE` also writes the proposals as `link_repository` ops with an empty ruling: `gwt-apply` refuses the file until someone has read each source and written the ruling, and an existing file is never replaced.
 
+
+`--classify` stands alone and only reports. It sorts the sources with no repository by what their own title, author and publication info say: sources that name a repository the tree has (by its name as whole words or by its web host; a letter or a request to an archive can name it without being kept there, so read each one before linking), institutions named that are not a repository of the tree (grouped, so one new repository can serve many sources; the opening words are in one table, `INSTITUTION_WORDS` in `gwt_check/repos.py`), and sources that name no institution. An institution's name runs from its opening word to the first comma, colon, semicolon, bracket or dash, and a web address never counts as one. Nothing is written; link with `link_repository` in [`gwt-apply`](apply.md).
+
 ## The checks
 
 | Check | Fires on |
@@ -208,8 +211,9 @@ gwt-check repos dump.json.gz --json                   # repositories with their 
 | `dup-vital-event` | One person (role `Primary`) or family (role `Family`) with two Birth, Death, Baptism, Burial or Marriage events |
 | `living-media-sensitive` | Media of a person with no death or burial event of their own (role `Primary`) who was born within 110 years (or has no dated birth), whose path, description or attributes hold an ID number or an ID or address word. Media already private (the person, the media or the reference) is skipped. It reads metadata only, never the image or its notes, and never prints the match. The patterns are Spanish-first: a DNI or NIE counts only with the right check letter, and the words are passport, home-address and ID-card terms in Spanish, English and French, plus `c/` before a street name. Another country adds its ID number to `ID_NUMBERS` and its words to `ID_WORDS` in `check/gwt_check/checks.py`. Accept a false positive with `--known` |
 | `private` | Any object or sub-reference marked private |
-| `dup-media` | Two media objects with the same file: the same checksum (a copy under another name) or the exact same path (compared letter for letter) |
+| `dup-media` | Two media objects with the same file: the same checksum |
 | `dup-repository` | Two repositories with the same name, compared like people's names (below) |
+| `dup-media` | Two media objects with the same checksum: the same file entered twice, often under another name. A media object whose file was never read has no checksum and is left out. A page scanned twice is two different files and is not found |
 | `dup-citation` | For information only. Two or more citations of one source with the same page text, ignoring case and repeated spaces (`folio 12v` and `folio 12` are different pages). Usually one record entered twice; merge them, or keep both with `--known` when they cite different entries on one page |
 | `place-no-coords` | A place that an event uses, without latitude or longitude |
 | `place-vs-description` | An event whose description names another place of the tree (whole words, accents and case ignored, names under 4 letters skipped) and does not name its own place or one enclosing it. Typical cause: an import that attached the wrong place to a described event. Naming both is fine. It reads the description only, never citations or notes, and it is not limited by `--since` (like `place-no-coords`). Accept a false positive with `--known` |
