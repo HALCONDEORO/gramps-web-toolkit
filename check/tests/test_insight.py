@@ -3,7 +3,7 @@ import json
 import pytest
 
 from gwt_check.cli import main
-from gwt_check.insight import discrepancies_report, citations_report, fill_report, frontier_report, insight, parse_citation, witnesses_report
+from gwt_check.insight import discrepancies_report, citations_report, insight, parse_citation, witnesses_report
 from gwt_check.tree import Tree
 
 
@@ -63,42 +63,15 @@ def test_year_outside_event_only_compares_the_same_kind_of_act():
     assert [(o["citation"], o["text_year"]) for o in odd] == [("C1", 1907)]  # the matrimony and the margin note are not birth acts
 
 
-def test_discrepancies_list_the_owner_the_citations_and_what_is_settled():
+def test_discrepancies_list_the_owner_and_the_citations_and_guess_no_status():
     d = base()
     d["notes"] = [note("n1", "N1", "DISCREPANCIA: DNI 1923, libro 1922 (C000999)"), note("n2", "N2", "Conflict was resolved"), note("n3", "N3", "plain"), note("n4", "N4", "date differs by a year; se conserva la fecha civil")]
     d["citations"] = [cit("c1", "C1", "p", notes=["n1", "n2", "n3", "n4"])]
     r = discrepancies_report(Tree(d))
-    assert (r["notes_with_a_conflict_marker"], r["open"], r["one reading kept"], r["resolved"]) == (3, 1, 1, 1)
+    assert r["notes_with_a_conflict_marker"] == 3
     first = r["items"][0]
-    assert first["note"] == "N1" and first["on"] == ["C1"] and first["citations_named"] == ["C000999"] and first["status"] == "open"
-    assert [i["status"] for i in r["items"]] == ["open", "one reading kept", "resolved"]
-
-
-def test_fill_proposes_a_place_only_when_the_citation_names_exactly_one():
-    d = base()
-    d["notes"] = [note("n1", "N1", "Valor afirmado: acta del 09/07/1807 (Lowtown): nace Ann")]
-    d["citations"] = [cit("c1", "C1", "acte n°8", notes=["n1"]), cit("c2", "C2", "Lowtown and Highfield")]
-    d["events"] = [event("e1", "E1", "Birth", cites=["c1"]), event("e2", "E2", "Birth", cites=["c2"]), event("e3", "E3", "Death", date(1900), "pl1")]
-    r = fill_report(Tree(d))
-    assert r["events_without_place"] == 2 and r["events_without_readable_date"] == 2
-    one = [p for p in r["place_proposals"] if p["event"] == "E1"][0]
-    assert one["place"] == "L1" and "Lowtown" in one["quote"]
-    assert [p for p in r["place_proposals"] if p["event"] == "E2"][0]["ambiguous"] == ["Highfield", "Lowtown"]
-    assert r["date_proposals"] == [{"event": "E1", "kind": "birth", "date": "1807-07-09", "quote": r["date_proposals"][0]["quote"]}]
-    assert "09/07/1807" in r["date_proposals"][0]["quote"]
-
-
-def test_frontier_orders_by_workability_and_leaves_out_the_possibly_living():
-    d = base()
-    d["events"] = [event("b1", "E1", "Birth", date(1850), "pl1"), event("b2", "E2", "Birth", date(1970)), event("b3", "E3", "Birth", date(1860), "pl2")]
-    d["notes"] = [note("n1", "N1", "negativo: no hallada en 1860")]
-    d["people"] = [person("p1", "P1", ["b1"], cites=["c"]), person("p2", "P2", ["b2"]), person("p3", "P3", ["b3"], notes=["n1"]),
-                   person("p4", "P4"), person("p5", "P5", ["b1"], parents=["f"])]
-    r = frontier_report(Tree(d))
-    assert r["skipped_possibly_living"] == 1 and [x["person"] for x in r["ordered"]] == ["P1", "P3", "P4"]
-    assert "a note records a negative search" in r["ordered"][1]["why"]
-    r2 = frontier_report(Tree(d), {"Lowtown": {"from": 1800, "to": 1900, "online": True}})
-    assert r2["ordered"][0]["person"] == "P1" and "records online there" in r2["ordered"][0]["why"]
+    assert first["note"] == "N1" and first["on"] == ["C1"] and first["citations_named"] == ["C000999"]
+    assert all("status" not in i for i in r["items"])  # whether a conflict is still open is never read from its words
 
 
 def test_witnesses_report_recurring_names_without_calling_them_relatives():
@@ -124,33 +97,7 @@ def test_the_command_reads_a_dump_and_writes_nothing(tmp_path, capsys):
     assert main(["insight", str(path), "--only", "nope"]) == 2
     assert main(["insight", str(path)]) == 0
     assert "== witnesses" in capsys.readouterr().out
-    assert set(insight(Tree(d))) == {"citations", "discrepancies", "fill", "frontier", "witnesses"}
-
-
-def test_frontier_says_when_it_is_partial_and_the_terminal_repeats_every_caveat(tmp_path, capsys):
-    d = base()
-    d["people"] = [person("p4", "P4")]
-    path = tmp_path / "dump.json"
-    path.write_text(json.dumps({"objects": d}))
-    assert frontier_report(Tree(d))["archives_given"] is False
-    assert "PARTIAL" in frontier_report(Tree(d))["note"]
-    assert frontier_report(Tree(d), {"Lowtown": {"from": 1, "to": 2, "online": True}})["archives_given"] is True
-    assert main(["insight", str(path)]) == 0
-    out = capsys.readouterr().out
-    for word in ("PARTIAL", "HEURISTIC", "possible mismatches to review", "a witness is not a relative", "proposal quotes"):
-        assert word in out
-
-
-def test_frontier_filter_is_a_birth_year_after_1925_with_no_death_event():
-    d = base()
-    d["events"] = [event("b1", "E1", "Birth", date(1960)), event("b2", "E2", "Birth", date(1960)), event("d2", "E3", "Death"),
-                   event("b3", "E4", "Birth", date(1930)), event("d3", "E5", "Death", date(1990))]
-    d["people"] = [person("p1", "P1", ["b1"]), person("p2", "P2", ["b2", "d2"]), person("p3", "P3", ["b3", "d3"]), person("p4", "P4")]
-    r = frontier_report(Tree(d))
-    # P1: born 1960, no death event: left out. P2: a death event with no date counts as a death event: kept.
-    # P3: born 1930 and died: kept. P4: no birth year at all: kept.
-    assert sorted(x["person"] for x in r["ordered"]) == ["P2", "P3", "P4"] and r["skipped_possibly_living"] == 1
-    assert "no death event" in r["note"] and "no birth year are kept" in r["note"]
+    assert set(insight(Tree(d))) == {"citations", "discrepancies", "witnesses"}
 
 
 def test_a_childs_act_backing_a_parents_event_is_only_a_possible_mismatch():
@@ -202,87 +149,10 @@ def test_mismatches_print_before_duplicate_groups(capsys):
     assert out.index("possible mismatch") < out.index("same act 9/1800")
 
 
-def test_frontier_shows_when_a_person_was_last_searched(tmp_path):
-    from gwt_check.insight import read_searched
-    d = base()
-    d["people"] = [named(person("p1", "P1"), "Ana", "Test"), named(person("p2", "P2"), "Beto", "Probe")]
-    led = tmp_path / "buscado.tsv"
-    led.write_text("person_key\tperson_label\tsource\tquery\tdate\tresult\tevidence\tagent\tnext_date\n"
-                   "p1\tAna Test\tfs\tq1\t2026-10-01\tnone\t\ta\t\n"
-                   "ana-test\t\tgeneanet\tq2\t2026-10-20\thit\t\ta\t\n", encoding="utf-8")
-    r = frontier_report(Tree(d), None, read_searched(str(led)))
-    by = {x["person"]: x["last_searched"] for x in r["ordered"]}
-    assert by["P1"] == {"date": "2026-10-20", "result": "hit", "source": "geneanet", "searches": 2} and by["P2"] is None
-    assert all("last_searched" not in x for x in frontier_report(Tree(d))["ordered"])
-
-
-def test_csv_writes_proposals_with_an_empty_decision_column_and_never_replaces_a_file(tmp_path):
-    import csv as _csv
-    d = base()
-    d["citations"] = [cit("c1", "C1", "Acte n°7/1850 Lowtown, le 03/05/1850 =cmd")]
-    d["events"] = [event("e1", "E1", "Birth", cites=["c1"])]
-    path = tmp_path / "p.csv"
-    dump = tmp_path / "d.json"
-    dump.write_text(json.dumps({"objects": d}))
-    assert main(["insight", str(dump), "--only", "fill", "--csv", str(path)]) == 0
-    rows = list(_csv.reader(open(path, encoding="utf-8-sig")))
-    assert rows[0][-1] == "decision" and {r[2] for r in rows[1:]} == {"place", "date"} and all(r[-1] == "" for r in rows[1:])
-    assert main(["insight", str(dump), "--only", "fill", "--csv", str(path)]) == 2  # exists: refused
-    assert main(["insight", str(dump), "--only", "citations", "--csv", str(tmp_path / "q.csv")]) == 2
-    from gwt_check.insight import _cell
-    assert _cell("=1+1") == "'=1+1" and _cell("plain") == "plain"
-
-
-@pytest.mark.parametrize("text", ["31/02/1850", "29/02/1850", "31/04/1850", "00/01/1850", "01/13/1850"])
-def test_impossible_calendar_dates_never_proposed(text):
-    d = base(); d["citations"] = [cit("c", "C1", text)]
-    d["events"] = [event("e", "E1", "Birth", cites=["c"])]
-    r = fill_report(Tree(d))
-    assert r["date_proposals"] == [] and r["invalid_date_candidates"] == 1
-
-@pytest.mark.parametrize("text,want", [("29/02/1848", "1848-02-29"), ("28/02/1850", "1850-02-28")])
-def test_valid_calendar_dates_still_proposed(text, want):
-    d = base(); d["citations"] = [cit("c", "C1", text)]
-    d["events"] = [event("e", "E1", "Birth", cites=["c"])]
-    assert fill_report(Tree(d))["date_proposals"][0]["date"] == want
-
-@pytest.mark.parametrize("text", [
-    "Conflict not resolved: still waiting for the original record.",
-    "Conflicto no resuelto: esperando el documento original.",
-    "Discrepancia sin resolver; se conserva la fecha civil.",
-    "Conflict unresolved; preferred reading remains.",
-    "Conflict isn't resolved.", "Conflicto aún no zanjado.",
-    "Conflict resolved? Not yet.", "Conflicto resuelto anteriormente; pendiente revisar.",
+@pytest.mark.parametrize("text,found", [
+    ("foto-acta-vs-copia.png", False), ("Edad no coincide con el bautismo", True),
+    ("Bautismo vs. censo: la edad difiere", True), ("Conflicto: resuelto, sin dudas", True), ("la nota no lo contradice", False),
 ])
-def test_negative_or_pending_resolution_stays_open(text):
+def test_discrepancies_find_a_conflict_word_not_a_file_name_or_a_negated_phrase(text, found):
     d = base(); d["notes"] = [note("n", "N1", text)]
-    assert discrepancies_report(Tree(d))["items"][0]["status"] == "open"
-
-
-@pytest.mark.parametrize("text", [
-    "Conflict cannot be resolved without the original record.",
-    "Conflict remains to be resolved.",
-    "Conflicto debe ser resuelto mediante el acta original.",
-    "Conflict will be resolved.", "Conflict must be resolved.",
-    "Conflict may be resolved if the original arrives.",
-    "Conflict would be resolved with another record.",
-    "Conflicto será resuelto.", "Conflicto se resolverá.",
-    "Discrepancia podría ser resuelta.", "Conflicto por resolver.",
-    "Conflict resolved if the record agrees.",
-    "Conflict resolved after we obtain the act.",
-    "If the act arrives: Conflict resolved.", "¿Conflicto resuelto?",
-    "Conflict: resolved?", "Discrepancia: si llega el acta; resuelta.",
-    "Conflict to be resolved; preferred reading retained.",
-])
-def test_only_positive_completed_closure_not_modal_word_match(text):
-    d = base(); d["notes"] = [note("n", "N1", text)]
-    assert discrepancies_report(Tree(d))["items"][0]["status"] != "resolved"
-
-@pytest.mark.parametrize("text", [
-    "Conflict was resolved.", "Conflict has been resolved.", "Conflict resolved.",
-    "Conflicto fue resuelto.", "Discrepancia ha sido resuelta.",
-    "Discrepancia: resuelta.", "Conflict: settled.",
-])
-def test_exact_positive_completed_closure(text):
-    d = base(); d["notes"] = [note("n", "N1", text)]
-    assert discrepancies_report(Tree(d))["items"][0]["status"] == "resolved"
+    assert bool(discrepancies_report(Tree(d))["items"]) is found

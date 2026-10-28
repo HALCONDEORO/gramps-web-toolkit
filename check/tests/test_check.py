@@ -1386,6 +1386,21 @@ def test_note_marker_needs_the_whole_word():
     assert not found("antihipotesis inventada")
 
 
+def test_note_marker_skips_a_note_that_discards_or_replaces_the_hypothesis():
+    def found(text):
+        d = selftest.clean_tree()
+        selftest.p_note_marker_no_tag(d)
+        next(n for n in d["notes"] if n["gramps_id"] == "N0098")["text"]["string"] = text
+        return bool([f for f in checks.run_checks(Tree(d))[0] if f["check"] == "note-marker-no-tag"])
+
+    assert found("Hipótesis: es el hermano (?)")
+    assert not found("Hipótesis descartada: el acta nombra a otro padre")
+    assert not found("La hipótesis quedó superada por el acta de 1851")
+    assert not found("Homónimo refutado con el acta")
+    assert not found("Hipotesis sustituida por la nota N0100")
+    assert found("Hipótesis sin descartar todavía")   # "sin descartar" does not discard it
+
+
 def test_note_marker_tag_name_needs_the_whole_word():
     d = selftest.clean_tree()
     selftest.p_note_marker_no_tag(d)

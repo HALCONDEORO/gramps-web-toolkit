@@ -101,6 +101,8 @@ INFO_CHECKS = {"unconnected", "parent-age", "marriage-age", "sibling-spacing", "
 
 # words in a note that a tag of the same stem is meant to mark; matched without accents, whole word
 NOTE_MARKERS = ("hipotesis", "homonimo")
+# a note that says the hypothesis was discarded or replaced no longer needs its tag
+NOTE_DISCARDED = re.compile(r"(?<!sin )\b(?:descartad[oa]s?|refutad[oa]s?|superad[oa]s?|sustituid[oa]s?|desmentid[oa]s?)\b")
 
 # limits of the dated checks
 POSTHUMOUS_DAYS = 300                       # a child can be born this long after the father's death
@@ -620,7 +622,7 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
                 continue
             text = n.get("text")
             text = text.get("string", "") if isinstance(text, dict) else str(text or "")
-            if word.search(fold(text)):
+            if word.search(fold(text)) and not NOTE_DISCARDED.search(fold(text)):
                 out.add("note-marker-no-tag", f"{n['gramps_id']} {stem}")
 
     # family components: people joined by a family as father, mother or child. Godparents, witnesses and

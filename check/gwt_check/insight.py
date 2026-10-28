@@ -2,15 +2,12 @@
 
 It proves nothing and decides nothing. The output quotes citations and notes of the tree, so it is as private as the tree.
 
-Five readings of a dump, none of which writes anything or decides a fact:
+Three readings of a dump, none of which writes anything or decides a fact:
 
 - citations:     the act number, image, year and link hidden in each citation's free text, acts that several citations draw on,
                  and citations whose act year differs from the event they back (a possible mismatch to review)
-- discrepancies: the conflicts a researcher wrote into notes, listed with the object they sit on and the
-                 citations they name, so each one can be closed when the missing document arrives
-- fill:          events with no place or no date, with the passage of their own citations that may hold it
-                 (a proposal with the quote next to it, never a change)
-- frontier:      people without recorded parents, ordered by how workable the search is
+- discrepancies: the notes that hold a conflict word, listed with the object they sit on, the citations they name
+                 and the quote. Whether one is still open is not guessed from its words
 - witnesses:     names transcribed as witnesses or godparents, and the names that recur in separate acts
                  (a lead to check the transcription against, never a relationship)
 
@@ -19,7 +16,6 @@ Every finding quotes the text it came from. A reading that cannot be made safely
 
 from __future__ import annotations
 
-import csv
 import datetime
 import json
 import re
@@ -29,26 +25,15 @@ from .checks import norm, person_name
 from .dates import BIRTH, BAPTISM, DEATH, MARRIAGE, kind, span
 from .tree import Tree
 
-SECTIONS = ("citations", "discrepancies", "fill", "frontier", "witnesses")
-BORN_AFTER = 1925  # outside searches skip anyone born after this year without a death date
+SECTIONS = ("citations", "discrepancies", "witnesses")
 
 _ACT = re.compile(r"\b(?:acte|acta|act|n[°º]|no\.?)\s*(?:n[°º]\s*)?(\d+)", re.I)
 _IMAGE = re.compile(r"\b(?:media|imagen|image|vue|vista|view|scan|folio|p[aá]gina|page)\s*(\d+(?:\s*[-/]\s*\d+)?)", re.I)
 _YEAR = re.compile(r"\b(1[4-9]\d\d)\b")
 _URL = re.compile(r"https?://[^\s|)\]]+")
 _CITE_ID = re.compile(r"\bC\d{4,6}\b")
-_DISCREPANCY = re.compile(r"discrepan|diverg|difiere|differ|contradic|conflict|\bvs\.?\b|≠|no coincide|disagree", re.I)
-# A closure is an exact affirmative past/completed clause, never a word anywhere in prose.
-_CLOSED_CLAUSE = re.compile(r"(?:(?:conflict|discrepancy)(?:\s*:\s*| )(?:was |has been )?(?:resolved|settled)|(?:conflicto|discrepancia)(?:\s*:\s*| )(?:fue |ha sido )?(?:resuelt[ao]|zanjad[ao])|resolved|settled|resuelt[ao]|zanjad[ao])", re.I)
+_DISCREPANCY = re.compile(r"discrepan|diverg|difiere|differ|(?<!no lo )(?<!no )(?<!not )contradic|conflict|(?<![\w.-])vs\.?(?![\w.-])|≠|no coincide|disagree", re.I)
 
-def _closed(text):
-    if _UNRESOLVED.search(text):
-        return False
-    # Entire note must be an affirmative completed assertion. Any other prose stays open.
-    # Questions, semicolons and embedded condition clauses are deliberately not stripped.
-    return bool(_CLOSED_CLAUSE.fullmatch(text.strip().rstrip(".").strip()))
-_UNRESOLVED = re.compile(r"\b(?:unresolved|unsettled|not|never|no|sin|pendiente|pending|waiting|esperando|todav[ií]a|a[uú]n)\b|\b(?:isn|wasn|hasn|haven)[’']t\b", re.I)
-_KEPT = re.compile(r"se conserva|se mantiene|canónic|canonic|retained|we keep|kept as|preferred reading|se prefiere|se adopta", re.I)
 _NEGATIVE = re.compile(r"negativ|no hallad|not found|sin resultado|aucun r[ée]sultat|ningún", re.I)
 _WITNESS = re.compile(r"(?:t[ée]moins?|testigos?|witnesses|parrains?|padrinos?|godparents?)\s*:?\s*", re.I)
 _PERSON = re.compile(r"([A-ZÁÉÍÓÚÑÀ-Ý][\wÀ-ÿ'’-]+(?:\s+[A-ZÁÉÍÓÚÑÀ-Ý][\wÀ-ÿ'’-]+){1,3})\s*\((\d{1,3})\s*(?:a[ñn]os?|ans?|years?|,|\))")
@@ -171,129 +156,11 @@ def discrepancies_report(tree: Tree) -> dict:
         found.append({
             "note": tree.gid("notes", h),
             "on": sorted(tree.gid(t, oh) for t, oh in owners.get(h, [])),
-            "status": "open" if _UNRESOLVED.search(text) else "resolved" if _closed(text) else "one reading kept" if _KEPT.search(text) else "open",
             "citations_named": sorted(set(_CITE_ID.findall(text)))[:8],
             "quote": _snip(text, m.start(), 160),
         })
-    count = {k: sum(1 for f in found if f["status"] == k) for k in ("open", "one reading kept", "resolved")}
-    return {"notes_with_a_conflict_marker": len(found), **count, "items": sorted(found, key=lambda f: ({"open": 0, "one reading kept": 1}.get(f["status"], 2), f["note"])),
-            "note": "HEURISTIC: the status is read from words in the note, not proven: resolved (the note says so), one reading kept (it names a reading it keeps, the other is not necessarily closed), open (neither). Read the quote"}
-
-
-def fill_report(tree: Tree) -> dict:
-    places = {h: p for h, p in tree.objs["places"].items()}
-
-    def pname(p: dict) -> str:
-        n = p.get("name")
-        return ((n.get("value") if isinstance(n, dict) else n) or p.get("title") or "").strip()
-
-    names = {h: pname(p) for h, p in places.items() if len(pname(p)) >= 4}
-    out_place, out_date = [], []
-    no_place = no_date = invalid_dates = 0
-    for h, e in tree.objs["events"].items():
-        text = ""
-        for ch in e.get("citation_list") or []:
-            c = tree.objs["citations"].get(ch)
-            if c:
-                text += "\n" + (c.get("page") or "") + "\n" + _cite_notes(tree, c)
-        gid = tree.gid("events", h)
-        if not e.get("place"):
-            no_place += 1
-            hits = {ph: m for ph, nm in names.items() if (m := re.search(rf"\b{re.escape(nm)}\b", text, re.I))}
-            if len(hits) == 1:
-                ph, m = next(iter(hits.items()))
-                out_place.append({"event": gid, "kind": kind(e.get("type")), "place": tree.gid("places", ph), "name": names[ph],
-                                  "quote": _snip(text, m.start(), 110)})
-            elif hits:
-                out_place.append({"event": gid, "kind": kind(e.get("type")), "ambiguous": sorted(names[p] for p in hits)})
-        if not span(e.get("date")):
-            no_date += 1
-            dates = {m[0]: m for m in _FULL_DATE.finditer(text)}
-            if len(dates) == 1:
-                m = next(iter(dates.values()))
-                try:
-                    candidate = datetime.date(int(m[3]), int(m[2]), int(m[1])).isoformat()
-                except ValueError:
-                    invalid_dates += 1
-                else:
-                    out_date.append({"event": gid, "kind": kind(e.get("type")), "date": candidate,
-                                     "quote": _snip(text, m.start(), 110)})
-    return {"events_without_place": no_place, "events_without_readable_date": no_date,
-            "place_proposals": out_place, "date_proposals": out_date, "invalid_date_candidates": invalid_dates,
-            "note": "a proposal quotes the citation text it comes from; a citation that names several people or dates can point at the wrong one"}
-
-
-def _birth(tree: Tree, person: dict):
-    idx = person.get("birth_ref_index", -1)
-    refs = person.get("event_ref_list") or []
-    ev = None
-    if isinstance(idx, int) and 0 <= idx < len(refs):
-        ev = tree.objs["events"].get(refs[idx].get("ref"))
-    if ev is None:
-        for r in refs:
-            e = tree.objs["events"].get(r.get("ref"))
-            if e and kind(e.get("type")) in BIRTH:
-                ev = e
-                break
-    return ev
-
-
-def frontier_report(tree: Tree, archives: dict | None = None, searched: dict | None = None) -> dict:
-    """People with no parents on record, most workable first. `archives` maps a place name to
-    {"from": year, "to": year, "online": bool}: what is known to be readable there."""
-    owners = _owners(tree)
-    rows, skipped = [], 0
-    for h, p in tree.objs["people"].items():
-        if p.get("parent_family_list"):
-            continue
-        ev = _birth(tree, p)
-        sp = span(ev.get("date")) if ev else None
-        year = _year_of(sp.lo) if sp else None
-        died = any(kind((tree.objs["events"].get(r.get("ref")) or {}).get("type")) in DEATH for r in p.get("event_ref_list") or [])
-        if year and year > BORN_AFTER and not died:
-            skipped += 1
-            continue
-        place = tree.objs["places"].get(ev.get("place")) if ev and ev.get("place") else None
-        pn = ""
-        if place:
-            n = place.get("name")
-            pn = ((n.get("value") if isinstance(n, dict) else n) or place.get("title") or "").strip()
-        texts = "\n".join(_text(tree.objs["notes"][n]) for n in p.get("note_list") or [] if n in tree.objs["notes"])
-        negative = bool(_NEGATIVE.search(texts))
-        score, why = 0, []
-        if year:
-            score += 2
-            why.append(f"birth year {year}")
-        if pn:
-            score += 2
-            why.append(f"birth place {pn}")
-        cites = len(p.get("citation_list") or [])
-        if cites:
-            score += min(cites, 3)
-            why.append(f"{cites} citation(s)")
-        arch = (archives or {}).get(pn) if pn else None
-        if arch and year and arch.get("from", 0) <= year <= arch.get("to", 9999):
-            score += 3 if arch.get("online") else -1
-            why.append("records online there" if arch.get("online") else "records exist but are not online")
-        if negative:
-            score -= 3
-            why.append("a note records a negative search")
-        if not year and not pn:
-            score -= 2
-            why.append("no birth date or place")
-        row = {"person": tree.gid("people", h), "score": score, "why": why}
-        if searched is not None:
-            last = _last_search(searched, tree.gid("people", h), p)
-            row["last_searched"] = last
-        rows.append(row)
-    rows.sort(key=lambda r: (-r["score"], r["person"]))
-    given = bool(archives)
-    return {"without_parents": len(rows) + skipped, "listed": len(rows), "skipped_possibly_living": skipped, "ordered": rows,
-            "archives_given": given, "searched_given": searched is not None,
-            "note": f"people with a birth year after {BORN_AFTER} and no death event are left out (people with no birth year are kept). "
-                    + ("The order uses the archives file given." if given else
-                       "PARTIAL: no --archives file, so the order ignores which records are readable and online; it uses birth year, birth place, citations and recorded negative searches only.")
-                    + " The score only orders work, it proves nothing"}
+    return {"notes_with_a_conflict_marker": len(found), "items": sorted(found, key=lambda f: f["note"]),
+            "note": "a note that holds a conflict word is listed with its quote. Whether the conflict is still open is not read from the words: a note can say 'no' or 'sin' and still close it, or say 'resuelto' about another thing. Read the quote"}
 
 
 def witnesses_report(tree: Tree) -> dict:
@@ -326,38 +193,9 @@ def witnesses_report(tree: Tree) -> dict:
             "note": "a name that recurs may be a namesake; a witness is not a relative. Check the transcription in the image before using one as a lead. association_recorded only says that a person with the same name words carries or is the target of an association in the tree: it does not say they are the same person"}
 
 
-def _slug(text: str) -> str:
-    plain = "".join(c for c in unicodedata.normalize("NFKD", text.lower()) if not unicodedata.combining(c))
-    return re.sub(r"[^0-9a-z]+", "-", plain).strip("-")
-
-
-def read_searched(path: str) -> dict:
-    """A gwt-ledger TSV (person_key, person_label, source, query, date, result, ...) -> {slug of key or label: [(date, result, source)]}."""
-    out: dict[str, list[tuple[str, str, str]]] = {}
-    with open(path, encoding="utf-8") as fh:
-        for n, line in enumerate(fh):
-            f = line.rstrip("\n").split("\t") + [""] * 9
-            if n == 0 and f[0] == "person_key":
-                continue
-            for k in {_slug(f[0]), _slug(f[1])} - {""}:
-                out.setdefault(k, []).append((f[4], f[5], f[2]))
-    return out
-
-
-def _last_search(searched: dict, gid: str, person: dict):
-    n = person.get("primary_name") or {}
-    name = " ".join([n.get("first_name", "")] + [s.get("surname", "") for s in n.get("surname_list", [])])
-    rows = sorted(set(searched.get(_slug(gid), []) + searched.get(_slug(name), [])))  # a row found by key and by label counts once
-    if not rows:
-        return None
-    d, r, src = max(rows)
-    return {"date": d, "result": r, "source": src, "searches": len(rows)}
-
-
-def insight(tree: Tree, only=None, archives: dict | None = None, searched: dict | None = None) -> dict:
+def insight(tree: Tree, only=None) -> dict:
     todo = [s for s in SECTIONS if not only or s in only]
-    fn = {"citations": citations_report, "discrepancies": discrepancies_report, "fill": fill_report,
-          "witnesses": witnesses_report, "frontier": lambda t: frontier_report(t, archives, searched)}
+    fn = {"citations": citations_report, "discrepancies": discrepancies_report, "witnesses": witnesses_report}
     return {s: fn[s](tree) for s in todo}
 
 
@@ -381,29 +219,9 @@ def print_insight(rep: dict, limit: int = 15) -> None:
         d = rep["discrepancies"]
         head("discrepancies")
         print(f"  ({d['note']})")
-        print(f"{d['notes_with_a_conflict_marker']} notes with a conflict marker: {d['open']} open, "
-              f"{d['one reading kept']} keep one reading, {d['resolved']} say resolved")
+        print(f"{d['notes_with_a_conflict_marker']} notes with a conflict marker")
         for x in d["items"][:limit]:
-            print(f"  [{x['status']}] {x['note']} on {', '.join(x['on']) or '-'}: {x['quote']}")
-    if "fill" in rep:
-        f = rep["fill"]
-        head("fill")
-        print(f"  ({f['note']})")
-        print(f"{f['events_without_place']} events without place, {f['events_without_readable_date']} without a readable date")
-        for x in f["place_proposals"][:limit]:
-            print("  " + (f"{x['event']} ({x['kind']}) place may be {x['name']} {x['place']}: {x['quote']}" if "place" in x
-                          else f"{x['event']} ({x['kind']}) several places named: {', '.join(x['ambiguous'])}"))
-        for x in f["date_proposals"][:limit]:
-            print(f"  {x['event']} ({x['kind']}) date may be {x['date']}: {x['quote']}")
-    if "frontier" in rep:
-        f = rep["frontier"]
-        head("frontier")
-        print(f"  ({f['note']})")
-        print(f"{f['without_parents']} people without parents ({f['skipped_possibly_living']} left out as possibly living)")
-        for x in f["ordered"][:limit]:
-            ls = x.get("last_searched")
-            tail = "" if "last_searched" not in x else (f"; last searched {ls['date']} ({ls['result']}, {ls['source']}, {ls['searches']} search(es))" if ls else "; not in the search ledger")
-            print(f"  {x['score']:>3} {x['person']}: {'; '.join(x['why'])}{tail}")
+            print(f"  {x['note']} on {', '.join(x['on']) or '-'}: {x['quote']}")
     if "witnesses" in rep:
         w = rep["witnesses"]
         head("witnesses")
@@ -417,36 +235,3 @@ def print_insight(rep: dict, limit: int = 15) -> None:
 
 def dumps(rep: dict) -> str:
     return json.dumps(rep, ensure_ascii=False, indent=1)
-
-
-CSV_COLUMNS = ("event", "kind", "proposal_type", "proposal", "other_places_named", "citation_text", "decision")
-
-
-def _cell(v: str) -> str:
-    """A spreadsheet reads a leading = + - @ as a formula: keep quoted text text."""
-    return "'" + v if v[:1] in ("=", "+", "-", "@") else v
-
-
-def proposals_rows(rep: dict) -> list[list[str]]:
-    f = rep["fill"]
-    rows = []
-    for x in f["place_proposals"]:
-        if "place" in x:
-            rows.append([x["event"], x["kind"], "place", f"{x['name']} ({x['place']})", "", x["quote"], ""])
-        else:
-            rows.append([x["event"], x["kind"], "place", "", "; ".join(x["ambiguous"]), "", ""])
-    for x in f["date_proposals"]:
-        rows.append([x["event"], x["kind"], "date", x["date"], "", x["quote"], ""])
-    return rows
-
-
-def write_proposals_csv(rep: dict, path: str) -> int:
-    """One row per fill proposal with an empty `decision` column to mark accept or reject. Writes only this file
-    (never the tree) and refuses to replace a file that exists. The BOM lets Excel read the accents."""
-    rows = proposals_rows(rep)
-    with open(path, "x", encoding="utf-8-sig", newline="") as fh:
-        w = csv.writer(fh)
-        w.writerow(CSV_COLUMNS)
-        for r in rows:
-            w.writerow([_cell(c) for c in r])
-    return len(rows)
