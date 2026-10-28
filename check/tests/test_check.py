@@ -1371,3 +1371,40 @@ def test_place_vs_description_survives_places_that_enclose_each_other():
     st._get(d, "events", "E0001")["description"] = "Nacimiento en Otropueblo"
     findings, _ = checks.run_checks(Tree(d))
     assert [f["key"] for f in findings if f["check"] == "place-vs-description"] == ["E0001"]
+
+def test_note_marker_no_tag_only_where_the_convention_is_used_and_not_when_tagged():
+    d = selftest.clean_tree()
+    selftest.p_note_marker_no_tag(d)
+    keys = {f["key"] for f in checks.run_checks(Tree(copy.deepcopy(d)))[0] if f["check"] == "note-marker-no-tag"}
+    assert keys == {"N0098 hipotesis"}
+    tagged = copy.deepcopy(d)
+    next(n for n in tagged["notes"] if n["gramps_id"] == "N0098")["tag_list"] = ["htag2"]
+    assert not [f for f in checks.run_checks(Tree(tagged))[0] if f["check"] == "note-marker-no-tag"]
+    no_tag = copy.deepcopy(d)
+    no_tag["tags"] = [t for t in no_tag["tags"] if t["handle"] != "htag2"]
+    assert not [f for f in checks.run_checks(Tree(no_tag))[0] if f["check"] == "note-marker-no-tag"]
+
+
+def test_note_marker_needs_the_whole_word():
+    def found(text):
+        d = selftest.clean_tree()
+        selftest.p_note_marker_no_tag(d)
+        d["tags"].append(selftest._base("", handle="htag3", name="Homonimo-sin-confirmar", color="#000000",
+                                        priority=0))
+        next(n for n in d["notes"] if n["gramps_id"] == "N0098")["text"]["string"] = text
+        return bool([f for f in checks.run_checks(Tree(d))[0] if f["check"] == "note-marker-no-tag"])
+
+    assert found("Dos hipótesis (?) y un homónimo")      # plural and singular are meant to match
+    assert found("Homónimos sin confirmar")
+    assert not found("hipotesista inventada")
+    assert not found("homonimología inventada")
+    assert not found("antihipotesis inventada")
+
+
+def test_note_marker_tag_name_needs_the_whole_word():
+    d = selftest.clean_tree()
+    selftest.p_note_marker_no_tag(d)
+    next(t for t in d["tags"] if t["handle"] == "htag2")["name"] = "Hipotesista"
+    assert not [f for f in checks.run_checks(Tree(d))[0] if f["check"] == "note-marker-no-tag"]
+    next(t for t in d["tags"] if t["handle"] == "htag2")["name"] = "hipotesis-1022"
+    assert [f for f in checks.run_checks(Tree(d))[0] if f["check"] == "note-marker-no-tag"]
