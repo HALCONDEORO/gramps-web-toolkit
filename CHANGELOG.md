@@ -29,6 +29,7 @@ None.
 - The duplicate search in `gwt-check check` no longer slows down on a tree where many people share a common surname: it walks the shorter of the surname and given-name indexes. On an invented 20,000-person tree the checks went from 22 s to under 2 s; findings are unchanged.
 - `gwt-check check` lists findings in the same order on every run (it depended on the hash seed).
 - `gwt-check cites` and `links` read text about a quarter faster on a large tree: accent folding is cached per character with a plain-ASCII shortcut, and the act-word patterns are compiled once. Same output (measured on an invented 20,000-person tree: cites 2.65 s to 1.95 s, links 3.07 s to 2.27 s, median of 5).
+- `gwt-check` reports `note-marker-no-tag`: a note that says «hipótesis» or «homónimo» without the tag of that name, in a tree that has such a tag.
 
 ## [0.2.3] - 2026-10-26
 
