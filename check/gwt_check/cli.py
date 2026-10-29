@@ -349,6 +349,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="print the result as JSON")
     live_opts(p)
 
+    p = sub.add_parser("public", help="what a guest still sees: two dumps of one tree, owner and guest; exits 1 when something leaks")
+    p.add_argument("owner", help="dump read with an owner login")
+    p.add_argument("guest", help="dump read with a guest login (same tree)")
+    p.add_argument("--json", action="store_true", help="print the result as JSON")
+    p.add_argument("--limit", type=int, default=30, help="findings printed (default 30, 0 for all)")
+
     p = sub.add_parser("republican", help="recompute the Republican-to-Gregorian conversions written in notes; exits 1 when one differs")
     p.add_argument("tree", nargs="?", help="dump file; without it the live tree is read")
     p.add_argument("--json", action="store_true", help="print the result as JSON")
@@ -399,6 +405,17 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print_act(rep, args.limit)
             return 0
+        if args.cmd == "public":
+            from .public import print_public, public_report
+            owner, guest = load(args.owner), load(args.guest)
+            if owner.partial or guest.partial:
+                raise BadInput("a .gramps backup has no private marks or texts; use dumps")
+            rep = public_report(owner, guest)
+            if args.json:
+                print(json.dumps(rep, ensure_ascii=False, indent=1))
+            else:
+                print_public(rep, args.limit or len(rep["rows"]))
+            return 1 if rep["rows"] else 0
         if args.cmd == "republican":
             from .republican import print_republican, republican_report
             tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
