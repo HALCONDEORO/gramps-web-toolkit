@@ -242,6 +242,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--retries", type=_at_least_one, default=5,
                     help="tries per op, and for the login and reads before the first op (at least 1)")
     ap.add_argument("--retry-wait", type=float, default=30.0, help="seconds after a busy server")
+    ap.add_argument("--server-backup", action="store_true",
+                    help="with --apply: ask the server to store a backup of the tree before the first write, and write "
+                    "nothing if it refuses (never restores one)")
     ap.add_argument("--break-lock", action="store_true",
                     help="take the tree's lock even if another apply's lock has not expired (only if that apply is dead)")
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -254,6 +257,8 @@ def main(argv: list[str] | None = None) -> int:
         return _revert(args, argv)
     if args.pre:
         ap.error("--pre goes with --revert")
+    if args.server_backup and not args.apply:
+        ap.error("--server-backup goes with --apply: a dry run writes nothing, so it needs no backup")
     if args.verify and (args.apply or args.save_snapshot):
         ap.error("--verify is a dry run: no --apply or --save-snapshot")
     if args.json and not args.change_list:
@@ -299,6 +304,24 @@ def main(argv: list[str] | None = None) -> int:
     _first_line(run_id, log)
     outcome: dict = {}
     return _ended(client, lambda: _run(args, argv, client, run_id, ops, snap, old, offline, outcome), outcome)
+
+
+def _server_backup(client: Client, args, lock) -> str | None:
+    """Ask the server to store a backup of the tree. None when it did, else why not. It only creates: a restore is
+    never called from here. The server deletes its oldest backup beyond the number it keeps per tree."""
+    def make():
+        r = client._request("POST", "/backups/", write=True)
+        return r
+    r = _retried("server backup", make, client, args, lock)
+    if r.status_code != 201:
+        return f"the server did not store a backup (HTTP {r.status_code}; creating one needs an owner or admin login)"
+    try:
+        info = r.json()
+    except ValueError:
+        info = {}
+    client.log(event="server-backup", id=info.get("id"), size=info.get("size"))
+    print(f"server backup stored: {info.get('id')}")
+    return None
 
 
 def _run(args, argv, client: Client, run_id: str, ops, snap, old, offline: bool, outcome: dict) -> int:
@@ -368,6 +391,13 @@ def _run(args, argv, client: Client, run_id: str, ops, snap, old, offline: bool,
             print(f"{len(problems)} likely duplicate(s); nothing was written", file=sys.stderr)
             _write_json(args.json, ops, [], "not run: the list stopped on likely duplicates")
             return 1
+        if args.server_backup:
+            refused = _server_backup(client, args, lock)
+            if refused:
+                client.log(event="refused", reason="server-backup", problems=[refused])
+                print(f"{refused}; nothing was written", file=sys.stderr)
+                _write_json(args.json, ops, [], "not run: the server backup was refused")
+                return 1
         results = Applier(client, retries=args.retries, retry_wait=args.retry_wait, lock=lock, tag=args.tag,
                           verify=args.verify).run(ops)
     except (LockHeld, ApiError) as exc:
