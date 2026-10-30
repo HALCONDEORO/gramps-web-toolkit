@@ -6,6 +6,66 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ## [Unreleased]
 
+### Fixed
+
+- `gwt-rawstore put` names the file that failed. A FAIL line now gives the path and the error type (a bare `TimeoutError()` used to print an empty line), and a last line on stderr and stdout lists every file not stored, so a log of stdout alone shows it. A transient error (network, 5xx, 429, a body that changed while it was read, an object the store did not confirm) is retried, three attempts in all with the file hashed again each time; a 403 or a missing file is not.
+
+## [0.2.12] - 2026-10-30
+
+### Change lists
+
+None. The summary line keeps its form; a run with skips prints one more line after it.
+
+### Added
+
+- `gwt-apply` `update_source` corrects a source's title. Like `update_citation`'s page, the new title needs `expect`, the title the source has now, so a source renamed since it was read is a conflict and is never overwritten; a title another source with the same author and publication info already has is a conflict too.
+- `gwt-apply` tells a no-op skip (an `update_*`, `add_tag`, `remove_tag` or `set_attribute` that found the object already as it asks) from a rerun skip: a `NOOP: <n> of <m> skip(s) ...` line after the summary, and `"noop": true` with the skip line as `reason` in `--json`. A chain that wants a first dry run with no skips can accept these and still stop on a list that already ran.
+
+## [0.2.11] - 2026-10-29
+
+### Change lists
+
+None.
+
+### Added
+
+- `gwt-read boe search`: a name in the text of the Gaceta de Madrid and the BOE (https://www.boe.es/buscar/gazeta.php, text search 1836-1959), over plain HTTP. Each hit becomes a candidate of role `mention`, never a principal, so `gwt-rank` keeps it at `weak`. The phrase is sent in quotes; own gate (one request every 6 s, never faster), 7-day cache for searches and 90-day for PDFs (`BOE_RULES`); a page that is not a results page (search form, captcha) is a STOP. `--from`/`--to` narrow the dates, `--pages` reads up to 5 pages, `--near` marks rows without hiding any. `--born` marks an act published before the birth or over 100 years after it; `--pdf-context N` reads the PDF of the first N plausible hits with `pdftotext`, from the `/gazeta/dias/` path robots.txt allows, adds the words around the whole name and, with `--parents`, compares the parents the act writes with the tree's. Every act gets a verdict (`excluded`, `consistent`, `open`).
+
+## [0.2.10] - 2026-10-29
+
+### Change lists
+
+None.
+
+### Added
+
+- `gwt-read genae search`: name search on Genae (https://genae.org), the volunteer index of parish baptisms, marriages and burials of the Region of Murcia and nearby villages of Albacete, Alicante, Almería and Granada. It reads the baptism, groom, bride and burial blocks over plain HTTP and writes one candidates file `gwt-rank` ranks. Own gate (one request every 20 s at best), 7-day cache (`GENAE_RULES`), phonetic rows marked, a block cut at the site's page size flagged, and a page that is not the block asked for (empty frame, search form, captcha) is a STOP; a block the site says has no indexed books is zero rows.
+
+## [0.2.9] - 2026-10-29
+
+### Change lists
+
+None.
+
+### Added
+
+- `gwt-check public OWNER GUEST`: compares a dump read with an owner login and one read with a guest login, and reports what a guest still sees: a private object, a visible object that points at a private one, a private person's name in a visible text, a possibly living person with a recent dated birth or baptism. IDs and kinds only. Exits 1 when the server shows a guest something private; possibly living people are listed but do not set the exit code. Read-only.
+
+## [0.2.8] - 2026-10-29
+
+### Change lists
+
+None.
+
+### Added
+
+- `gwt-apply` `remove_tag` takes one tag off an object the tree already has, for example a weak mark once a document proves the fact. The tag stays in the tree; a name the tree has no tag for is a conflict.
+- `gwt-apply` `move_event` moves an event reference, with its citations and notes, from one person or family to another; a move between a person and a family swaps the roles `Primary` and `Family`, and `role` sets another one. It writes the new owner first, so a stop in between leaves the event on both and a rerun finishes the move, and it keeps each person's birth and death indexes on the right events.
+
+### Fixed
+
+- `gwt-check check` `place-vs-description` no longer counts a place name that is a given name or surname of someone on the event, or that follows words saying where someone is from or lives («natural de», «vecino de», «domicilié à», «de la commune de», a clause opening with «de» after a comma or quote mark, not after an abbreviation dot such as «parr.»). On a residence those words still count, because there they name the event's place. On one real tree this halved the findings; none of the dropped events that were read had happened elsewhere. «Parroquia de Otropueblo», «en la casa de Otropueblo» and «murió en su domicilio de Otropueblo» still count.
+
 ## [0.2.7] - 2026-10-28
 
 ### Change lists

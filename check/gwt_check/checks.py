@@ -74,7 +74,8 @@ CHECKS = {
     "private": "object or sub-reference marked private",
     "place-no-coords": "place used by an event without coordinates",
     "place-vs-description": "an event whose description names another place of the tree and not its own place "
-                            "(or one enclosing it)",
+                            "(or one enclosing it), not as a name of someone on the event or as where someone is "
+                            "from or lives",
     "surname-marker": "surname with a « [ » marker",
     "note-marker-no-tag": "note whose text says «hipótesis» or «homónimo» but lacks the tag of that name, in a "
                           "tree that has such a tag",
@@ -115,6 +116,16 @@ NOTE_DISCARDED_BEFORE = re.compile(rf"\b{_DISCARD}{_SEP}{_GAP}$")
 NOTE_MARKERS = ("hipotesis", "homonimo")
 # a note that says the hypothesis was discarded or replaced no longer needs its tag
 NOTE_DISCARDED = re.compile(r"(?<!sin )\b(?:descartad[oa]s?|refutad[oa]s?|superad[oa]s?|sustituid[oa]s?|desmentid[oa]s?)\b")
+
+# place-vs-description: a place named as where a person comes from or lives, not where the event happened.
+# Words that open such a phrase («natural de», «vecino del lugar de», «domicilié à»), compared by their start
+# («vecino», «domiciliado»; never «vecindad» or «domicilio», as in «murió en su domicilio de X»)
+ORIGIN_WORDS = ("natural", "vecino", "vecina", "vezino", "vezina", "residente", "domicilie", "domiciliad",
+                "demeurant", "originaire", "habitant")
+# words that may stand between such a word, or a «de» that opens the clause, and the place name
+ORIGIN_FILLER = {"de", "del", "d", "la", "el", "l", "lugar", "villa", "ciudad", "commune", "en", "a", "au"}
+# marks after which a «de» opens a clause («Juan, de Otropueblo»); a dot is not one, it may end «parr.» or «Sra.»
+ORIGIN_CLAUSE_BREAK = {",", ";", ":", "(", "«", "»", '"', "“", "”"}
 
 # limits of the dated checks
 POSTHUMOUS_DAYS = 300                       # a child can be born this long after the father's death
@@ -166,6 +177,21 @@ def norm(s: str) -> str:
     s = "".join(c for c in unicodedata.normalize("NFD", s.lower()) if unicodedata.category(c) != "Mn")
     s = f" {' '.join(s.split())} ".replace(" de ", " ").replace("y", "i").replace("b", "v")
     return " ".join(s.split())
+
+
+def possibly_living(p: dict, events: dict, this_year: int, *, undated: bool = True) -> bool:
+    """No death or burial of their own, and a birth or baptism of their own less than LIVING_YEARS ago. A person
+    with no dated birth or baptism counts only when `undated` is true. Their own events only: a godparent at a
+    2001 baptism was not born in 2001."""
+    own = [events.get(r.get("ref")) for r in p.get("event_ref_list", []) if r.get("role") == "Primary"]
+    if any(e and e.get("type") in ("Death", "Burial") for e in own):
+        return False
+    years = [((e.get("date") or {}).get("dateval") or [0, 0, 0])[2] for e in own
+             if e and e.get("type") in ("Birth", "Baptism")]
+    years = [y for y in years if y]
+    if not years:
+        return undated
+    return min(years) >= this_year - LIVING_YEARS
 
 
 def person_name(p: dict) -> str:
@@ -573,16 +599,72 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
         """The place as the tree writes it, with its ID, so a person can find it (norm folds the name)."""
         return f"{(T['places'][h].get('name') or {}).get('value')} ({label('places', h)})"
 
+    # who is on each event: the people who point at it, and both spouses of a family that points at it
+    on_event: dict[str, list] = defaultdict(list)
+    for p in T["people"].values():
+        for r in p.get("event_ref_list") or []:
+            on_event[r.get("ref")].append(p)
+    for f in T["families"].values():
+        for r in f.get("event_ref_list") or []:
+            on_event[r.get("ref")] += [T["people"][x] for x in (f.get("father_handle"), f.get("mother_handle"))
+                                       if x in T["people"]]
+
+    def own_names(h: str) -> set[str]:
+        """Every given name and surname of the people on the event, whole and word by word, folded."""
+        names: set[str] = set()
+        for p in on_event.get(h, []):
+            n = p.get("primary_name") or {}
+            for part in [n.get("first_name") or ""] + [s.get("surname") or "" for s in n.get("surname_list", [])]:
+                part = norm(re.sub(r"[^\w]+", " ", part))
+                names |= {part, *part.split()}
+        return names - {""}
+
+    def origin(raw: list[str], i: int) -> bool:
+        """The words before raw[i], back to the last punctuation, name a person's origin or home: «natural de»,
+        «vecino del lugar de», «domicilié à», or a clause that opens with «de» («Juan, de Otropueblo»)."""
+        before, stop = [], None
+        for t in reversed(raw[:i]):
+            if t in ("'", "’"):
+                continue
+            if not t[0].isalnum():
+                stop = t
+                break
+            before.insert(0, t)
+        k = len(before)
+        while k and before[k - 1] in ORIGIN_FILLER:
+            k -= 1
+        if k == len(before):
+            return False
+        return ((k == 0 and before[0] in ("de", "del", "d") and (stop is None or stop in ORIGIN_CLAUSE_BREAK))
+                or (k > 0 and before[k - 1].startswith(ORIGIN_WORDS)))
+
     for e in E.values():
         h = e.get("place")
-        desc = norm(re.sub(r"[^\w]+", " ", e.get("description") or ""))
+        text = "".join(c for c in unicodedata.normalize("NFD", (e.get("description") or "").lower())
+                       if unicodedata.category(c) != "Mn")
+        raw = re.findall(r"[^\W_]+|[^\w\s]", text)
+        # each folded word with the position of its raw word, so a match can look at the words before it
+        words = [(w, i) for i, t in enumerate(raw) if t[0].isalnum() for w in [norm(t)] if w]
+        desc = " ".join(w for w, _ in words)
         if h not in T["places"] or not desc or not in_scope("events", e["handle"]):
             continue
         own = chain_names(h)
         padded = f" {desc} "
         if any(f" {n} " in padded for n in own):
             continue
-        hits = {oh: n for oh, n in place_words.items() if n not in own and f" {n} " in padded}
+        people = own_names(e["handle"])
+        # on a residence, where someone lives («vecino de X») is the event's own place
+        residence = e.get("type") == "Residence"
+
+        def as_event_place(n: str) -> bool:
+            """Some match of n is not a person's origin or home."""
+            ns = n.split()
+            return any([w for w, _ in words[j:j + len(ns)]] == ns and (residence or not origin(raw, words[j][1]))
+                       for j in range(len(words)))
+
+        # a name that is a given name or surname of someone on the event is that person, not a place
+        hits = {oh: n for oh, n in place_words.items()
+                if n not in own and n not in people and f" {n} " in padded and as_event_place(n)}
         # a name inside a longer one that also matched («Otropueblo» in «Parroquia de Otropueblo») adds nothing
         hits = {oh: n for oh, n in hits.items() if not any(f" {n} " in f" {m} " and n != m for m in hits.values())}
         if hits:
@@ -599,14 +681,7 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
     for p in P.values():
         if not p.get("media_list") or p.get("private"):
             continue
-        # their own events only: a godparent at a 2001 baptism was not born in 2001
-        events = [E.get(r.get("ref")) for r in p.get("event_ref_list", []) if r.get("role") == "Primary"]
-        if any(e and e.get("type") in ("Death", "Burial") for e in events):
-            continue
-        years = [((e.get("date") or {}).get("dateval") or [0, 0, 0])[2] for e in events
-                 if e and e.get("type") in ("Birth", "Baptism")]
-        years = [y for y in years if y]
-        if years and min(years) < this_year - LIVING_YEARS:
+        if not possibly_living(p, E, this_year):
             continue
         for r in p["media_list"]:
             m = T["media"].get(r.get("ref"))
