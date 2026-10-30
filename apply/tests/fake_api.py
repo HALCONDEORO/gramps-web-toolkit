@@ -161,6 +161,11 @@ class FakeGrampsWeb:
 
     def _route(self, method, path, headers, params, body, data):
         parts = [p for p in path.split("/") if p][1:]  # drop "api"
+        if parts == ["backups"] and method == "POST":
+            if getattr(self, "backup_status", 201) != 201:
+                return Resp(self.backup_status, {"error": {"message": "Forbidden"}})
+            self.backups = getattr(self, "backups", 0) + 1
+            return Resp(201, {"id": f"bk{self.backups}", "size": 10})
         if parts == ["objects"] and method == "POST":
             made = []
             for obj in body:

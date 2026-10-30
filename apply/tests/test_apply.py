@@ -3972,3 +3972,39 @@ def test_unlink_child_dry_run_on_a_snapshot_and_verify(fake, tmp_path, env, monk
     capsys.readouterr()
     assert main([str(changes), "--verify"]) == 0  # applied: a skip
     assert "[skip] u-tom" in capsys.readouterr().out
+
+
+def _server_backup_env(fake, tmp_path, monkeypatch):
+    import gwt_apply.client as clientmod
+    monkeypatch.setattr(clientmod.requests, "Session", lambda: fake)
+    for k, v in {"GWT_URL": "https://gw.example", "GWT_USERNAME": "u", "GWT_PASSWORD": "pw", "GWT_TREE": "tree-test"}.items():
+        monkeypatch.setenv(k, v)
+    p = tmp_path / "changes.jsonl"
+    p.write_text(json.dumps({"op": "add_note", "key": "n", "ruling": R, "text": "x", "attach": [{"person": "I0001"}]}) + "\n")
+    return p
+
+
+def test_server_backup_is_made_before_the_first_write_and_never_restored(fake, tmp_path, monkeypatch, capsys):
+    p = _server_backup_env(fake, tmp_path, monkeypatch)
+    assert main([str(p), "--apply", "--server-backup", "--log", str(tmp_path / "a.jsonl")]) == 0
+    assert "server backup stored: bk1" in capsys.readouterr().out
+    posts = [c for c in fake.calls if c[0] == "POST" and not c[1].startswith("/api/token/")]
+    objects = [i for i, c in enumerate(posts) if c == ("POST", "/api/objects/")]
+    # the tree lock is the first object written, the change list's note the last: the backup sits between them
+    assert posts.index(("POST", "/api/backups/")) < objects[-1] and posts.index(("POST", "/api/backups/")) > objects[0]
+    assert not any("restore" in c[1] for c in fake.calls)
+
+
+def test_server_backup_refused_writes_nothing(fake, tmp_path, monkeypatch, capsys):
+    p = _server_backup_env(fake, tmp_path, monkeypatch)
+    fake.backup_status = 403
+    notes = set(fake.store["notes"])
+    assert main([str(p), "--apply", "--server-backup", "--log", str(tmp_path / "a.jsonl")]) == 1
+    assert "did not store a backup (HTTP 403" in capsys.readouterr().err
+    assert set(fake.store["notes"]) == notes  # the lock is released and the change list added nothing
+
+
+def test_server_backup_needs_apply(fake, tmp_path, monkeypatch):
+    p = _server_backup_env(fake, tmp_path, monkeypatch)
+    with pytest.raises(SystemExit):
+        main([str(p), "--server-backup"])
