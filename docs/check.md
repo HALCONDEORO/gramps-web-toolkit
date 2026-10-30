@@ -335,3 +335,11 @@ It exits 1 when there is a finding of the first three kinds: those mean the serv
 
 Gramps Web API 3.25 replaced the privacy filter that guests go through with a new access layer, stricter in a few corner cases ([release notes](https://github.com/gramps-project/gramps-web-api/releases/tag/v3.25.0)). The first three kinds are the check that a given server, after an upgrade or a settings change, still hides what the owner marked private; `living-visible` is a list for the owner to review. It cannot see what a guest never gets from the API but could infer, and it does not run a search.
 
+
+## One person's events in order (`timeline`)
+
+```bash
+gwt-check timeline HANDLE [HANDLE ...] [--limit 200]
+```
+
+`timeline` asks the server for the events of one or more people (`/api/timelines/people/`) and prints a row for each: the person's Gramps ID, the event's Gramps ID, type, role and date, in the order the server gives them. It never prints a description, a place or a citation, and it never writes to the tree. An event with no date comes back with an empty date.
