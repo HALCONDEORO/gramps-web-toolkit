@@ -369,8 +369,45 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="print the result as JSON")
     p.add_argument("--limit", type=int, default=30, help="findings printed (default 30, 0 for all)")
 
+    p = sub.add_parser("server", help="ask the server itself, read-only: history, relation, search, living")
+    ss = p.add_subparsers(dest="what", required=True)
+    q = ss.add_parser("history", help="the newest transactions: id, time, user, number of changes")
+    q.add_argument("--limit", type=int, default=20)
+    q = ss.add_parser("undo-check", help="ask whether one transaction could be undone without a conflict (never undoes)")
+    q.add_argument("transaction", type=int)
+    q = ss.add_parser("relation", help="how one person is related to another, by handle")
+    q.add_argument("handle1")
+    q.add_argument("handle2")
+    q.add_argument("--all", action="store_true", help="every path, not only the closest")
+    q = ss.add_parser("search", help="full-text search: object type, Gramps ID and score, never the text")
+    q.add_argument("query")
+    q.add_argument("--limit", type=int, default=10)
+    q.add_argument("--type", help="restrict to one object type, e.g. note")
+    q = ss.add_parser("living", help="where the server and possibly_living disagree about who is alive (Gramps IDs only)")
+    q.add_argument("dump", help="a dump of the same tree")
+    for q in ss.choices.values():
+        q.add_argument("--config", help="KEY=VALUE file with GWT_URL, GWT_USERNAME and GWT_PASSWORD (or GWT_TOKEN), GWT_TREE")
+
     args = ap.parse_args(argv)
     try:
+        if args.cmd == "server":
+            from . import server
+            client = _client(args)
+            if args.what == "history":
+                res = server.history(client, args.limit)
+            elif args.what == "undo-check":
+                res = server.can_undo(client, args.transaction)
+            elif args.what == "relation":
+                res = server.relation(client, args.handle1, args.handle2, args.all)
+            elif args.what == "search":
+                res = server.search(client, args.query, args.limit, args.type)
+            else:
+                tree = load(args.dump)
+                if tree.partial:
+                    raise BadInput(f"{tree.source}: a .gramps backup has no events; use a dump")
+                res = server.living_diff(client, list(tree.objs["people"].values()), tree.objs["events"])
+            print(json.dumps(res, ensure_ascii=False, indent=1))
+            return 1 if args.what == "living" and res["server_only"] else 0
         if args.cmd == "selftest":
             from .selftest import selftest
             return selftest(verbose=True)

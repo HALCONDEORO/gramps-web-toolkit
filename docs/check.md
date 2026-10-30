@@ -335,3 +335,19 @@ It exits 1 when there is a finding of the first three kinds: those mean the serv
 
 Gramps Web API 3.25 replaced the privacy filter that guests go through with a new access layer, stricter in a few corner cases ([release notes](https://github.com/gramps-project/gramps-web-api/releases/tag/v3.25.0)). The first three kinds are the check that a given server, after an upgrade or a settings change, still hides what the owner marked private; `living-visible` is a list for the owner to review. It cannot see what a guest never gets from the API but could infer, and it does not run a search.
 
+
+## Asking the server (`server`)
+
+`gwt-check server` asks the Gramps Web server questions it can answer itself. Every subcommand only reads: nothing here changes the tree, and `undo-check` asks whether an undo would conflict but never undoes anything.
+
+```bash
+gwt-check server history --limit 5       # newest transactions: id, time, user, number of changes
+gwt-check server undo-check 7517         # could this one be undone without a conflict? (asks only)
+gwt-check server relation HANDLE1 HANDLE2 [--all]
+gwt-check server search "word" --type note --limit 10   # type, Gramps ID and score, never the text
+gwt-check server living dump.json.gz     # where the server and the toolkit disagree about who is alive
+```
+
+The server's answers are a second opinion, not a replacement for a toolkit rule. `living` lists Gramps IDs in `server_only` (the server says alive, `possibly_living` says no, even counting undated people as possibly alive) and `tool_only`. On a real tree the server called alive some people with a death event and no date; this toolkit's rule does not, so keep the toolkit's rule for privacy and use `living` to look at the differences. `living` exits 1 when `server_only` is not empty.
+
+The server sends the whole transaction list oldest first and ignores `pagesize` and `sort` on that endpoint, so `history` sorts it itself.
