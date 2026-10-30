@@ -1871,3 +1871,16 @@ def test_place_vs_description_on_a_residence_where_someone_lives_is_the_event_pl
     selftest._get(d, "events", "E0001")["type"] = "Residence"
     for desc in ("Mateo, vecino de Otropueblo", "Mateo, residente en Otropueblo", "domicilié à Otropueblo"):
         assert _place_desc_keys(d, "E0001", desc) == ["E0001"], desc
+
+
+def test_a_person_born_more_than_100_years_ago_with_no_death_is_presumed_dead():
+    from gwt_check.checks import LIVING_YEARS, possibly_living
+
+    def person(year):
+        return ({"event_ref_list": [{"ref": "b", "role": "Primary"}]},
+                {"b": {"type": "Birth", "date": {"dateval": [0, 0, year, False]}}})
+    assert LIVING_YEARS == 100
+    assert possibly_living(*person(1926), 2026) is True   # 100 years old at most: not over 100 yet
+    assert possibly_living(*person(1925), 2026) is False  # over 100: presumed dead
+    assert possibly_living({"event_ref_list": []}, {}, 2026) is True   # never dated: still possibly living
+    assert possibly_living({"event_ref_list": []}, {}, 2026, undated=False) is False

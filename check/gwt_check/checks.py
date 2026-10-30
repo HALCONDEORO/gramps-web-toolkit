@@ -158,8 +158,9 @@ SENSITIVE_PATTERNS = (
     ("id number", lambda s: any(f(s) for f in ID_NUMBERS)),
     ("id or address word", ID_WORDS.search),
 )
-# a person with no death event is taken as living if born less than this many years ago, or never dated
-LIVING_YEARS = 110
+# a person with no death event is presumed dead once born this many years ago or more; younger, or never dated, is
+# taken as possibly living
+LIVING_YEARS = 100
 
 
 def sensitive_kind(*texts: str) -> str:
