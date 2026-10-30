@@ -44,3 +44,15 @@ def test_living_diff_finds_the_server_only_case():
     c = Fake({"/living/a": {"living": True}, "/living/b": {"living": True}})
     r = server.living_diff(c, people, events, year=2026, workers=1)
     assert r["server_only"] == ["I2"] and r["agree"] == 1  # I1: undated, both say alive; I2: dead in 1900
+
+
+def test_cli_turns_a_server_error_into_a_message_and_exit_2(monkeypatch, capsys):
+    from gwt_check import cli
+    from gwt_check.client import ApiError
+
+    class Down:
+        def get(self, path, params):
+            raise ApiError("GET /relations/a/b: HTTP 404")
+    monkeypatch.setattr(cli, "_client", lambda args: Down())
+    assert cli.main(["server", "relation", "a", "b"]) == 2
+    assert "HTTP 404" in capsys.readouterr().err

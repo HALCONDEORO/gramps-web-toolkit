@@ -272,6 +272,21 @@ def mark_known(report_path: str, check_name: str, keys: list[str], reason: str, 
     return 0
 
 
+def _ask_server(server, client: Client, args):
+    if args.what == "history":
+        return server.history(client, args.limit)
+    if args.what == "undo-check":
+        return server.can_undo(client, args.transaction)
+    if args.what == "relation":
+        return server.relation(client, args.handle1, args.handle2, args.all)
+    if args.what == "search":
+        return server.search(client, args.query, args.limit, args.type)
+    tree = load(args.dump)
+    if tree.partial:
+        raise BadInput(f"{tree.source}: a .gramps backup has no events; use a dump")
+    return server.living_diff(client, list(tree.objs["people"].values()), tree.objs["events"])
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="gwt-check", description="Read-only checks of a whole Gramps Web tree.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -393,19 +408,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "server":
             from . import server
             client = _client(args)
-            if args.what == "history":
-                res = server.history(client, args.limit)
-            elif args.what == "undo-check":
-                res = server.can_undo(client, args.transaction)
-            elif args.what == "relation":
-                res = server.relation(client, args.handle1, args.handle2, args.all)
-            elif args.what == "search":
-                res = server.search(client, args.query, args.limit, args.type)
-            else:
-                tree = load(args.dump)
-                if tree.partial:
-                    raise BadInput(f"{tree.source}: a .gramps backup has no events; use a dump")
-                res = server.living_diff(client, list(tree.objs["people"].values()), tree.objs["events"])
+            try:
+                res = _ask_server(server, client, args)
+            except ApiError as exc:  # a 404 for a handle that is not in the tree, a 403 for a login without the role
+                raise BadInput(str(exc)) from exc
             print(json.dumps(res, ensure_ascii=False, indent=1))
             return 1 if args.what == "living" and res["server_only"] else 0
         if args.cmd == "selftest":
