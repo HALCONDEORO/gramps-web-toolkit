@@ -351,3 +351,11 @@ gwt-check server living dump.json.gz     # where the server and the toolkit disa
 The server's answers are a second opinion, not a replacement for a toolkit rule. `living` lists Gramps IDs in `server_only` (the server says alive, `possibly_living` says no, even counting undated people as possibly alive) and `tool_only`. On a real tree the server called alive some people with a death event and no date; this toolkit's rule does not, so keep the toolkit's rule for privacy and use `living` to look at the differences. `living` exits 1 when `server_only` is not empty.
 
 The server sends the whole transaction list oldest first and ignores `pagesize` and `sort` on that endpoint, so `history` sorts it itself.
+
+## One person's events in order (`timeline`)
+
+```bash
+gwt-check timeline HANDLE [HANDLE ...] [--limit 200]
+```
+
+`timeline` asks the server for the events of one or more people (`/api/timelines/people/`) and prints a row for each: the person's Gramps ID, the event's Gramps ID, type, role and date, in the order the server gives them. It never prints a description, a place or a citation, and it never writes to the tree. An event with no date comes back with an empty date.

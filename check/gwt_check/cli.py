@@ -403,6 +403,11 @@ def main(argv: list[str] | None = None) -> int:
     for q in ss.choices.values():
         q.add_argument("--config", help="KEY=VALUE file with GWT_URL, GWT_USERNAME and GWT_PASSWORD (or GWT_TOKEN), GWT_TREE")
 
+    p = sub.add_parser("timeline", help="the events of people in date order, as the server lists them; Gramps IDs, types and dates only")
+    p.add_argument("handles", nargs="+", help="person handles")
+    p.add_argument("--limit", type=int, default=200)
+    p.add_argument("--config", help="KEY=VALUE file with GWT_URL, GWT_USERNAME and GWT_PASSWORD (or GWT_TOKEN), GWT_TREE")
+
     args = ap.parse_args(argv)
     try:
         if args.cmd == "server":
@@ -414,6 +419,10 @@ def main(argv: list[str] | None = None) -> int:
                 raise BadInput(str(exc)) from exc
             print(json.dumps(res, ensure_ascii=False, indent=1))
             return 1 if args.what == "living" and res["server_only"] else 0
+        if args.cmd == "timeline":
+            from .timeline import timeline
+            print(json.dumps(timeline(_client(args), args.handles, args.limit), ensure_ascii=False, indent=1))
+            return 0
         if args.cmd == "selftest":
             from .selftest import selftest
             return selftest(verbose=True)
