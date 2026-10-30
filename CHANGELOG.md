@@ -6,6 +6,14 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ## [Unreleased]
 
+### Added
+
+- `gwt-check server` (history, undo-check, relation, search, living) and `gwt-check timeline` ask the Gramps Web server read-only. `gwt-apply --server-backup` stores a server backup before the first write and writes nothing if the server refuses; it never restores. **`--server-backup` has not been tried against a live server**: the login it was developed with got HTTP 403 on `/api/backups/`, so it is tested only against the fake server.
+
+### Changed
+
+- A person with no death born more than 100 years ago is presumed dead (`LIVING_YEARS` 110 to 100 in `gwt-check`), so `living-media-sensitive` and `living-visible` are less strict for people born 100 to 110 years ago. No change list is affected.
+
 ### Fixed
 
 - `gwt-rawstore put` names the file that failed. A FAIL line now gives the path and the error type (a bare `TimeoutError()` used to print an empty line), and a last line on stderr and stdout lists every file not stored, so a log of stdout alone shows it. A transient error (network, 5xx, 429, a body that changed while it was read, an object the store did not confirm) is retried, three attempts in all with the file hashed again each time; a 403 or a missing file is not.
