@@ -99,6 +99,29 @@ class CrossTest(unittest.TestCase):
         code, out, _ = self.run_(self.idx, "--dump", self.dump)
         self.assertIn("I1,I9", out)
 
+    def test_no_death_keeps_only_people_without_a_death_event(self):
+        d = json.loads(json.dumps(DUMP))
+        d["objects"]["events"].append({"handle": "e2", "type": "Death", "date": {"dateval": [1, 1, 1900, False]}})
+        d["objects"]["people"][0]["event_ref_list"].append({"ref": "e2"})
+        json.dump(d, open(self.dump, "w"))
+        self.assertEqual(self.run_(self.idx, "--dump", self.dump, "--no-death")[0], 1)
+        self.assertEqual(self.run_(self.idx, "--dump", self.dump)[0], 0)
+
+    def test_insee_file_is_read_without_conversion_and_filtered_by_surname(self):
+        def line(name, sex, birth, bplace, death, act):
+            return (name.ljust(80) + sex + birth + "75056" + bplace.ljust(30) + " " * 30 + death + "75056" + act.ljust(9) + " " * 25 + "\r\n")
+        ins = os.path.join(self.d.name, "deces-1950.txt")
+        open(ins, "w", encoding="latin-1").write(
+            line("DUPRE*MARIE ANNE/", "2", "18500101", "SAINT-ARNOULT", "19500302", "12")
+            + line("ZZZZ*PAUL/", "1", "19000101", "PARIS", "19500303", "13"))
+        d = json.loads(json.dumps(DUMP))
+        d["objects"]["people"][0]["event_ref_list"] = [{"ref": "e1"}]
+        json.dump(d, open(self.dump, "w"))
+        code, out, err = self.run_(ins, "--dump", self.dump, "--no-death", "--min-score", "10")
+        self.assertEqual(code, 0, err)
+        self.assertIn("act 12", out)
+        self.assertNotIn("ZZZZ", out)
+
 
 if __name__ == "__main__":
     unittest.main()
