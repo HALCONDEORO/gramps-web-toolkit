@@ -70,6 +70,7 @@ The toolkit works for genealogy in any country. `gwt-spanish-poller` and some `g
 - [gwt-ledger](ledger.md): the shared "already searched" ledger, so lanes stop repeating negative searches.
 - [gwt-books](books.md): which image of an unindexed register to open next, from the dates already seen. Offline, never fetches.
 - [gwt-dates](dates.md): French Republican dates and old-style months (7bre) converted by calculation. Offline.
+- [Military records](military.md): where conscription, decoration and war-death records are, and how to write a `matricule` card for `gwt-acts`.
 - [gwt-acts](acts.md): checks act cards before anything is written and says whether the person is already in the tree. Offline.
 - [Finding church and civil registers](finding-registers.md): public sources for Spanish parish and French civil registers, and how to record what you find.
 - [gwt-rank](rank.md): orders record-search results by how well they fit a person, and never hides a row.

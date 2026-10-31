@@ -224,3 +224,19 @@ def test_a_dual_dated_tree_year_is_not_exact():
     d['objects']['events'][0]['date']['dateval'] = [9, 3, 1771, True]
     r = verdict(card(), d)
     assert r[1].startswith('possible duplicate (?)') and 'not compared' in r[2]
+
+
+def test_a_matricule_card_needs_the_class_and_the_register_number():
+    c = card(type='matricule', date_iso='1771-03-09')
+    assert 'missing classe' in verdict(c, None)[2] and 'missing matricule_no' in verdict(c, None)[2]
+    assert verdict(card(type='matricule', classe='1791', matricule_no='12'), None)[1] == 'ok'
+
+
+def test_a_matricule_card_is_matched_to_the_person_and_compares_no_event():
+    c = card(type='matricule', classe='1791', matricule_no='12', date_iso='1771-03-26')
+    r = verdict(c)
+    assert r[1] == 'already as I1' and not r[3]
+
+
+def test_an_unknown_type_is_still_rejected():
+    assert 'type must be one of' in verdict(card(type='cartilla'), None)[2]

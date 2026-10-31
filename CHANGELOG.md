@@ -9,6 +9,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 ### Added
 
 - `gwt-acts check`: checks act cards offline (source, literal filiation, zoom mark, Republican date by calculation, "bef" for an issue date) and, with a tree dump, says whether the person is already in the tree, with spelling notes and conflicts reported, never replaced.
+- `gwt-acts` accepts `type = matricule` cards (class and register number required, matched to a person, compared with no event). Docs: "Military records", a guide to the public sources.
 - `run_tests.py --mutants` puts the other single-file tools on the path of the scratch copy, so a tool that imports a sibling can have mutants.
 - `gwt-dates`: converts French Republican dates (an I to an XIV) and old-style month names (`7bre`, `9bre`) to Gregorian and back, offline, by calculation; `--as-note` writes the form `gwt-check republican` reads.
 - `gwt-books`: for a register on an image viewer with no name index, keeps the dates read on images and says which image to open next (`add`, `next`, `show`). Offline: it never fetches an image.
