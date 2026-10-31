@@ -55,7 +55,7 @@ def test_log_roundtrip_and_next_prints_the_window(tmp_path, capsys):
     capsys.readouterr()
     assert gb.main(['--log', log, 'next', '--book', 'B1', '--target', '1905-01-01']) == 0
     out = capsys.readouterr().out
-    assert 'open image' in out and '99 images left between 100 and 200' in out
+    assert 'open image' in out and 'remaining zone: image 101 to image 199 (99 images)' in out
     assert len(gb.landmarks(gb.read_log(log), 'B1')) == 2
 
 
@@ -124,3 +124,40 @@ def test_book_label_edge_spaces_are_dropped_in_every_command(tmp_path, capsys):
     assert 'open image' in capsys.readouterr().out
     gb.main(['--log', log, 'show', '--book', ' B '])
     assert capsys.readouterr().out.count('1900') >= 1
+
+
+def test_one_sided_landmarks_print_the_remaining_zone_to_the_end_or_the_start(tmp_path, capsys):
+    log = str(tmp_path / 'b.tsv')
+    gb.main(['--log', log, 'add', '--book', 'B', '--image', '100', '--date', '1900'])
+    capsys.readouterr()
+    gb.main(['--log', log, 'next', '--book', 'B', '--target', '1950', '--total', '400'])
+    assert 'remaining zone: image 101 to image 400 (300 images)' in capsys.readouterr().out
+    assert gb.main(['--log', log, 'next', '--book', 'B', '--target', '1950']) == 1
+    assert 'remaining zone: image 101 to the end of the book' in capsys.readouterr().out
+    gb.main(['--log', log, 'next', '--book', 'B', '--target', '1800'])
+    assert 'remaining zone: image 1 to image 99 (99 images)' in capsys.readouterr().out
+
+
+def test_status_summarises_and_refuses_a_total_below_a_mark(tmp_path, capsys):
+    log = str(tmp_path / 'b.tsv')
+    assert gb.main(['--log', log, 'status', '--book', 'B']) == 1
+    assert 'no landmarks yet' in capsys.readouterr().out
+    for img, d in ((100, '1900'), (200, '1910')):
+        gb.main(['--log', log, 'add', '--book', 'B', '--image', str(img), '--date', d])
+    capsys.readouterr()
+    assert gb.main(['--log', log, 'status', '--book', 'B', '--target', '1905']) == 0
+    out = capsys.readouterr().out
+    assert '2 landmarks, images 100 to 200' in out and 'next open image' in out and 'remaining zone' in out
+    with pytest.raises(SystemExit):
+        gb.main(['--log', log, 'status', '--book', 'B', '--total', '50'])
+
+
+def test_export_writes_csv_with_quoting_and_to_a_file(tmp_path, capsys):
+    log = str(tmp_path / 'b.tsv')
+    gb.main(['--log', log, 'add', '--book', 'B', '--image', '5', '--date', '1900-02', '--note', 'a, "b"'])
+    capsys.readouterr()
+    gb.main(['--log', log, 'export', '--book', 'B'])
+    assert capsys.readouterr().out.splitlines() == ['book,image,date,note', 'B,5,1900-02-01,"a, ""b"""']
+    out = str(tmp_path / 'o.csv')
+    gb.main(['--log', log, 'export', '--book', 'B', '--out', out])
+    assert open(out, encoding='utf-8').read().splitlines()[1].startswith('B,5,')
