@@ -197,3 +197,30 @@ def test_a_tree_year_that_is_not_exact_never_makes_it_already_in_the_tree(extra)
 def test_only_the_first_given_name_agreeing_is_not_enough():
     r = verdict(card(given='Rosa Other'))
     assert r[1].startswith('possible duplicate (?)') and 'not enough' in r[2]
+
+
+def tie_dump(order):
+    d = json.loads(json.dumps(DUMP))
+    o = d['objects']
+    o['events'][0]['place'] = 'p2'
+    o['places'].append({"handle": "p2", "name": {"value": "Other"}})
+    o['people'].append({"handle": "c", "gramps_id": "I3", "primary_name": {"first_name": "Rosa Other", "surname_list": [{"surname": "de Marlot"}]},
+                        "parent_family_list": [], "event_ref_list": [{"ref": "e3"}]})
+    o['events'].append({"handle": "e3", "type": "Birth", "date": {"dateval": [9, 3, 1771, False]}, "place": "p1"})
+    if order:
+        o['people'].reverse()
+    return d
+
+
+@pytest.mark.parametrize('order', [False, True])
+def test_every_tied_candidate_is_judged_on_its_own_whatever_the_order(order):
+    r = verdict(card(), tie_dump(order))
+    assert r[1].startswith('possible duplicate (?)') and 'I1' in r[1] and 'I3' in r[1]
+    assert 'not enough' in r[2] and '(I3)' in r[2]
+
+
+def test_a_dual_dated_tree_year_is_not_exact():
+    d = json.loads(json.dumps(DUMP))
+    d['objects']['events'][0]['date']['dateval'] = [9, 3, 1771, True]
+    r = verdict(card(), d)
+    assert r[1].startswith('possible duplicate (?)') and 'not compared' in r[2]

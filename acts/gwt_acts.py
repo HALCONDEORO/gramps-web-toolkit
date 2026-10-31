@@ -112,7 +112,7 @@ def event_date(e):
     if len(v) < 3 or not v[2]:
         return ''
     iso = f'{v[2]:04d}' + (f'-{v[1]:02d}' if v[1] else '') + (f'-{v[0]:02d}' if v[1] and v[0] else '')
-    inexact = len(v) != 4 or any(d.get(k) for k in ('calendar', 'modifier', 'quality', 'newyear'))
+    inexact = len(v) != 4 or v[3] or any(d.get(k) for k in ('calendar', 'modifier', 'quality', 'newyear'))
     return '?' + iso if inexact else iso  # before/after/about, a span, another calendar or a doubtful date: not compared
 
 
@@ -134,16 +134,16 @@ def spelled_differently(why):
     return any(k in why for k in ('apellido(fonetico)', 'apellido~', 'apellido(partes)'))
 
 
-def judge(top, why, tied):
-    """The verdict for the best match and the notes that go with it."""
-    ids = ','.join(p['id'] for p in tied)
-    named = 'nombre completo' in why and 'ano exacto' in why
-    verdict = f'already as {ids}' if top >= SAME and named else f'possible duplicate (?) {ids}'
+def judge(top, tied):
+    """The verdict for the best matches, each judged on its own, and the notes. tied is [(person, why)]."""
+    ids = ','.join(p['id'] for p, _ in tied)
+    weak = [p['id'] for p, why in tied if not ('nombre completo' in why and 'ano exacto' in why)]
+    verdict = f'already as {ids}' if top >= SAME and not weak else f'possible duplicate (?) {ids}'
     notes = []
-    if top >= SAME and not named:
-        notes.append('not enough to say it is the same person: the full given name and the exact year must both match')
-    if spelled_differently(why):
-        notes.append('spelling: the tree writes ' + '/'.join(sorted({x for p in tied for x in p['surnames']})))
+    if top >= SAME and weak:
+        notes.append(f'not enough to say it is the same person ({",".join(weak)}): the full given name and the exact year must both match')
+    if any(spelled_differently(why) for _, why in tied):
+        notes.append('spelling: the tree writes ' + '/'.join(sorted({x for p, _ in tied for x in p['surnames']})))
     return verdict, notes
 
 
@@ -166,9 +166,9 @@ def lookup(card, people, by_id):
     top = max((s[0] for s, _ in scored), default=0)
     if top < POSSIBLE:
         return 'nouveau', []
-    tied = [p for s, p in scored if s[0] == top]
-    verdict, notes = judge(top, next((s[1] for s, _ in scored if s[0] == top), ''), tied)
-    notes += conflicts(card, qual, iso, tied, by_id)
+    tied = [(p, s[1]) for s, p in scored if s[0] == top]
+    verdict, notes = judge(top, tied)
+    notes += conflicts(card, qual, iso, [p for p, _ in tied], by_id)
     return verdict, notes
 
 
