@@ -27,11 +27,11 @@ gwt-books show --book register-1 --target 1926-05
 # how far the search is: landmarks, dates covered, the next image and the zone left
 gwt-books status --book register-1 --target 1926-05 --total 640
 
-# the landmarks as CSV, to a file or to the screen
+# the landmarks as CSV, to a file or to the screen (never over the log file itself)
 gwt-books export --book register-1 --out register-1.csv
 ```
 
-`next` picks the image by linear interpolation between the nearest landmarks before and after the target. It never picks an image you already read. With no landmarks it opens the middle of the book (it needs `--total`). With landmarks on one side only it moves toward the other end. It prints the zone still to review (`remaining zone: image 101 to image 199 (99 images)`). With landmarks on one side only, the zone runs to the end of the book (or to `--total`) or back to image 1. When two images next to each other bracket the target, it says so and stops: the date is on one of those two images, or on a page the images do not show. Review both. A date per image is all it records, so it cannot tell which page of an image holds a given date. It exits 1 when it has no image to suggest. `add` refuses a tab or line break in `--book` or `--note`, an empty book, and an image or `--total` below 1.
+`next` picks the image by linear interpolation between the nearest landmarks before and after the target. It never picks an image you already read. With no landmarks it opens the middle of the book (it needs `--total`). With landmarks on one side only it moves toward the other end. It prints the zone still to review (`remaining zone: image 101 to image 199 (99 images)`). With landmarks on one side only, the zone runs to the end of the book (or to `--total`) or back to image 1. When no image is left between the landmarks it says `remaining zone: none`. When two images next to each other bracket the target, it says so and stops: the date is on one of those two images, or on a page the images do not show. Review both. A date per image is all it records, so it cannot tell which page of an image holds a given date. It exits 1 when it has no image to suggest. `add` refuses a tab or line break in `--book` or `--note`, an empty book, and an image or `--total` below 1.
 
 ## Where the images come from
 

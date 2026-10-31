@@ -144,13 +144,15 @@ def cmd_add(args):
 
 
 def zone(marks, target, total=None):
-    """The images still to review for the target, as (first, last, count); last is None when the book size is
-    unknown. None when no landmark is known yet or the target is already on an image."""
+    """The images still to review for the target, as (first, last, count). last is None when the book size is
+    unknown; count 0 means nothing is left between the landmarks. None when no landmark is known yet or the
+    target is already on an image."""
     lo, hi = window(marks, target)
     if lo and hi:
-        return None if lo[1] == target else (lo[0] + 1, hi[0] - 1, max(hi[0] - lo[0] - 1, 0))
+        count = max(hi[0] - lo[0] - 1, 0)
+        return None if lo[1] == target else (lo[0] + 1, hi[0] - 1, count)
     if lo:
-        return (lo[0] + 1, total, total - lo[0] if total else None)
+        return (lo[0] + 1, total, max(total - lo[0], 0) if total else None)
     if hi:
         return (1, hi[0] - 1, hi[0] - 1)
     return None
@@ -158,8 +160,10 @@ def zone(marks, target, total=None):
 
 def zone_line(z):
     first, last, count = z
-    end = f'image {last}' if last else 'the end of the book'
-    return f'remaining zone: image {first} to {end}' + (f' ({count} images)' if count is not None else '')
+    if count == 0:
+        return 'remaining zone: none, no image is left to review between the landmarks'
+    end = 'the end of the book' if last is None else f'image {last}'
+    return f'remaining zone: image {first} to {end}' + ('' if count is None else f' ({count} images)')
 
 
 def check_total(marks, total):
@@ -206,18 +210,37 @@ def cmd_status(args):
     return 0
 
 
+def same_file(a, b):
+    """True if two paths are the same file: the same path, a symlink to it, or a hard link to it."""
+    if os.path.realpath(a) == os.path.realpath(b):
+        return True
+    return os.path.exists(a) and os.path.exists(b) and os.path.samefile(a, b)
+
+
 def cmd_export(args):
-    marks = landmarks(read_log(log_path(args)), args.book)
-    out = open(args.out, 'w', newline='', encoding='utf-8') if args.out else sys.stdout
+    log = log_path(args)
+    marks = landmarks(read_log(log), args.book)
+    if args.out and same_file(args.out, log):
+        raise SystemExit('--out is the log file itself: export would destroy the other books in it')
+    if not args.out:
+        write_csv(sys.stdout, args.book, marks)
+        return 0
+    tmp = f'{args.out}.tmp{os.getpid()}'
     try:
-        writer = csv.writer(out, lineterminator='\n')
-        writer.writerow(('book', 'image', 'date', 'note'))
-        for n, d, note in marks:
-            writer.writerow((args.book, n, d.isoformat(), note))
+        with open(tmp, 'w', newline='', encoding='utf-8') as fh:
+            write_csv(fh, args.book, marks)
+        os.replace(tmp, args.out)
     finally:
-        if args.out:
-            out.close()
+        if os.path.exists(tmp):
+            os.remove(tmp)
     return 0
+
+
+def write_csv(out, book, marks):
+    writer = csv.writer(out, lineterminator='\n')
+    writer.writerow(('book', 'image', 'date', 'note'))
+    for n, d, note in marks:
+        writer.writerow((book, n, d.isoformat(), note))
 
 
 EPILOG = """examples:

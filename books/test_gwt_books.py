@@ -161,3 +161,38 @@ def test_export_writes_csv_with_quoting_and_to_a_file(tmp_path, capsys):
     out = str(tmp_path / 'o.csv')
     gb.main(['--log', log, 'export', '--book', 'B', '--out', out])
     assert open(out, encoding='utf-8').read().splitlines()[1].startswith('B,5,')
+
+
+def _two_books(tmp_path):
+    log = str(tmp_path / 'b.tsv')
+    gb.main(['--log', log, 'add', '--book', 'A', '--image', '1', '--date', '1900'])
+    gb.main(['--log', log, 'add', '--book', 'B', '--image', '2', '--date', '1901'])
+    return log, open(log, encoding='utf-8').read()
+
+
+def test_export_refuses_the_log_itself_by_path_symlink_and_hard_link(tmp_path):
+    log, before = _two_books(tmp_path)
+    sym, hard = str(tmp_path / 'sym.tsv'), str(tmp_path / 'hard.tsv')
+    os.symlink(log, sym)
+    os.link(log, hard)
+    for out in (log, os.path.join(str(tmp_path), '.', 'b.tsv'), sym, hard):
+        with pytest.raises(SystemExit):
+            gb.main(['--log', log, 'export', '--book', 'A', '--out', out])
+        assert open(log, encoding='utf-8').read() == before
+
+
+def test_export_to_a_new_file_leaves_no_temporary_file(tmp_path):
+    log, _ = _two_books(tmp_path)
+    out = str(tmp_path / 'a.csv')
+    assert gb.main(['--log', log, 'export', '--book', 'A', '--out', out]) == 0
+    assert sorted(os.listdir(tmp_path)) == ['a.csv', 'b.tsv']
+    assert open(out, encoding='utf-8').read().splitlines()[1] == 'A,1,1900-01-01,'
+
+
+def test_an_empty_zone_is_said_plainly_never_as_the_end_of_the_book_or_an_inverted_range():
+    assert 'none' in gb.zone_line(gb.zone(marks((1, '1900-01-01')), D(1800, 1, 1), 10))
+    z = gb.zone(marks((100, '1900-01-01'), (101, '1900-12-31')), D(1900, 6, 1))
+    assert z == (101, 100, 0) and 'none' in gb.zone_line(z) and '101 to 100' not in gb.zone_line(z)
+    z = gb.zone(marks((10, '1900-01-01')), D(1950, 1, 1), 10)
+    assert 'none' in gb.zone_line(z)
+    assert 'to the end of the book' in gb.zone_line(gb.zone(marks((10, '1900-01-01')), D(1950, 1, 1)))

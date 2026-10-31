@@ -10,3 +10,8 @@ gwt_books.py |     name = clean(text, '--book').strip() |     name = clean(text,
 gwt_books.py |     return 1 if image is None else 0 |     return 0 | next exits 1 when it has no image to suggest
 gwt_books.py |         return (1, hi[0] - 1, hi[0] - 1) |         return (1, hi[0], hi[0]) | the zone before the first landmark ends one image earlier
 gwt_books.py |         writer.writerow(('book', 'image', 'date', 'note')) |         pass | the CSV starts with its header
+gwt_books.py |     if args.out and same_file(args.out, log): |     if False: | export never writes over the log file, whatever name reaches it
+gwt_books.py |         return True |         return False | a path that resolves to the log is the log
+gwt_books.py |     return os.path.exists(a) and os.path.exists(b) and os.path.samefile(a, b) |     return False | a symlink or hard link to the log is the log
+gwt_books.py |     if count == 0: |     if False: | an empty zone is said plainly
+gwt_books.py |     end = 'the end of the book' if last is None else f'image {last}' |     end = 'the end of the book' if not last else f'image {last}' | a zone ending at image 0 is not the end of the book
