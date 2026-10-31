@@ -23,8 +23,8 @@ def card(**kw):
     return {**BASE, **kw}
 
 
-def verdict(c, dump=DUMP):
-    return A.check([c], dump)[0]
+def verdict(c, dump='tree'):
+    return A.check([c], DUMP if dump == 'tree' else dump)[0]
 
 
 def test_a_complete_card_is_ok_without_a_tree():

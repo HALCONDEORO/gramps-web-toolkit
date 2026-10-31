@@ -8,5 +8,5 @@ gwt_acts.py |     if top < POSSIBLE: |     if top < 0: | every card is reported 
 gwt_acts.py |     verdict = f'already as {ids}' if top >= SAME else f'possible duplicate (?) {ids}' |     verdict = f'possible duplicate (?) {ids}' | an exact match is not told apart from a possible one
 gwt_acts.py |                 if theirs != iso and not iso.startswith(theirs):  # a vaguer tree date that holds the day is no conflict |                 if False: | a different day for the same person is not reported as a conflict
 gwt_acts.py |                 if theirs != iso and not iso.startswith(theirs):  # a vaguer tree date that holds the day is no conflict |                 if theirs != iso: | a vaguer tree date that holds the day is reported as a conflict
-gwt_acts.py |             if (card.get('state') or '').strip() != 'verificado-zoom': |             if False: | parents of an unverified card are not marked read-only
+gwt_acts.py | and (card.get('state') or '').strip() != 'verificado-zoom': | and False: | parents of an unverified card are not marked read-only
 gwt_acts.py |     return "'" + out if out[:1] in ('=', '+', '-', '@') else out |     return out | a formula in a card is written back as a formula

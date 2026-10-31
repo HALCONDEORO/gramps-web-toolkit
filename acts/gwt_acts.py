@@ -48,7 +48,7 @@ def cell(text):
 
 
 def read_cards(path):
-    with open(path, encoding='utf-8', newline='') as fh:
+    with open(path, encoding='utf-8', newline='') as fh:  # skipcq: PTC-W6004 - a command line tool reads the file its user names
         rows = list(csv.DictReader(fh, delimiter='\t'))
     for i, r in enumerate(rows, 1):
         r['card'] = (r.get('card') or '').strip() or f'row{i}'
@@ -57,7 +57,9 @@ def read_cards(path):
 
 def card_problems(card):
     """Why this card is rejected: a list of short messages, empty when it is fine."""
-    get = lambda k: (card.get(k) or '').strip()
+    def get(k):
+        return (card.get(k) or '').strip()
+
     out = [f'missing {k}' for k in REQUIRED if not get(k)]
     if get('state') not in STATES:
         out.append(f'state must be one of {", ".join(STATES)}')
@@ -66,11 +68,11 @@ def card_problems(card):
             out.append('verificado-zoom needs a zoom (the crop the identity lines were read on)')
         if any('?' in get(k) for k in ('given', 'surname', 'father', 'mother')):
             out.append('verificado-zoom with a name marked (?)')
-    out += republican_problems(card, get)
+    out += republican_problems(get)
     return out
 
 
-def republican_problems(card, get):
+def republican_problems(get):
     out = []
     if get('republican'):
         try:
@@ -100,6 +102,10 @@ def tree_dates(dump):
     return out
 
 
+def spelled_differently(why):
+    return any(k in why for k in ('apellido(fonetico)', 'apellido~', 'apellido(partes)'))
+
+
 def lookup(card, people, by_id):
     """(verdict, details) for one card against the tree."""
     iso = (card.get('date_iso') or '').replace('bef ', '').strip()
@@ -114,8 +120,8 @@ def lookup(card, people, by_id):
     ids = ','.join(p['id'] for p in tied)
     verdict = f'already as {ids}' if top >= SAME else f'possible duplicate (?) {ids}'
     notes = []
-    why = next(s[1] for s, p in scored if s[0] == top)
-    if 'apellido(fonetico)' in why or 'apellido~' in why or 'apellido(partes)' in why:
+    why = next((s[1] for s, _ in scored if s[0] == top), '')
+    if spelled_differently(why):
         notes.append('spelling: the tree writes ' + '/'.join(sorted({x for p in tied for x in p['surnames']})))
     notes += conflicts(card, iso, tied, by_id)
     return verdict, notes
@@ -145,9 +151,8 @@ def check(cards, dump=None):
             results.append((card['card'], 'rejected', '; '.join(problems), True))
             continue
         verdict, notes = lookup(card, people, by_id) if dump else ('ok', [])
-        if card.get('father') or card.get('mother'):
-            if (card.get('state') or '').strip() != 'verificado-zoom':
-                notes.append('read-only: the parents are not to be written (not verificado-zoom)')
+        if (card.get('father') or card.get('mother')) and (card.get('state') or '').strip() != 'verificado-zoom':
+            notes.append('read-only: the parents are not to be written (not verificado-zoom)')
         results.append((card['card'], verdict, '; '.join(notes), any(n.startswith('CONFLICT') for n in notes)))
     return results
 
