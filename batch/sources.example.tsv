@@ -1,0 +1,2 @@
+source	url	delay	note
+example-archive	https://archive.example.org/search?q={query}	10	replace with a real search URL that works with GET
