@@ -11,6 +11,8 @@ url, filiation, zoom, place, notes. Only the columns below are required in a car
 
   state       verificado-zoom | dudoso | por-confirmar-acta
   cote ark url filiation date_iso   where the act is, what it says of the parents, the day it carries
+  classe matricule_no   required when type is matricule: the conscription class and the register number;
+              date_iso is then the birth date the entry gives. unit, campaigns, decorations are free text.
   zoom        required when state is verificado-zoom (the image or crop the identity lines were read on)
   republican  when set, date_iso must be what `gwt-dates` computes for it
 
@@ -38,6 +40,8 @@ STATES = ('verificado-zoom', 'dudoso', 'por-confirmar-acta')
 REQUIRED = ('cote', 'ark', 'url', 'filiation', 'date_iso')
 SAME, POSSIBLE = 10, 7
 EVENTS = {'bautismo': 'Baptism', 'nacimiento': 'Birth', 'entierro': 'Burial', 'defuncion': 'Death'}
+MILITARY = 'matricule'  # a conscription register entry: matched to a person, compared with no event
+MILITARY_REQUIRED = ('classe', 'matricule_no')
 DATE = re.compile(r'^(?:(bef|aft|abt) )?(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$')
 
 
@@ -68,6 +72,26 @@ def read_cards(path):
     return rows
 
 
+def type_problems(get):
+    out = []
+    kind = cross.norm(get('type'))
+    if get('type') and kind not in EVENTS and kind != MILITARY:
+        out.append('type must be one of ' + ', '.join(EVENTS) + ', ' + MILITARY)
+    if kind == MILITARY:
+        out += [f'missing {k} (a matricule card needs the class and the register number)' for k in MILITARY_REQUIRED if not get(k)]
+    return out
+
+
+def zoom_problems(get):
+    out = []
+    if get('state') == 'verificado-zoom':
+        if not get('zoom'):
+            out.append('verificado-zoom needs a zoom (the crop the identity lines were read on)')
+        if any('?' in get(k) for k in ('given', 'surname', 'father', 'mother')):
+            out.append('verificado-zoom with a name marked (?)')
+    return out
+
+
 def card_problems(card):
     """Why this card is rejected: a list of short messages, empty when it is fine."""
     def get(k):
@@ -76,15 +100,10 @@ def card_problems(card):
     out = [f'missing {k}' for k in ('type', 'given', 'surname') + REQUIRED if not get(k)]
     if get('date_iso') and not split_date(get('date_iso')):
         out.append('date_iso is not a date: use YYYY, YYYY-MM or YYYY-MM-DD, optionally after bef, aft or abt')
-    if get('type') and cross.norm(get('type')) not in EVENTS:
-        out.append('type must be one of ' + ', '.join(EVENTS) + ' (other kinds are not looked up)')
+    out += type_problems(get)
     if get('state') not in STATES:
         out.append(f'state must be one of {", ".join(STATES)}')
-    if get('state') == 'verificado-zoom':
-        if not get('zoom'):
-            out.append('verificado-zoom needs a zoom (the crop the identity lines were read on)')
-        if any('?' in get(k) for k in ('given', 'surname', 'father', 'mother')):
-            out.append('verificado-zoom with a name marked (?)')
+    out += zoom_problems(get)
     out += republican_problems(get)
     return out
 
