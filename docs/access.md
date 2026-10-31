@@ -1,6 +1,6 @@
 # gwt-access
 
-A small map of how each archive can be read, so no lane rediscovers it. One TSV row per archive: kind, viewer (`js`, `pdf`, `images`, `index-only`, `none`), captcha, download, name index, whether they answer a letter, URL, date checked, note.
+A small map of how each archive can be read, so no lane rediscovers it. One TSV row per archive: kind, viewer (`js`, `pdf`, `images`, `index-only`, `none`), captcha, download, name index, whether they answer a letter, URL, date checked, note, alias (other names for the same archive, `|` between them; `set --alias`). `show`, `plan` and `corpus --into` find a row by its name or an alias, so the open data file name and a short name do not make two rows.
 
 ```bash
 gwt-access --map access.tsv set "AD41" --kind departmental --viewer js --captcha no --index yes

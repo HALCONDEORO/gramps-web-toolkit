@@ -3,7 +3,8 @@
 
 One TSV row per archive: archive, kind (departmental, municipal, parish, national), viewer (js, pdf, images,
 index-only, none), captcha (yes, no, unknown), download (yes, no, unknown), index (name index online: yes, no,
-unknown), writes (they answer a letter or mail: yes, no, unknown), url, checked (date), note.
+unknown), writes (they answer a letter or mail: yes, no, unknown), url, checked (date), note, alias (other names for the
+same archive, separated by |: the open data file names "archives departementales de X", a lane says "AD41").
 
   gwt-access --map access.tsv set "AD41" --kind departmental --viewer js --captcha no --download no --url https://...
   gwt-access --map access.tsv show AD41
@@ -25,7 +26,7 @@ import datetime
 import os
 import sys
 
-COLS = ("archive", "kind", "viewer", "captcha", "download", "index", "writes", "url", "checked", "note")
+COLS = ("archive", "kind", "viewer", "captcha", "download", "index", "writes", "url", "checked", "note", "alias")
 CHOICES = {"kind": ("departmental", "municipal", "parish", "national", "other"),
            "viewer": ("js", "pdf", "images", "index-only", "none", "unknown"),
            "captcha": ("yes", "no", "unknown"), "download": ("yes", "no", "unknown"),
@@ -37,6 +38,17 @@ def load(path):
         return {}
     with open(path, encoding="utf-8", newline="") as fh:
         return {r["archive"].strip().lower(): r for r in csv.DictReader(fh, delimiter="\t")}
+
+
+def find(rows, name):
+    """The row for a name: its own archive name, or one of its aliases (names separated by |)."""
+    key = " ".join((name or "").lower().split())
+    if key in rows:
+        return rows[key]
+    for r in rows.values():
+        if key in [" ".join(x.lower().split()) for x in (r.get("alias") or "").split("|") if x.strip()]:
+            return r
+    return None
 
 
 def save(path, rows):
@@ -78,10 +90,10 @@ def corpus(a):
             by_arch.setdefault(r["institution"].strip(), []).append(r)
         added = 0
         for name, rs in sorted(by_arch.items()):
-            if name.lower() in rows:
+            if find(rows, name):
                 continue
             what = "; ".join("%s (%s)" % (x["type_document"], x["periode"].replace("|", ", ")) for x in rs)
-            rows[name.lower()] = {c: "unknown" for c in COLS} | {
+            rows[name.lower()] = {c: "unknown" for c in COLS} | {"alias": "",
                 "archive": name, "kind": "departmental", "url": rs[0]["url_site"], "checked": datetime.date.today().isoformat(),
                 "note": "en linea segun data.gouv: " + what}
             added += 1
@@ -100,6 +112,7 @@ def main(argv=None):
         s.add_argument("--" + k, choices=CHOICES[k])
     s.add_argument("--url", default=None)
     s.add_argument("--note", default=None)
+    s.add_argument("--alias", default=None, help="another name for the same archive; several with |")
     sh = sub.add_parser("show")
     sh.add_argument("archive")
     ls = sub.add_parser("list")
@@ -120,8 +133,8 @@ def main(argv=None):
         key = a.archive.strip().lower()
         if not key:
             p.error("archive is empty")
-        r = rows.setdefault(key, {c: "unknown" for c in COLS} | {"archive": a.archive.strip(), "url": "", "note": ""})
-        for k in list(CHOICES) + ["url", "note"]:
+        r = rows.setdefault(key, {c: "unknown" for c in COLS} | {"archive": a.archive.strip(), "url": "", "note": "", "alias": ""})
+        for k in list(CHOICES) + ["url", "note", "alias"]:
             if getattr(a, k) is not None:
                 r[k] = " ".join(str(getattr(a, k)).split())  # no tabs or newlines in a TSV cell
         r["checked"] = datetime.date.today().isoformat()
@@ -129,7 +142,7 @@ def main(argv=None):
         print("\t".join(r.get(c, "") for c in COLS))
         return 0
     if a.cmd == "show":
-        r = rows.get(a.archive.strip().lower())
+        r = find(rows, a.archive)
         if not r:
             print("no row for %s" % a.archive, file=sys.stderr)
             return 1
@@ -146,7 +159,7 @@ def main(argv=None):
     if not names:
         p.error("plan needs at least one archive")
     for n in names:
-        r = rows.get(n.lower())
+        r = find(rows, n)
         if not r:
             verdict = "unknown: look at the site once and `set` it"
         elif readable_now(r):

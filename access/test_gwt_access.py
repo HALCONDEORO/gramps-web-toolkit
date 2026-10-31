@@ -22,6 +22,17 @@ class AccessTest(unittest.TestCase):
                 code = e.code
         return code, out.getvalue(), err.getvalue()
 
+    def test_alias_finds_the_row_and_stops_corpus_adding_a_duplicate(self):
+        self.run_("set", "AD99", "--viewer", "js", "--captcha", "no", "--alias", "archives departementales de Zed")
+        self.assertEqual(self.run_("show", "Archives Departementales de Zed")[0], 0)
+        self.assertIn("read now", self.run_("plan", "archives departementales de Zed")[1])
+        c = os.path.join(self.d.name, "c.csv")
+        open(c, "w", encoding="utf-8").write(
+            "intitule,institution,id_institution,url_site,type_document,lieu,theme,periode,observations\n"
+            "X,archives departementales de Zed,FRAD999,https://zed.example/,etat civil,Zed,,19e,\n")
+        self.run_("corpus", c, "--into")
+        self.assertEqual(len(A.load(self.m)), 1)
+
     def test_corpus_lists_filters_and_seeds_without_overwriting(self):
         c = os.path.join(self.d.name, "c.csv")
         open(c, "w", encoding="utf-8").write(
