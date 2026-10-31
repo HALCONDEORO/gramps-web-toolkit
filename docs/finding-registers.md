@@ -34,4 +34,4 @@ For a wider view there is a dataset on data.gouv.fr, [Principaux corpus d'archiv
 
 ## Pace and terms
 
-Read each site's terms before automating anything on it. Some, FamilySearch among them, forbid robots. Keep a slow pace, stop on a captcha or a block, and never get around one.
+Read each site's current terms before automating anything on it; stop on a captcha or a block. FamilySearch's terms are at [churchofjesuschrist.org](https://www.churchofjesuschrist.org/learn/legal/terms-of-use/go?lang=eng); read them yourself.
