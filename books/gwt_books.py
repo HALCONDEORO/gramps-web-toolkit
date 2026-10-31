@@ -9,11 +9,13 @@ never talks to a site. A person opens the image, then types what it showed.
   gwt-books add  --book B --image N --date D [--note "..."]   record that image N of book B shows date D
   gwt-books next --book B --target D [--total N]               the image to open next (--total: images in the book)
   gwt-books show --book B [--target D]                         the landmarks and the window still to search
+  gwt-books status --book B [--target D] [--total N]           how far the search is and the zone left
+  gwt-books export --book B [--out FILE]                       the landmarks as CSV
 
 Dates are YYYY, YYYY-MM or YYYY-MM-DD. The log is a TSV: --log, else $GWT_BOOKS, else ./libros.tsv.
 Standard library only.
 """
-import argparse, datetime, os, re, sys
+import argparse, csv, datetime, os, re, sys, tempfile
 
 COLUMNS = ('book', 'image', 'date', 'note', 'seen')
 
@@ -141,19 +143,44 @@ def cmd_add(args):
     return 0
 
 
+def zone(marks, target, total=None):
+    """The images still to review for the target, as (first, last, count). last is None when the book size is
+    unknown; count 0 means nothing is left between the landmarks. None when no landmark is known yet or the
+    target is already on an image."""
+    lo, hi = window(marks, target)
+    if lo and hi:
+        count = max(hi[0] - lo[0] - 1, 0)
+        return None if lo[1] == target else (lo[0] + 1, hi[0] - 1, count)
+    if lo:
+        return (lo[0] + 1, total, max(total - lo[0], 0) if total else None)
+    if hi:
+        return (1, hi[0] - 1, hi[0] - 1)
+    return None
+
+
+def zone_line(z):
+    first, last, count = z
+    if count == 0:
+        return 'remaining zone: none, no image is left to review between the landmarks'
+    end = 'the end of the book' if last is None else f'image {last}'
+    return f'remaining zone: image {first} to {end}' + ('' if count is None else f' ({count} images)')
+
+
+def check_total(marks, total):
+    if total and marks and total < marks[-1][0]:
+        raise SystemExit(f'--total {total} is below image {marks[-1][0]}, which is already marked')
+
+
 def cmd_next(args):
     marks = landmarks(read_log(log_path(args)), args.book)
-    if args.total and marks and args.total < marks[-1][0]:
-        raise SystemExit(f'--total {args.total} is below image {marks[-1][0]}, which is already marked')
-    image, why = suggest(marks, parse_date(args.target), args.total)
-    if image is None:
-        print(why)
-        return 1
-    print(f'open image {image}: {why}')
-    lo, hi = window(marks, parse_date(args.target))
-    if lo and hi and hi[0] > lo[0]:
-        print(f'{hi[0] - lo[0] - 1} images left between {lo[0]} and {hi[0]}')
-    return 0
+    check_total(marks, args.total)
+    target = parse_date(args.target)
+    image, why = suggest(marks, target, args.total)
+    print(why if image is None else f'open image {image}: {why}')
+    z = zone(marks, target, args.total)
+    if z:
+        print(zone_line(z))
+    return 1 if image is None else 0
 
 
 def cmd_show(args):
@@ -166,8 +193,68 @@ def cmd_show(args):
     return 0
 
 
+def cmd_status(args):
+    marks = landmarks(read_log(log_path(args)), args.book)
+    if not marks:
+        print(f'{args.book}: no landmarks yet. Open an image, then: gwt-books add --book "{args.book}" --image N --date D')
+        return 1
+    check_total(marks, args.total)
+    print(f'{args.book}: {len(marks)} landmarks, images {marks[0][0]} to {marks[-1][0]}, dates {marks[0][1]} to {marks[-1][1]}')
+    if args.target:
+        target = parse_date(args.target)
+        image, why = suggest(marks, target, args.total)
+        print(f'target {args.target}: ' + (f'next open image {image} ({why})' if image else why))
+        z = zone(marks, target, args.total)
+        if z:
+            print(zone_line(z))
+    return 0
+
+
+def same_file(a, b):
+    """True if two paths are the same file: the same path, a symlink to it, or a hard link to it."""
+    if os.path.realpath(a) == os.path.realpath(b):
+        return True
+    return os.path.exists(a) and os.path.exists(b) and os.path.samefile(a, b)
+
+
+def cmd_export(args):
+    log = log_path(args)
+    marks = landmarks(read_log(log), args.book)
+    if args.out and same_file(args.out, log):
+        raise SystemExit('--out is the log file itself: export would destroy the other books in it')
+    if not args.out:
+        write_csv(sys.stdout, args.book, marks)
+        return 0
+    directory = os.path.dirname(os.path.abspath(args.out))
+    fd, tmp = tempfile.mkstemp(prefix='.gwt-books-', suffix='.tmp', dir=directory)
+    try:
+        with os.fdopen(fd, 'w', newline='', encoding='utf-8') as fh:
+            write_csv(fh, args.book, marks)
+        os.replace(tmp, args.out)
+    finally:
+        if os.path.lexists(tmp):
+            os.remove(tmp)
+    return 0
+
+
+def write_csv(out, book, marks):
+    writer = csv.writer(out, lineterminator='\n')
+    writer.writerow(('book', 'image', 'date', 'note'))
+    for n, d, note in marks:
+        writer.writerow((book, n, d.isoformat(), note))
+
+
+EPILOG = """examples:
+  gwt-books add --book register-1 --image 120 --date 1905-03 --note baptisms
+  gwt-books next --book register-1 --target 1926-05 --total 640
+  gwt-books status --book register-1 --target 1926-05
+  gwt-books export --book register-1 --out register-1.csv
+"""
+
+
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog='gwt-books', description=__doc__.split('\n\n')[0])
+    ap = argparse.ArgumentParser(prog='gwt-books', description=__doc__.split('\n\n')[0], epilog=EPILOG,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--log')
     sub = ap.add_subparsers(dest='cmd', required=True)
     a = sub.add_parser('add')
@@ -182,8 +269,15 @@ def main(argv=None):
     s = sub.add_parser('show')
     s.add_argument('--book', type=book_name, required=True)
     s.add_argument('--target')
+    t = sub.add_parser('status', help='landmarks, dates covered and the zone left for a target')
+    t.add_argument('--book', type=book_name, required=True)
+    t.add_argument('--target')
+    t.add_argument('--total', type=positive)
+    e = sub.add_parser('export', help='the landmarks as CSV')
+    e.add_argument('--book', type=book_name, required=True)
+    e.add_argument('--out')
     args = ap.parse_args(argv)
-    return {'add': cmd_add, 'next': cmd_next, 'show': cmd_show}[args.cmd](args)
+    return {'add': cmd_add, 'next': cmd_next, 'show': cmd_show, 'status': cmd_status, 'export': cmd_export}[args.cmd](args)
 
 
 if __name__ == '__main__':
