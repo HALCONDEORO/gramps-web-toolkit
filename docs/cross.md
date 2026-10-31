@@ -19,7 +19,7 @@ Output (tab separated): `score`, Gramps ID, what agreed, the index reference, th
 
 The index needs a header. Column names are matched in Spanish, French and English: surname (`apellido`, `nom`), given (`nombre`, `prenom`), year (`ano`, `annee`, a full date is fine), place (`lugar`, `lieu`, `commune`), reference (`ref`, `cote`, `url`). The delimiter (tab, semicolon, comma or bar) is detected.
 
-Scoring: surname equal +4 (particles such as "de la" +3, close spelling +2), a shared given name +3, same place +2, year within 5 of a birth, baptism or death +2 (within 15, +1). A row with no surname agreement is dropped. Rows are only compared with people whose surname starts with the same letter, so 20,000 rows against thousands of people take well under a minute.
+Scoring: surname equal +4 (particles such as "de la" or a double surname +3, same sound after a rough key, so Vidal and Bidal or Gil and Jil, +3, close spelling +2); a shared given name +3 and the full given name equal +1 more; same place +2; year equal to a birth, baptism or death +3, within 5 +2, within 15 +1. A row with no surname agreement is dropped. A row that fits several people equally lists all their IDs, comma separated: a common name or a duplicate in the tree, never a pick. Rows are only compared with people sharing a surname sound letter, so 20,000 rows against thousands of people take a second or two.
 
 Exit 0 when a row reached the score, 1 when none did, 2 when the index or the dump cannot be read.
 
