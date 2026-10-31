@@ -123,6 +123,19 @@ def spelled_differently(why):
     return any(k in why for k in ('apellido(fonetico)', 'apellido~', 'apellido(partes)'))
 
 
+def judge(top, why, tied):
+    """The verdict for the best match and the notes that go with it."""
+    ids = ','.join(p['id'] for p in tied)
+    named = 'nombre' in why and any(k in why for k in ('ano exacto', 'ano'))
+    verdict = f'already as {ids}' if top >= SAME and named else f'possible duplicate (?) {ids}'
+    notes = []
+    if top >= SAME and not named:
+        notes.append('not enough to say it is the same person: the given name and the year must both match')
+    if spelled_differently(why):
+        notes.append('spelling: the tree writes ' + '/'.join(sorted({x for p in tied for x in p['surnames']})))
+    return verdict, notes
+
+
 def lookup(card, people, by_id):
     """(verdict, details) for one card against the tree."""
     qual, iso = split_date(card.get('date_iso')) or ('', '')
@@ -134,15 +147,7 @@ def lookup(card, people, by_id):
     if top < POSSIBLE:
         return 'nouveau', []
     tied = [p for s, p in scored if s[0] == top]
-    ids = ','.join(p['id'] for p in tied)
-    why = next((s[1] for s, _ in scored if s[0] == top), '')
-    named = 'nombre' in why and any(k in why for k in ('ano exacto', 'ano'))
-    verdict = f'already as {ids}' if top >= SAME and named else f'possible duplicate (?) {ids}'
-    notes = []
-    if top >= SAME and not named:
-        notes.append('not enough to say it is the same person: the given name and the year must both match')
-    if spelled_differently(why):
-        notes.append('spelling: the tree writes ' + '/'.join(sorted({x for p in tied for x in p['surnames']})))
+    verdict, notes = judge(top, next((s[1] for s, _ in scored if s[0] == top), ''), tied)
     notes += conflicts(card, qual, iso, tied, by_id)
     return verdict, notes
 
