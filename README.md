@@ -33,7 +33,7 @@ The toolkit works for genealogy in any country. One module, `spanish-poller`, is
 - `gwt-access`: a map of how each archive can be read (viewer, captcha, download, letter) and a plan of which to read now
 - `gwt-rank`: orders record-search results by how well they fit a person in the tree, from the cached FamilySearch JSON or from page text, and never hides a row
 - `gwt-mh`: MyHeritage record search, record pages and originals through a signed-in browser
-- `gwt-read`: record search and records on FamilySearch and PARES, index search on Genae, and a name in the BOE and Gaceta de Madrid, slow and cached so the account is not suspended
+- `gwt-read`: record search and records on FamilySearch and PARES, index search on Genae, and a name in the BOE and Gaceta de Madrid, slow and cached so the account is not suspended; and INSEE's French deaths files, read offline
 - `gwt-gate`: one request pace shared by every agent on a machine, which backs off on a block and lets priority lanes go first
 - `gwt-rawstore`: keeps source images in an S3-compatible bucket and only a small manifest in git
 - `gwt-spanish-poller` (Spain only): watches Spanish civil-registry requests and the DEHú inbox read-only, and flags cases that vanish
