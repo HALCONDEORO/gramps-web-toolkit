@@ -490,3 +490,17 @@ def test_touraine_a_server_error_is_an_error_not_the_end_of_the_register():
     c = FakeClient({touraine.BASE + "/visualizer/api": Resp("<html>oops</html>", status=500)})
     with pytest.raises(touraine.Blocked):
         touraine.list_pages(c, "abc123def")
+
+
+def test_touraine_run_itself_caps_a_huge_max_at_30(tmp_path, capsys):
+    c = FakeClient({touraine.BASE + "/visualizer/api": visualizer(100)})
+    assert touraine.run(_targs(tmp_path, max=500), c) == 2
+    assert not _images(c)
+
+
+@pytest.mark.parametrize("status", [403, 500, 200])
+def test_touraine_the_end_message_counts_only_with_status_400(tmp_path, status, capsys):
+    end = Resp(json.dumps(touraine.END_OF_REGISTER), "application/json", status=status)
+    c = FakeClient({touraine.BASE + "/visualizer/api": end})
+    assert touraine.run(_targs(tmp_path, list=True), c) == 1
+    assert "stopped" in capsys.readouterr().err
