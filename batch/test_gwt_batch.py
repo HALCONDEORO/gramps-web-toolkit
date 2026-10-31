@@ -20,6 +20,12 @@ class H(http.server.BaseHTTPRequestHandler):
             body = b"no"
         elif "limit" in self.path:
             self.send_response(429); self.end_headers(); return
+        elif "jsonerr" in self.path:
+            body = b'{"error":"a quoted string is empty"}'
+        elif "htmlerr" in self.path:
+            body = b"<html><head><title>404 Not Found</title></head><body>x</body></html>"
+        elif "emptybody" in self.path:
+            body = b""
         elif "captcha" in self.path:
             body = b"<html>please solve the CAPTCHA</html>"
         else:
@@ -106,6 +112,23 @@ class BatchTest(unittest.TestCase):
         self.assertEqual(rows["q3"]["status"], "open")  # a page that came back is the reader's call
         self.assertIn("captcha", rows["q1"]["note"])
         self.assertIn("ok", open(os.path.join(raw, "outcomes.tsv")).read())
+
+    def test_a_200_that_is_an_error_is_not_ok_and_the_task_stays_open(self):
+        self.queue(("a", "x", 9), ("b", "x", 8), ("c", "x", 7), ("d", "ana", 6))
+        h = self.base.replace("127.0.0.1", "localhost")
+        self.templates(("a", self.base + "/jsonerr?q={query}"), ("b", h + "/htmlerr?q={query}"),
+                       ("c", self.base + "/emptybody?q={query}"), ("d", h + "/fine?q={query}"))
+        raw = os.path.join(self.d.name, "raw")
+        _, out, err = self.run_("--fetch", "--out", raw, "--mark")
+        st = {l.split("\t")[0]: l.split("\t")[2] for l in out.splitlines()}
+        self.assertTrue(st["q1"].startswith("bad body (json error"))
+        self.assertTrue(st["q2"].startswith("bad body (error page"))
+        self.assertTrue(st["q3"].startswith("bad body (empty"))
+        self.assertEqual(st["q4"], "ok")
+        self.assertFalse(any(os.path.exists(os.path.join(raw, "q%d.html" % i)) for i in (1, 2, 3)))
+        self.assertIn("3 fetch(es)", err)
+        self.assertTrue(all(r["status"] == "open" for r in Q.read_file(self.q) if r["id"] != "q4") )
+        self.assertEqual(sum(1 for l in open(os.path.join(raw, "outcomes.tsv")) if "\terror\t" in l), 3)
 
     def test_without_mark_the_queue_is_untouched(self):
         self.queue(("a", "captcha one", 9))

@@ -16,13 +16,16 @@ A captcha or rate limit is not "nothing found". Every fetch is listed in OUT/out
 has to do by hand (captcha, 403/429, host left alone) are also in OUT/manual.tsv with their URL. With --mark the
 queue row of such a task becomes done with result "blocked" (robots.txt: "denied") and a note with the reason, so
 it counts as not searched (a re-seed does not skip it) and shows in `gwt-queue list --result blocked`. Without
---mark the queue is never changed. A page that came back ok is left to the reader (`gwt-queue done`).
+--mark the queue is never changed. A 200 answer that is an error (empty, a JSON error object, a page titled
+error or not found) is not a result: nothing is saved, it shows as result "error" in outcomes.tsv and the task stays open. A page that came back ok is left to the reader (`gwt-queue done`).
 
 Exit 0 when at least one URL was built, 1 when no open task has a template, 2 on a bad file.
 """
 import argparse
 import csv
+import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -36,6 +39,29 @@ import gwt_queue as Q  # noqa: E402
 
 AGENT = "gwt-batch/1.0 (genealogy research of deceased people; polite, single requests)"
 BLOCK_MARKERS = ("captcha", "too many requests", "demasiadas solicitudes", "acceso denegado", "access denied")
+
+
+ERROR_TITLES = ("404", "not found", "no encontrad", "introuvable", "error", "erreur", "service unavailable", "bad gateway")
+
+
+def bad_body(body):
+    """Why a 200 answer is not a result (a reason), or '' when it looks like a real page or data.
+    Empty, a JSON error object, or an HTML page whose title says error / not found."""
+    text = body.decode("utf-8", "replace").strip()
+    if not text:
+        return "empty body"
+    if text[:1] in "{[":
+        try:
+            data = json.loads(text)
+        except ValueError:
+            return ""
+        if isinstance(data, dict) and (data.get("error") or data.get("errors") or data.get("status") in ("error", "fail")):
+            return "json error: %s" % str(data.get("error") or data.get("errors") or data.get("status"))[:80]
+        return ""
+    m = re.search(r"<title[^>]*>(.*?)</title>", text[:20000], re.I | re.S)
+    if m and any(w in m.group(1).lower() for w in ERROR_TITLES):
+        return "error page: %s" % " ".join(m.group(1).split())[:80]
+    return ""
 
 
 def load_templates(path):
@@ -108,6 +134,9 @@ class Polite:
         if any(m in body[:20000].decode("utf-8", "replace").lower() for m in BLOCK_MARKERS):
             self.blocked.add(host)
             return "blocked (captcha or rate limit page)", b""
+        why = bad_body(body)
+        if why:
+            return "bad body (%s)" % why, b""
         return "ok", body
 
 
@@ -154,7 +183,7 @@ def main(argv=None):
     polite = Polite(a.delay)
     if a.fetch:
         os.makedirs(a.out, exist_ok=True)
-    log, manual, marks = [], [], {}
+    log, manual, marks, failed = [], [], {}, 0
     for r, t, url in todo:
         if not a.fetch:
             print("%s\t%s\t%s" % (r["id"], r["source"], url))
@@ -166,6 +195,8 @@ def main(argv=None):
         print("%s\t%s\t%s\t%d bytes\t%s" % (r["id"], r["source"], status, len(body), url))
         res = outcome(status)
         log.append((r["id"], r["source"], status, res or ("ok" if body else "error"), url))
+        if not res and not body:
+            failed += 1
         if res:
             manual.append((r["id"], r["person_label"], r["source"], res, status, url))
             marks[r["id"]] = (res, "%s: %s (%s)" % (res, status, url))
@@ -176,6 +207,8 @@ def main(argv=None):
                 fh.write(head + "\n" + "".join("\t".join(x) + "\n" for x in rows))
         if manual:
             print("gwt-batch: %d task(s) need a person (captcha, block or robots): see %s" % (len(manual), os.path.join(a.out, "manual.tsv")), file=sys.stderr)
+        if failed:
+            print("gwt-batch: %d fetch(es) gave no usable page (error, bad body): they stay open, see outcomes.tsv" % failed, file=sys.stderr)
         if a.mark and marks:
             mark(a.queue, marks)
     return 0
