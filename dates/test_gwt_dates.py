@@ -1,5 +1,6 @@
-import datetime, os, sys
+import copy, datetime, os, sys
 sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'check'))
 import pytest
 import gwt_dates as gd
 
@@ -89,3 +90,44 @@ def test_cli_prints_one_line_and_exits_2_on_a_bad_date(capsys):
 def test_roman_numerals_cover_every_year():
     assert [gd.roman(y) for y in (1, 4, 9, 14)] == ['I', 'IV', 'IX', 'XIV']
     assert all(gd.ROMAN[gd.roman(y).lower()] == y for y in range(1, 15))
+
+
+@pytest.mark.parametrize('text', ['14 germinal an 1.3', '1 germinal an 0.1', '1.4 germinal an XIII', '14 germinal an X.III',
+                                  '14. germinal an XIII', '14 germinal. an XIII', '14 germinal an XIII.', '14 germinal an'])
+def test_dots_inside_the_day_or_the_year_are_refused(text):
+    with pytest.raises(ValueError):
+        gd.parse_republican(text)
+
+
+def _check_tree(*notes):
+    from gwt_check import selftest
+    from gwt_check.tree import Tree
+    d = copy.deepcopy(selftest.clean_tree())
+    for i, t in enumerate(notes):
+        d['notes'].append({**copy.deepcopy(d['notes'][0]), 'handle': f'hN90{i}', 'gramps_id': f'N90{i}',
+                           'text': {'_class': 'StyledText', 'string': t, 'tags': []}})
+    return Tree(d)
+
+
+def test_gwt_check_verifies_the_notes_gwt_dates_writes_for_every_regular_day():
+    from gwt_check.republican import republican_report
+    notes = []
+    for year in range(1, 15):
+        for month in range(1, 13):
+            for day in (1, 15, 30):
+                try:
+                    notes.append(gd.note(gd.to_gregorian(day, month, year)))
+                except ValueError:
+                    pass  # past the last day of the calendar
+    rep = republican_report(_check_tree(*notes))
+    assert (len(rep['rows']), rep['differs'], rep['unreadable']) == (len(notes), 0, 0) and len(notes) > 400
+    wrong = republican_report(_check_tree('14 germinal an 13 = 05/04/1805'))
+    assert wrong['differs'] == 1
+
+
+def test_gwt_check_does_not_read_complementary_days_at_all():
+    """The documented limit: a note for a complementary day is ignored by `gwt-check republican`."""
+    from gwt_check.republican import republican_report
+    note = gd.note(D(1795, 9, 22))
+    assert note.startswith('6 jour complementaire an 3')
+    assert republican_report(_check_tree(note))['rows'] == []

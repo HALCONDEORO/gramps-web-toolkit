@@ -15,7 +15,7 @@ gwt-dates parse "3 de marzo de 1805"             # 1805-03-03
 
 - **Republican to Gregorian** reads the day, a month name (accents and case ignored) or "jour complémentaire" / "sansculottide", and the year in digits or Roman numerals (an I to an XIV).
 - **The calendar as applied.** An I began on 22 September 1792. Years III, VII and XI had a sixth complementary day. The last day is 10 nivôse an XIV (31 December 1805). A date outside that span, a day 31, or a sixth complementary day in a common year is refused with exit 2.
-- **`--as-note`** prints the "14 germinal an 13 = 04/04/1805" form that [`gwt-check republican`](check.md) reads back, so a note written with it passes that check.
+- **`--as-note`** prints the "14 germinal an 13 = 04/04/1805" form that [`gwt-check republican`](check.md) reads back, so a note written with it passes that check. The test suite runs the notes of every regular month through `gwt-check republican` and finds no difference. **Limit:** `gwt-check republican` does not read the complementary days (`jour complémentaire`, `sansculottide`): a note for one is ignored, not checked. `gwt-dates` does convert them.
 - **Old-style months**: `7bre` is September, `8bre` October, `9bre` November, `Xbre` and `10bre` December. Reading `9bre` as September moves the date two months. French and Spanish month names are read too.
 - **A year starts on 22, 23 or 24 September.** An XIII began on 23 September 1804. Always convert; do not count from memory.
 

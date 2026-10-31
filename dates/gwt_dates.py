@@ -97,7 +97,7 @@ REPUBLICAN = re.compile(r'(\d{1,2})\s*(?:er|e|eme|ere)?\s+(?:(' + '|'.join(MONTH
 
 
 def parse_republican(text):
-    m = REPUBLICAN.fullmatch(fold(text).replace('.', ''))
+    m = REPUBLICAN.fullmatch(fold(text))
     if not m:
         raise ValueError(f'cannot read {text!r} as "<day> <month> an <year>"')
     year = ROMAN.get(m[3]) or (int(m[3]) if m[3].isdigit() else 0)
