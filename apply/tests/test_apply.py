@@ -4088,3 +4088,13 @@ def test_server_backup_needs_apply(fake, tmp_path, monkeypatch):
     p = _server_backup_env(fake, tmp_path, monkeypatch)
     with pytest.raises(SystemExit):
         main([str(p), "--server-backup"])
+
+
+@pytest.mark.parametrize("op", [
+    {"op": "move_event", "event": "abc123handle0000000000", "from": {"person": "I1"}, "to": {"family": "F1"}},
+    {"op": "link_event", "person": "I1", "event": "abc123handle0000000000", "role": "Witness"},
+    {"op": "update_event", "event": "abc123handle0000000000", "set": {"description": "d"}},
+])
+def test_an_event_given_as_a_handle_is_refused(op):
+    errors = validate([{**op, "key": "k", "ruling": R}])
+    assert any("neither key:<key> nor a Gramps ID" in e for e in errors)

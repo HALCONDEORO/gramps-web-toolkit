@@ -95,7 +95,7 @@ gwt_apply/ops.py | if len(mine) > 1: | if False: | move_event refuses an event t
 gwt_apply/ops.py | if (scls, src["handle"]) == (dcls, dst["handle"]): | if False: | move_event from an owner to itself under another name is a conflict, never an orphaned event
 gwt_apply/ops.py | if name == "move_event" and _event_owner(op.get("from")) == _event_owner(op.get("to")): | if False: | validate refuses a move_event whose from and to are the same
 gwt_apply/ops.py | if cls not in ("Person", "Family"): | if False: | validate refuses a move_event owner that is not a person or a family
-gwt_apply/ops.py | refs += [op.get("event"), *_target_refs(op.get("from")), *_target_refs(op.get("to"))] | refs += [*_target_refs(op.get("from")), *_target_refs(op.get("to"))] | validate refuses a move_event event that is a handle
+gwt_apply/ops.py | "enclosed_by", "event", | "enclosed_by", | validate refuses an event given as a handle (move_event, link_event, update_event)
 gwt_apply/ops.py | self.actions.append(f"warning: {what} is now on both | self.actions.append(f"note: {what} is now on both | a move_event stopped between its two writes says the event is on both owners, on every try
 gwt_apply/ops.py | ref["role"] = {"Primary": "Family", "Family": "Primary"}.get(ref.get("role"), ref.get("role")) | pass | move_event between a person and a family swaps Primary and Family
 gwt_apply/ops.py | ref["role"] = op["role"] | pass | move_event takes the role the op gives

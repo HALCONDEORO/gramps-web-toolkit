@@ -327,7 +327,7 @@ def validate(ops: list[dict]) -> list[str]:
         if name == "detach":
             refs += _target_refs(op.get("object"))
         if name == "move_event":
-            refs += [op.get("event"), *_target_refs(op.get("from")), *_target_refs(op.get("to"))]
+            refs += [*_target_refs(op.get("from")), *_target_refs(op.get("to"))]  # "event" is in the list above
         for ref in refs:
             if ref is not None and not (isinstance(ref, str) and (ref.startswith("key:") or _GRAMPS_ID.match(ref))):
                 errors.append(f"{where}: {ref!r} is neither key:<key> nor a Gramps ID (never a handle)")
