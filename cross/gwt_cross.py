@@ -22,6 +22,7 @@ Exit 0 when a row reached --min-score, 1 when none did, 2 when INDEX or the dump
 """
 import argparse
 import csv
+import os
 import difflib
 import json
 import sys
@@ -69,7 +70,7 @@ def columns(header):
     return out
 
 
-def tree_people(dump, only_parentless=False):
+def tree_people(dump, only_parentless=False, no_death=False):
     objs = dump.get("objects", dump)
     events = {e["handle"]: e for e in objs["events"]}
     places = {x["handle"]: ((x.get("name") or {}).get("value", "")) for x in objs.get("places", [])}
@@ -77,11 +78,13 @@ def tree_people(dump, only_parentless=False):
     for p in objs["people"]:
         if only_parentless and p.get("parent_family_list"):
             continue
+        if no_death and any((events.get(r.get("ref")) or {}).get("type") == "Death" for r in p.get("event_ref_list") or []):
+            continue
         n = p.get("primary_name") or {}
         surs = [norm(s.get("surname")) for s in n.get("surname_list") or [] if s.get("surname")]
         if not surs:
             continue
-        years, pl = [], set()
+        years, births, deaths, pl = [], [], [], set()
         for r in p.get("event_ref_list") or []:
             e = events.get(r.get("ref"))
             if not e:
@@ -89,9 +92,10 @@ def tree_people(dump, only_parentless=False):
             v = (e.get("date") or {}).get("dateval") or []
             if e.get("type") in ("Birth", "Baptism", "Death") and len(v) > 2 and v[2]:
                 years.append(v[2])
+                (deaths if e["type"] == "Death" else births).append(v[2])
             if e.get("place") and places.get(e["place"]):
                 pl.add(norm(places[e["place"]]))
-        out.append({"id": p.get("gramps_id"), "given": norm(n.get("first_name")), "surnames": surs, "years": years, "places": pl})
+        out.append({"id": p.get("gramps_id"), "given": norm(n.get("first_name")), "surnames": surs, "years": years, "births": births, "deaths": deaths, "places": pl})
     return out
 
 
@@ -111,18 +115,22 @@ def score(row, person):
         return 0, []
     g, pg = row["given"], person["given"]
     if g and pg:
-        if g.split()[0] == pg.split()[0] or set(g.split()) & set(pg.split()):
+        if g.split()[0] == pg.split()[0]:
             s += 3; why.append("nombre")
             if g == pg:
                 s += 1; why.append("nombre completo")
+        elif set(g.split()) & set(pg.split()):
+            s += 1; why.append("otro nombre")  # a shared second name (Marie, Jean) is weak on its own
         elif close(g.split()[0], pg.split()[0]):
             s += 1; why.append("nombre~")
         elif g[0] == pg[0]:
             s += 1; why.append("inicial")
     if row["place"] and any(row["place"] == x or (len(row["place"]) > 4 and row["place"] in x) for x in person["places"]):
         s += 2; why.append("lugar")
-    if row["year"] and person["years"]:
-        d = min(abs(row["year"] - y) for y in person["years"])
+    pairs = [(row["year"], person["births"]), (row.get("year2"), person["deaths"])]
+    gaps = [abs(ry - y) for ry, ys in pairs if ry for y in ys]
+    if gaps:
+        d = min(gaps)
         if d == 0:
             s += 3; why.append("ano exacto")
         elif d <= 5:
@@ -172,7 +180,43 @@ def delimiter(header):
     return best if counts[best] else ","
 
 
-def read_index(path, encoding=None):
+def is_insee(first_line):
+    """The INSEE file of deceased people: NAME*GIVEN NAMES/ padded to 80 characters, then fixed columns."""
+    return len(first_line) >= 166 and "*" in first_line[:80] and "/" in first_line[:80] and first_line[81:89].isdigit()
+
+
+def insee_rows(path, keep, label):
+    """Stream the INSEE deceased file (data.gouv.fr, fixed columns, Latin-1 or UTF-8) and keep only the rows whose
+    surname sounds like one in `keep` (a set of phonetic keys). Birth date, birth commune, death date and
+    commune, act number: name*given/ (80), sex, birth YYYYMMDD, commune code, commune (30), country (30),
+    death YYYYMMDD, commune code, act number."""
+    rows = []
+    with open(path, "rb") as fh:
+        for raw in fh:
+            try:
+                line = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                line = raw.decode("latin-1")
+            name = line[:80]
+            sur, _, given = name.partition("*")
+            sur_n = norm(sur)
+            if not sur_n or not any(t in keep for t in phon(sur_n).split()):
+                continue
+            by, dy = line[81:85], line[154:158]
+            commune = line[94:124].strip()
+            rows.append({"surname": sur_n, "given": norm(given.replace("/", " ").replace(",", " ")),
+                         "year": int(by) if by.isdigit() and int(by) else None,
+                         "year2": int(dy) if dy.isdigit() and int(dy) else None,
+                         "place": norm(commune), "ref": "%s act %s, death %s %s" % (label, line[167:176].strip(), line[154:162], line[162:167]),
+                         "raw": "%s | %s | n. %s %s | m. %s" % (sur.strip(), given.strip(" /"), line[81:89], commune, line[154:162])})
+    return rows
+
+
+def read_index(path, encoding=None, keep=None):
+    with open(path, "rb") as fh:
+        head = fh.readline().decode("latin-1")
+    if is_insee(head):
+        return insee_rows(path, keep if keep is not None else set(), os.path.basename(path))
     with open(path, "rb") as fh:
         text = decode(fh.read(), encoding)
     lines = [l for l in text.splitlines() if l.strip()]
@@ -193,18 +237,22 @@ def read_index(path, encoding=None):
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="gwt-cross", description=__doc__.split("\n\n")[0])
-    p.add_argument("index")
+    p.add_argument("index", nargs="+", help="one or more index files (CSV, TSV, or the INSEE deceased file)")
     p.add_argument("--dump", required=True)
     p.add_argument("--only-parentless", action="store_true", help="only the people with no parents in the tree")
+    p.add_argument("--no-death", action="store_true", help="only people with no death event in the tree: who is the index's death?")
     p.add_argument("--min-score", type=int, default=6)
     p.add_argument("--encoding", help="force the index encoding (default: UTF-8, UTF-16 or Windows-1252 by what decodes)")
     p.add_argument("--limit", type=int, default=0, help="print at most this many rows (0 = all)")
     p.add_argument("--format", choices=("tsv", "json"), default="tsv")
     a = p.parse_args(argv)
     try:
-        rows = read_index(a.index, a.encoding)
         with open(a.dump, encoding="utf-8") as fh:
-            people = tree_people(json.load(fh), a.only_parentless)
+            people = tree_people(json.load(fh), a.only_parentless, a.no_death)
+        keep = {t for p in people for x in p["surnames"] for t in phon(x).split()}
+        rows = []
+        for path in a.index:
+            rows += read_index(path, a.encoding, keep)
     except (OSError, ValueError, KeyError, LookupError) as e:
         print("gwt-cross: cannot read the index or the dump: %s" % e, file=sys.stderr)
         return 2
