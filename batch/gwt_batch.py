@@ -19,6 +19,10 @@ it counts as not searched (a re-seed does not skip it) and shows in `gwt-queue l
 --mark the queue is never changed. A 200 answer that is an error (empty, a JSON error object, a page titled
 error or not found) is not a result: nothing is saved, it shows as result "error" in outcomes.tsv and the task stays open. A page that came back ok is left to the reader (`gwt-queue done`).
 
+The legal way past a block is a person: open the URL from manual.tsv in your own browser (solve the captcha
+yourself if the site asks), save the page as <task id>.html, and run `gwt-batch --queue cola.tsv --adopt DIR --out raw/`.
+The tool never solves a captcha and never sends the browser headers of a person.
+
 Exit 0 when at least one URL was built, 1 when no open task has a template, 2 on a bad file.
 """
 import argparse
@@ -26,6 +30,7 @@ import csv
 import json
 import os
 import re
+import shutil
 import sys
 import time
 import urllib.error
@@ -160,10 +165,39 @@ def mark(queue, results):
     Q.with_queue(queue, fn)
 
 
+def adopt(queue, src, out):
+    """Pages a person saved by hand (a browser the person drives, one captcha solved by that person) for tasks
+    that came back blocked: SRC/<task id>.html (or .xml, .json, .txt, .pdf) is copied to OUT/<task id>.<ext>, and the
+    task is open again with a note saying how the page came. Returns the ids taken."""
+    got = {}
+    for r in Q.read_file(queue):
+        if r["status"] == "done" and r["result"] in ("blocked", "denied"):
+            for ext in ("html", "xml", "json", "txt", "pdf"):
+                f = os.path.join(src, "%s.%s" % (r["id"], ext))
+                if os.path.isfile(f):
+                    got[r["id"]] = f
+                    break
+    if not got:
+        return []
+    os.makedirs(out, exist_ok=True)
+    for tid, f in got.items():
+        shutil.copyfile(f, os.path.join(out, os.path.basename(f)))
+
+    def fn(rows):
+        for r in rows:
+            if r["id"] in got:
+                r["status"], r["result"], r["done_at"] = "open", "", ""
+                r["note"] = Q.clean("pagina guardada a mano (%s); antes: %s" % (os.path.basename(got[r["id"]]), r["note"]))
+        return rows, 0
+    Q.with_queue(queue, fn)
+    return sorted(got)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="gwt-batch", description=__doc__.split("\n\n")[0])
     p.add_argument("--queue", default=os.environ.get("GWT_QUEUE", "cola.tsv"))
-    p.add_argument("--templates", required=True)
+    p.add_argument("--templates")
+    p.add_argument("--adopt", metavar="DIR", help="take pages saved by hand in DIR (named <task id>.html/.xml/.json/.txt/.pdf) for blocked tasks into --out and reopen those tasks")
     p.add_argument("--source")
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--fetch", action="store_true")
@@ -171,6 +205,12 @@ def main(argv=None):
     p.add_argument("--mark", action="store_true", help="record blocked/denied tasks in the queue (done, result blocked/denied)")
     p.add_argument("--delay", type=float, default=0.0, help="minimum seconds between requests to one host (never below the template's)")
     a = p.parse_args(argv)
+    if a.adopt:
+        ids = adopt(a.queue, a.adopt, a.out)
+        print("gwt-batch: %d blocked task(s) now have a page saved by hand and are open again: %s" % (len(ids), " ".join(ids) or "-"))
+        return 0 if ids else 1
+    if not a.templates:
+        p.error("--templates is required (or use --adopt)")
     try:
         templates = load_templates(a.templates)
     except (OSError, ValueError, KeyError) as e:
