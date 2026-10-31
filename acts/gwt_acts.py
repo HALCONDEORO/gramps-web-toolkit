@@ -105,20 +105,27 @@ def republican_problems(get):
     return out
 
 
+def event_date(e):
+    """YYYY[-MM[-DD]] of a tree event, with a leading ? when it is not an exact Gregorian date; '' without a year."""
+    d = e.get('date') or {}
+    v = d.get('dateval') or []
+    if len(v) < 3 or not v[2]:
+        return ''
+    iso = f'{v[2]:04d}' + (f'-{v[1]:02d}' if v[1] else '') + (f'-{v[0]:02d}' if v[1] and v[0] else '')
+    inexact = len(v) != 4 or any(d.get(k) for k in ('calendar', 'modifier', 'quality', 'newyear'))
+    return '?' + iso if inexact else iso  # before/after/about, a span, another calendar or a doubtful date: not compared
+
+
 def tree_dates(dump):
-    """gramps id -> {event type: [YYYY-MM-DD or YYYY-MM or YYYY, with a leading ? when the date is not an exact Gregorian one]}."""
+    """gramps id -> {event type: [dates as event_date gives them]} for the events that carry a year."""
     objs = dump.get('objects', dump)
     events = {e['handle']: e for e in objs['events']}
     out = {}
     for p in objs['people']:
         for ref in p.get('event_ref_list') or []:
             e = events.get(ref.get('ref')) or {}
-            d = e.get('date') or {}
-            v = d.get('dateval') or []
-            if len(v) > 2 and v[2]:
-                iso = f'{v[2]:04d}' + (f'-{v[1]:02d}' if v[1] else '') + (f'-{v[0]:02d}' if v[1] and v[0] else '')
-                if len(v) != 4 or any(d.get(k) for k in ('calendar', 'modifier', 'quality', 'newyear')):
-                    iso = '?' + iso  # before/after/about, a span, another calendar or a doubtful date: not compared
+            iso = event_date(e)
+            if iso:
                 out.setdefault(p.get('gramps_id'), {}).setdefault(e.get('type'), []).append(iso)
     return out
 
