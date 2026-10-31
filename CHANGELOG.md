@@ -8,6 +8,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
+- `gwt-dates`: converts French Republican dates (an I to an XIV) and old-style month names (`7bre`, `9bre`) to Gregorian and back, offline, by calculation; `--as-note` writes the form `gwt-check republican` reads.
 - `gwt-books`: for a register on an image viewer with no name index, keeps the dates read on images and says which image to open next (`add`, `next`, `show`). Offline: it never fetches an image.
 - `gwt-books status` and `export`; `next` prints the remaining zone and exits 1 when it has no image to suggest.
 - Docs: "Finding church and civil registers", a guide to the public sources for Spanish parish and French civil registers.

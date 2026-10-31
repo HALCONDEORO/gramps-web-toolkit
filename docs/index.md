@@ -69,6 +69,7 @@ The toolkit works for genealogy in any country. `gwt-spanish-poller` and some `g
 - [gwt-queue](queue.md): what to search next, handed out to lanes, with leases and back-off.
 - [gwt-ledger](ledger.md): the shared "already searched" ledger, so lanes stop repeating negative searches.
 - [gwt-books](books.md): which image of an unindexed register to open next, from the dates already seen. Offline, never fetches.
+- [gwt-dates](dates.md): French Republican dates and old-style months (7bre) converted by calculation. Offline.
 - [Finding church and civil registers](finding-registers.md): public sources for Spanish parish and French civil registers, and how to record what you find.
 - [gwt-rank](rank.md): orders record-search results by how well they fit a person, and never hides a row.
 - [gwt-fetch](fetch.md): archive images and text without a browser: IIIF, Europeana, and Spanish sources.

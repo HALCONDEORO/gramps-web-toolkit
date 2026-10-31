@@ -21,6 +21,7 @@ The toolkit works for genealogy in any country. One module, `spanish-poller`, is
 - `gwt-import-excel`: turns a research workbook into a gwt-apply change list for review
 - `gwt-fetch`: downloads archive images and text without a browser, with one manifest row per file: any IIIF archive, Europeana search, plus Spanish sources (DIGIBIB, the historical Gaceta de Madrid, CartoCiudad geocoding)
 - `gwt-books`: which image of an unindexed register to open next, from the dates already seen (offline, never fetches)
+- `gwt-dates`: converts French Republican dates and old-style months ("7bre") to Gregorian and back, by calculation (offline)
 - `gwt-ledger`: a shared "already searched" ledger, so parallel agents stop repeating each other's negative searches
 - `gwt-queue`: a durable "what to search next" queue that hands prioritized tasks to lanes, reopens the claims of dead lanes and backs off the tasks that keep failing
 - `gwt-leads`: reads a tree dump offline and lists the gaps (lines that stop, missing vitals, uncited facts), ranked with the root's direct ancestors first, as `gwt-queue` tasks
