@@ -306,36 +306,68 @@ def main(argv: list[str] | None = None) -> int:
     return _ended(client, lambda: _run(args, argv, client, run_id, ops, snap, old, offline, outcome), outcome)
 
 
+def _backup_id_of_task(t: dict):
+    """The id of the backup a finished task made: `result_object.id`, else the JSON in `info` or `result`."""
+    ro = t.get("result_object")
+    if isinstance(ro, dict) and ro.get("id"):
+        return ro["id"]
+    for key in ("info", "result"):
+        try:
+            v = json.loads(t.get(key) or "")
+        except ValueError:
+            continue
+        if isinstance(v, dict) and v.get("id"):
+            return v["id"]
+    return None
+
+
 def _server_backup(client: Client, args, lock) -> str | None:
     """Ask the server to store a backup of the tree. None when it did, else why not. It only creates: a restore is
-    never called from here. The server deletes its oldest backup beyond the number it keeps per tree."""
-    def ids():
-        r = client._request("GET", "/backups/")
-        try:
-            return {b.get("id") for b in r.json()} if r.status_code == 200 else None
-        except (ValueError, AttributeError):
-            return None
-    before = ids()
+    never called from here. The server deletes its oldest backup beyond the number it keeps per tree. A server with a
+    task queue answers 202 with a task: the backup counts only when that task succeeds and the backup it names is in
+    the list and restorable. Every read is retried like the login; the POST is never repeated."""
+    def get(path):
+        return _retried("server backup", lambda: client._request("GET", path), client, args, lock)
 
     def make():
         return client._request("POST", "/backups/", write=True)
-    r = _retried("server backup", make, client, args, lock)
-    if r.status_code == 202 and before is not None:
-        # a server with a task queue answers 202 and builds the backup in the background: wait for a new one to be listed
-        for _ in range(30):
-            time.sleep(2)
-            now = ids()
-            if now and now - before:
-                client.log(event="server-backup", id=sorted(now - before)[0], size=None)
-                print(f"server backup stored: {sorted(now - before)[0]}")
-                return None
-        return "the server accepted the backup (HTTP 202) but none was listed after 60 s"
-    if r.status_code != 201:
-        return f"the server did not store a backup (HTTP {r.status_code}; creating one needs an owner or admin login)"
     try:
-        info = r.json()
-    except ValueError:
-        info = {}
+        r = make()  # never repeated: a second POST could store a second backup
+    except Retryable as exc:
+        return f"the server backup request failed ({exc}); nothing was written"
+    if r.status_code == 202:
+        try:
+            tid = (r.json().get("task") or {}).get("id")
+        except (ValueError, AttributeError):
+            tid = None
+        if not tid:
+            return "the server answered HTTP 202 without a task id, so the backup cannot be confirmed"
+        info = None
+        for _ in range(30):
+            t = get(f"/tasks/{tid}")
+            task = t.json() if t.status_code == 200 else {}
+            if task.get("state") == "FAILURE" or task.get("status") in ("failed", "lost"):
+                return f"the server's backup task {tid} failed"
+            if task.get("state") == "SUCCESS" or task.get("status") == "succeeded":
+                bid = _backup_id_of_task(task)
+                lst = get("/backups/")
+                found = [b for b in (lst.json() if lst.status_code == 200 else []) if b.get("id") == bid]
+                if not bid or not found:
+                    return f"the backup task {tid} succeeded but its backup is not in the server's list"
+                if found[0].get("restorable") is not True or not found[0].get("size"):
+                    return f"the backup {bid} is listed but not restorable or empty"
+                info = found[0]
+                break
+            time.sleep(2)
+        if info is None:
+            return f"the server's backup task {tid} did not finish in 60 s"
+    elif r.status_code != 201:
+        return f"the server did not store a backup (HTTP {r.status_code}; creating one needs an owner or admin login)"
+    else:
+        try:
+            info = r.json()
+        except ValueError:
+            info = {}
     client.log(event="server-backup", id=info.get("id"), size=info.get("size"))
     print(f"server backup stored: {info.get('id')}")
     return None
