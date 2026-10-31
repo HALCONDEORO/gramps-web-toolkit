@@ -22,6 +22,29 @@ class AccessTest(unittest.TestCase):
                 code = e.code
         return code, out.getvalue(), err.getvalue()
 
+    def test_corpus_lists_filters_and_seeds_without_overwriting(self):
+        c = os.path.join(self.d.name, "c.csv")
+        open(c, "w", encoding="utf-8").write(
+            "intitule,institution,id_institution,url_site,type_document,lieu,theme,periode,observations\n"
+            "X. Etat civil,archives departementales de Zed,FRAD999,https://zed.example/,\u00e9tat civil,Zed,,18e si\u00e8cle|19e si\u00e8cle,\n"
+            "X. Matricules,archives departementales de Zed,FRAD999,https://zed.example/,matricules militaires,Zed,,19e si\u00e8cle,\n"
+            "Y. Etat civil,archives departementales de Wye,FRAD998,https://wye.example/,\u00e9tat civil,Wye,,19e si\u00e8cle,\n")
+        code, out, _ = self.run_("corpus", c, "--place", "zed", "--type", "\u00e9tat civil")
+        self.assertEqual(code, 0)
+        self.assertEqual(len(out.splitlines()), 1)
+        self.assertIn("https://zed.example/", out)
+        self.run_("set", "archives departementales de Zed", "--viewer", "images", "--captcha", "no")
+        code, _, err = self.run_("corpus", c, "--into")
+        self.assertIn("1 archive(s) added", err)  # Wye only; Zed was already known
+        _, shown, _ = self.run_("show", "archives departementales de Zed")
+        self.assertIn("viewer: images", shown)
+        _, shown, _ = self.run_("show", "archives departementales de Wye")
+        self.assertIn("viewer: unknown", shown)
+        self.assertIn("19e", shown)
+        self.assertEqual(self.run_("corpus", c, "--place", "nowhere")[0], 1)
+        open(c, "w").write("a,b\n1,2\n")
+        self.assertEqual(self.run_("corpus", c)[0], 2)
+
     def test_set_updates_only_what_is_given_and_show_reads_it(self):
         self.run_("set", "Arch A", "--viewer", "images", "--captcha", "no")
         self.run_("set", "arch a", "--download", "yes")
