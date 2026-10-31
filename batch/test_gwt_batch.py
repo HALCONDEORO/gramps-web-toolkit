@@ -130,6 +130,29 @@ class BatchTest(unittest.TestCase):
         self.assertTrue(all(r["status"] == "open" for r in Q.read_file(self.q) if r["id"] != "q4") )
         self.assertEqual(sum(1 for l in open(os.path.join(raw, "outcomes.tsv")) if "\terror\t" in l), 3)
 
+    def test_a_page_saved_by_hand_reopens_a_blocked_task(self):
+        self.queue(("a", "captcha one", 9), ("a", "two", 8))
+        self.templates(("a", self.base + "/captcha?q={query}"))
+        raw = os.path.join(self.d.name, "raw")
+        self.run_("--fetch", "--out", raw, "--mark")
+        hand = os.path.join(self.d.name, "hand")
+        os.makedirs(hand)
+        open(os.path.join(hand, "q1.xml"), "w").write("<r>by hand</r>")
+        open(os.path.join(hand, "q9.html"), "w").write("no task")
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = B.main(["--queue", self.q, "--adopt", hand, "--out", raw])
+        self.assertEqual(code, 0)
+        self.assertIn("q1", out.getvalue())
+        rows = {r["id"]: r for r in Q.read_file(self.q)}
+        self.assertEqual((rows["q1"]["status"], rows["q1"]["result"]), ("open", ""))
+        self.assertIn("a mano", rows["q1"]["note"])
+        self.assertEqual(rows["q2"]["result"], "blocked")  # no page for it
+        self.assertEqual(open(os.path.join(raw, "q1.xml")).read(), "<r>by hand</r>")
+        self.assertFalse(os.path.exists(os.path.join(raw, "q9.html")))
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertEqual(B.main(["--queue", self.q, "--adopt", hand, "--out", raw]), 1)  # nothing left to adopt
+
     def test_without_mark_the_queue_is_untouched(self):
         self.queue(("a", "captcha one", 9))
         self.templates(("a", self.base + "/captcha?q={query}"))
