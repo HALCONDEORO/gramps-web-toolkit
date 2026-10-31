@@ -309,10 +309,27 @@ def main(argv: list[str] | None = None) -> int:
 def _server_backup(client: Client, args, lock) -> str | None:
     """Ask the server to store a backup of the tree. None when it did, else why not. It only creates: a restore is
     never called from here. The server deletes its oldest backup beyond the number it keeps per tree."""
+    def ids():
+        r = client._request("GET", "/backups/")
+        try:
+            return {b.get("id") for b in r.json()} if r.status_code == 200 else None
+        except (ValueError, AttributeError):
+            return None
+    before = ids()
+
     def make():
-        r = client._request("POST", "/backups/", write=True)
-        return r
+        return client._request("POST", "/backups/", write=True)
     r = _retried("server backup", make, client, args, lock)
+    if r.status_code == 202 and before is not None:
+        # a server with a task queue answers 202 and builds the backup in the background: wait for a new one to be listed
+        for _ in range(30):
+            time.sleep(2)
+            now = ids()
+            if now and now - before:
+                client.log(event="server-backup", id=sorted(now - before)[0], size=None)
+                print(f"server backup stored: {sorted(now - before)[0]}")
+                return None
+        return "the server accepted the backup (HTTP 202) but none was listed after 60 s"
     if r.status_code != 201:
         return f"the server did not store a backup (HTTP {r.status_code}; creating one needs an owner or admin login)"
     try:
