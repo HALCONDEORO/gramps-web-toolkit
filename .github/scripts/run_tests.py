@@ -113,14 +113,6 @@ def read_mutants(path):
     return rows
 
 
-def sibling_path(name):
-    """PYTHONPATH for a mutant run: the other single-file tools (cross, dates, ...), never the package under test.
-    The run works on a scratch copy of one folder, so a tool that imports a sibling would not find it."""
-    dirs = [str(p) for p in sorted(ROOT.iterdir()) if p.is_dir() and p.name != name and any(p.glob("gwt_*.py"))]
-    outside = [d for d in os.environ.get("PYTHONPATH", "").split(os.pathsep) if d and Path(d).resolve() != (ROOT / name).resolve()]
-    return os.pathsep.join(dirs + outside)
-
-
 COPY_IGNORE = shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache", "site", ".venv", "venv", "node_modules")
 
 
@@ -135,8 +127,7 @@ def _control(name):
     """Run the package's tests once on an unmutated copy of the repository."""
     with tempfile.TemporaryDirectory() as tmp:
         return subprocess.run(PYTEST + ["-x"], cwd=_copy_repo(tmp) / name, capture_output=True, text=True,
-                              env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": sibling_path(name)})
-
+                              env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
 
 def run_mutants(pkgs):
     total = killed = 0
@@ -167,7 +158,7 @@ def run_mutants(pkgs):
                     continue
                 target.write_text(src.replace(text, repl))
                 r = subprocess.run(PYTEST + ["-x"], cwd=copy, capture_output=True, text=True,
-                                   env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": sibling_path(name)})
+                                   env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
             total += 1
             if r.returncode == 0:
                 print(f"SURVIVED {where}: {why}", flush=True)
