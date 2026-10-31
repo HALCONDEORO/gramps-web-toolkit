@@ -9,6 +9,8 @@ Python 3.11 or newer with `requests`. Run it as [`fetch/gwt-fetch`](https://gith
 ```
 gwt-fetch iiif URL [--pages 1-5,9] [--labels REGEX] [--out DIR] [--list]
 gwt-fetch digibib URL [--pages ...] [--out DIR] [--list]
+gwt-fetch touraine search QUERY [--start N] [--limit N]
+gwt-fetch touraine pages ARK [--pages 1-5,9] [--max N] [--out DIR] [--list]
 gwt-fetch gazeta search (--text WORDS | --title WORDS) [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N]
 gwt-fetch gazeta fetch BOE-A-YYYY-N [...] [--out DIR]
 gwt-fetch europeana QUERY [--provider any|NAME] [--data-provider NAME] [--country NAME] [--year-from Y] [--year-to Y] [--iiif-only] [--rows N]
@@ -50,6 +52,23 @@ Antenati traps from real downloads (two Italian birth registers of the 1850s and
 - A plain `curl` gets 403 from both `antenati.cultura.gov.it` (search and unit pages) and the image server. The user agent has to start with `Mozilla/5.0`, and image requests need the portal as `Referer`.
 - The web viewer shows about 1600 px and `full/full` returns a Cloudflare 403, which led one researcher to settle for 1600 px. `full/max` returns the largest size allowed: 3530×2716 for one page, 2122×1684 for another, depending on the scan.
 - A canvas label is only `pag. N`. To find an act, list the canvases (`--list`), fetch a few pages around the estimate into `/tmp`, read the «Num. d'ordine» on each, then fetch just the right page into your research folder.
+
+## `touraine`: civil registers of Indre-et-Loire (AD37)
+
+`archives.touraine.fr` serves its digitised civil registers (cotes `6NUM...`) without a browser. `search` lists registers and `pages` lists or downloads their images. It is read only and keeps to one request a second whatever `--delay` says.
+
+```
+gwt-fetch touraine search "Commune 1793-1802"      # ark, title, dates, cote (80 results a page, --start for the next)
+gwt-fetch touraine pages ARK --list                # page number, page URL, page uuid
+gwt-fetch touraine pages ARK --pages 40-44 --out /tmp/reg
+```
+
+- The search mixes every fonds. Keep the rows whose title and cote are civil registration (births, marriages, deaths, `6NUM`) and ignore the rest.
+- `pages` asks the site's visualizer API for 100 pages at a time. For a range past the end it answers HTTP 400 with an error string, and the tool finds the last page by bisection. Checked live on one register of 23 pages.
+- A download is a JPEG of about 1200 px from `/images/UUID.jpg`, one manifest row per file, resumable, never overwritten. The tool refuses more than `--max` images (default 30) in one run: it is for the pages around an act, not for copying a register. Region and size parameters on the IIIF URL returned an HTML error page in our tests, so it does not use them.
+- The E-depot fonds (`EDEP`) answer "Group with index 0 not found". The tool says so and exits 1. They need a browser.
+- Read the site's [terms of use](https://archives.touraine.fr/page/conditions-generales-d-utilisation) and [reuse page](https://archives.touraine.fr/page/reutilisation) yourself before you rely on this for anything but private research.
+- The Loir-et-Cher archives (`archives41.fr`) sit behind a proof-of-work challenge. This tool does not try to solve it; use a browser there.
 
 ## `digibib`: DIGIBIB viewers without IIIF
 

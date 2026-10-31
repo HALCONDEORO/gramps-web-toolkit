@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import digibib, europeana, gazeta, geo, iiif
+from . import digibib, europeana, gazeta, geo, iiif, touraine
 from .net import Client
 
 
@@ -57,13 +57,26 @@ def parser() -> argparse.ArgumentParser:
                    help="CartoCiudad types to keep (Municipio, poblacion, toponimo, callejero); empty for all")
     s.add_argument("--province")
     s.add_argument("--limit", type=int, default=3, help="rows per place")
+
+    s = sub.add_parser("touraine", help="search and read civil registers on archives.touraine.fr (Indre-et-Loire)")
+    t = s.add_subparsers(dest="action", required=True)
+    ts = t.add_parser("search", help="search registers; prints TSV with ark, title, dates and cote")
+    ts.add_argument("query", help='e.g. "Commune 1793-1802"')
+    ts.add_argument("--start", type=int, default=0, help="result offset for the next page")
+    ts.add_argument("--limit", type=int, default=80)
+    tp = t.add_parser("pages", help="list the pages of one register, or download a few")
+    tp.add_argument("ark", help="the ark name from `search`")
+    tp.add_argument("--pages", help="1-based page numbers, e.g. 1-5,9,12-")
+    tp.add_argument("--max", type=int, default=touraine.MAX_IMAGES, help="most images one run downloads (default %d)" % touraine.MAX_IMAGES)
+    tp.add_argument("--out", default=".")
+    tp.add_argument("--list", action="store_true", help="print page numbers and uuids, download nothing")
     return p
 
 
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
     client = Client(delay=args.delay)
-    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "europeana": europeana, "geo": geo}[args.cmd]
+    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "europeana": europeana, "geo": geo, "touraine": touraine}[args.cmd]
     try:
         return mod.run(args, client)
     except KeyboardInterrupt:

@@ -1,0 +1,8 @@
+gwt_fetch/touraine.py |         if len(got) < BATCH: |         if len(got) <= BATCH: | a register longer than one batch of 100 pages is cut after the first batch
+gwt_fetch/touraine.py |     if len(chosen) > args.max: |     if False: | a whole register is downloaded without the --max cap
+gwt_fetch/touraine.py |     return "'" + out if out[:1] in ("=", "+", "-", "@") else out |     return out | a result title that starts with = is written to the TSV as a formula
+gwt_fetch/touraine.py |     client.delay = max(getattr(client, "delay", 0.0), 1.0) |     pass | --delay 0 makes the tool go faster than one request a second
+gwt_fetch/touraine.py |     if not ARK.fullmatch(args.ark): |     if False: | an ark with a slash or a query string changes the URL that is requested
+gwt_fetch/touraine.py |         if r.ok and ctype.startswith("image/"): |         if r.ok: | an HTML error page is saved as a register image
+gwt_fetch/touraine.py |     if "Group with index 0 not found" in text: |     if False: | an E-depot register is taken for an empty one instead of being reported
+gwt_fetch/touraine.py |         if store.done(stem, f"page {n}", image_url, manifest_url): |         if False: | a re-run downloads the pages it already has
