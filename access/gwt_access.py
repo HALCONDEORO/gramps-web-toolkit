@@ -9,6 +9,13 @@ unknown), writes (they answer a letter or mail: yes, no, unknown), url, checked 
   gwt-access --map access.tsv show AD41
   gwt-access --map access.tsv list [--captcha no] [--viewer js]
   gwt-access --map access.tsv plan "AD41,AD37,Boulogne"   # which can be read now, which need a letter, which are unknown
+  gwt-access corpus ad-corpus.csv --place Orne --type "état civil" [--into]   # what a departement has put online
+
+`corpus` reads the open data file "Principaux corpus d'archives numerises ... par les archives departementales"
+(data.gouv.fr, Licence ouverte; columns intitule, institution, id_institution, url_site, type_document, lieu,
+theme, periode, observations). It lists the matches; with --into it adds one row per archive that has none yet
+(kind departmental, viewer/captcha/download unknown, the url and what is online in the note) and never changes
+a row that is already in the map. It says what exists online, not how to read it: `set` that after looking once.
 
 Exit 0 on success, 1 when show finds no row, 2 on a bad argument.
 """
@@ -47,6 +54,42 @@ def readable_now(r):
     return r.get("captcha") == "no" and (r.get("download") == "yes" or r.get("viewer") in ("pdf", "images", "js"))
 
 
+def corpus(a):
+    try:
+        with open(a.csv, encoding="utf-8-sig", newline="") as fh:
+            found = list(csv.DictReader(fh))
+    except OSError as e:
+        print("gwt-access: %s" % e, file=sys.stderr)
+        return 2
+    if not found or "type_document" not in found[0] or "institution" not in found[0]:
+        print("gwt-access: not the corpus file (needs institution and type_document columns)", file=sys.stderr)
+        return 2
+    fold = lambda t: " ".join((t or "").lower().split())
+    hits = [r for r in found if (not a.place or fold(a.place) == fold(r.get("lieu")))
+            and (not a.doctype or fold(a.doctype) in fold(r.get("type_document")))]
+    for r in hits:
+        print("\t".join((r["institution"], r["lieu"], r["type_document"], r["periode"].replace("|", ", "), r["url_site"])))
+    if not hits:
+        return 1
+    if a.into:
+        rows = load(a.map)
+        by_arch = {}
+        for r in hits:
+            by_arch.setdefault(r["institution"].strip(), []).append(r)
+        added = 0
+        for name, rs in sorted(by_arch.items()):
+            if name.lower() in rows:
+                continue
+            what = "; ".join("%s (%s)" % (x["type_document"], x["periode"].replace("|", ", ")) for x in rs)
+            rows[name.lower()] = {c: "unknown" for c in COLS} | {
+                "archive": name, "kind": "departmental", "url": rs[0]["url_site"], "checked": datetime.date.today().isoformat(),
+                "note": "en linea segun data.gouv: " + what}
+            added += 1
+        save(a.map, rows)
+        print("gwt-access: %d archive(s) added to %s" % (added, a.map), file=sys.stderr)
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="gwt-access", description=__doc__.split("\n\n")[0])
     p.add_argument("--map", default=os.environ.get("GWT_ACCESS", "access.tsv"))
@@ -64,7 +107,14 @@ def main(argv=None):
         ls.add_argument("--" + k, choices=CHOICES[k])
     pl = sub.add_parser("plan")
     pl.add_argument("archives", help="comma-separated archive names")
+    co = sub.add_parser("corpus", help="what departmental archives have put online, from the data.gouv open data file")
+    co.add_argument("csv")
+    co.add_argument("--place", help="departement, as the file spells it (e.g. Orne)")
+    co.add_argument("--type", dest="doctype", help="document type (e.g. 'état civil', 'matricules militaires')")
+    co.add_argument("--into", action="store_true", help="add a row to the map for each archive that has none")
     a = p.parse_args(argv)
+    if a.cmd == "corpus":
+        return corpus(a)
     rows = load(a.map)
     if a.cmd == "set":
         key = a.archive.strip().lower()
