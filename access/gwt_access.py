@@ -73,7 +73,7 @@ def main(argv=None):
         r = rows.setdefault(key, {c: "unknown" for c in COLS} | {"archive": a.archive.strip(), "url": "", "note": ""})
         for k in list(CHOICES) + ["url", "note"]:
             if getattr(a, k) is not None:
-                r[k] = getattr(a, k)
+                r[k] = " ".join(str(getattr(a, k)).split())  # no tabs or newlines in a TSV cell
         r["checked"] = datetime.date.today().isoformat()
         save(a.map, rows)
         print("\t".join(r.get(c, "") for c in COLS))
@@ -101,6 +101,8 @@ def main(argv=None):
             verdict = "unknown: look at the site once and `set` it"
         elif readable_now(r):
             verdict = "read now (%s viewer, no captcha)" % r.get("viewer")
+        elif r.get("captcha") == "unknown" and r.get("viewer") not in ("none", "index-only"):
+            verdict = "check: captcha not recorded, open the site once and `set --captcha`"
         elif r.get("writes") == "yes":
             verdict = "write for the act (captcha or no viewer)"
         else:

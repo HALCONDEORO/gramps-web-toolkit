@@ -24,6 +24,8 @@ The toolkit works for genealogy in any country. One module, `spanish-poller`, is
 - `gwt-queue`: a durable "what to search next" queue that hands prioritized tasks to lanes, reopens the claims of dead lanes and backs off the tasks that keep failing
 - `gwt-leads`: reads a tree dump offline and lists the gaps (lines that stop, missing vitals, uncited facts), ranked with the root's direct ancestors first, as `gwt-queue` tasks
 - `gwt-fscache`: an on-disk HTTP cache for rate-limited genealogy APIs that never stores a block or an auth header
+- `gwt-cross`: crosses a downloaded name index (CSV/TSV, any common encoding) against the tree dump and lists the rows that agree, best first
+- `gwt-access`: a map of how each archive can be read (viewer, captcha, download, letter) and a plan of which to read now
 - `gwt-rank`: orders record-search results by how well they fit a person in the tree, from the cached FamilySearch JSON or from page text, and never hides a row
 - `gwt-mh`: MyHeritage record search, record pages and originals through a signed-in browser
 - `gwt-read`: record search and records on FamilySearch and PARES, index search on Genae, and a name in the BOE and Gaceta de Madrid, slow and cached so the account is not suspended

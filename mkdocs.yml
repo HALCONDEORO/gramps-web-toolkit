@@ -139,6 +139,8 @@ nav:
       - gwt-queue: queue.md
       - gwt-ledger: ledger.md
       - gwt-rank: rank.md
+      - gwt-cross: cross.md
+      - gwt-access: access.md
       - gwt-fetch: fetch.md
       - gwt-mh: myheritage.md
       - gwt-read: read.md

@@ -59,6 +59,29 @@ class CrossTest(unittest.TestCase):
         open(self.idx, "w").write("Nom\tAnnée\nZZZ\t1800\n")
         self.assertEqual(self.run_(self.idx, "--dump", self.dump)[0], 1)
 
+    def test_semicolon_cp1252_file_and_surname_particles(self):
+        open(self.idx, "wb").write("Nom;Prénom;Année;Commune;Cote\nDE DUPRÉ;Marie;1850;Saint-Arnoult;R9\n".encode("cp1252"))
+        code, out, _ = self.run_(self.idx, "--dump", self.dump)
+        self.assertEqual(code, 0)
+        self.assertIn("R9", out)
+
+    def test_utf16_with_bom(self):
+        open(self.idx, "wb").write(("Nom\tPrénom\tAnnée\nDupré\tMarie\t1850\n").encode("utf-16"))
+        self.assertEqual(self.run_(self.idx, "--dump", self.dump, "--min-score", "7")[0], 0)
+
+    def test_twenty_thousand_rows_are_fast(self):
+        import time
+        rows = "Nom\tPrénom\tAnnée\tCommune\tCote\n" + "".join("Surname%d\tAnna\t1850\tX\tR%d\n" % (i, i) for i in range(20000))
+        open(self.idx, "w").write(rows + "Dupre\tMarie\t1850\tSaint-Arnoult\tRZ\n")
+        t = time.time()
+        code, out, _ = self.run_(self.idx, "--dump", self.dump)
+        self.assertEqual(code, 0)
+        self.assertLess(time.time() - t, 10)
+
+    def test_limit(self):
+        open(self.idx, "w").write("Nom\tPrénom\nDupre\tMarie\nDupre\tMarie\n")
+        self.assertEqual(len(self.run_(self.idx, "--dump", self.dump, "--limit", "1")[1].splitlines()), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

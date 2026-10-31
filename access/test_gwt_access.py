@@ -49,6 +49,11 @@ class AccessTest(unittest.TestCase):
         self.assertEqual(len(out.splitlines()), 1)
         self.assertEqual(self.run_("set", "A", "--captcha", "maybe")[0], 2)
 
+    def test_unknown_captcha_asks_to_look_and_tabs_are_cleaned(self):
+        self.run_("set", "E", "--viewer", "js", "--note", "a\tb\nc")
+        self.assertTrue(self.run_("plan", "E")[1].split("\t")[1].startswith("check"))
+        self.assertIn("note: a b c", self.run_("show", "E")[1])
+
 
 if __name__ == "__main__":
     unittest.main()

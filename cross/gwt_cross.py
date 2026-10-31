@@ -13,6 +13,8 @@ prenom, given), year (ano, annee, year), place (lugar, lieu, place, commune), re
 Score: surname equal +4 (close spelling +2), given name equal +3 (close +1, initial +1), place equal +2,
 year within 5 of a birth, baptism or death +2 (within 15, +1). A row with no surname agreement is dropped.
 
+Delimiter (tab, semicolon, comma or bar) and encoding (UTF-8, UTF-16, Windows-1252) are detected; --encoding forces one.
+
 Exit 0 when a row reached --min-score, 1 when none did, 2 when INDEX or the dump cannot be read.
 """
 import argparse
@@ -85,13 +87,16 @@ def score(row, person):
     sur = row["surname"]
     if sur in person["surnames"]:
         s += 4; why.append("apellido")
+    elif any(sur and (set(sur.split()) <= set(x.split()) or set(x.split()) <= set(sur.split())) and len(sur) > 3
+             for x in person["surnames"]):
+        s += 3; why.append("apellido(partes)")  # "de la Fontaine" against "Fontaine"
     elif any(close(sur, x) for x in person["surnames"]):
         s += 2; why.append("apellido~")
     else:
         return 0, []
     g, pg = row["given"], person["given"]
     if g and pg:
-        if g.split()[0] == pg.split()[0]:
+        if g.split()[0] == pg.split()[0] or set(g.split()) & set(pg.split()):
             s += 3; why.append("nombre")
         elif close(g.split()[0], pg.split()[0]):
             s += 1; why.append("nombre~")
@@ -109,22 +114,49 @@ def score(row, person):
 
 
 def cross(rows, people, min_score):
+    """Rows are only scored against people whose surname starts with the same letter (a close spelling can
+    differ elsewhere, rarely in the first letter): 20,000 rows against 5,000 people stays under a few seconds."""
     found = []
+    bucket = {}
+    for p in people:
+        for x in p["surnames"]:
+            bucket.setdefault(x[:1], []).append(p)
     for r in rows:
-        best = max(((score(r, p), p) for p in people), key=lambda x: x[0][0], default=((0, []), None))
+        cand = bucket.get(r["surname"][:1], [])
+        best = max(((score(r, p), p) for p in cand), key=lambda x: x[0][0], default=((0, []), None))
         (s, why), p = best
         if p and s >= min_score:
             found.append({"score": s, "person": p["id"], "why": "+".join(why), "row": r["raw"], "ref": r["ref"]})
     return sorted(found, key=lambda f: -f["score"])
 
 
-def read_index(path):
-    with open(path, encoding="utf-8-sig", newline="") as fh:
-        text = fh.read()
-    dialect = csv.excel_tab if text.split("\n", 1)[0].count("\t") >= text.split("\n", 1)[0].count(",") else csv.excel
-    data = list(csv.reader(text.splitlines(), dialect))
-    if not data:
-        raise ValueError("empty index")
+def decode(raw, encoding=None):
+    """Text of an index file. Archives export UTF-8, UTF-8 with a BOM, UTF-16 (Excel) or Windows-1252/Latin-1."""
+    if encoding:
+        return raw.decode(encoding)
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return raw.decode("utf-16")
+    for enc in ("utf-8-sig", "cp1252"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            pass
+    return raw.decode("latin-1")
+
+
+def delimiter(header):
+    counts = {d: header.count(d) for d in ("\t", ";", ",", "|")}
+    best = max(counts, key=counts.get)
+    return best if counts[best] else ","
+
+
+def read_index(path, encoding=None):
+    with open(path, "rb") as fh:
+        text = decode(fh.read(), encoding)
+    lines = [l for l in text.splitlines() if l.strip()]
+    if not lines:
+        raise ValueError("%s is empty" % path)
+    data = list(csv.reader(lines, delimiter=delimiter(lines[0])))
     cols = columns(data[0])
     if "surname" not in cols:
         raise ValueError("no surname column in the header: %s" % ", ".join(data[0]))
@@ -143,16 +175,21 @@ def main(argv=None):
     p.add_argument("--dump", required=True)
     p.add_argument("--only-parentless", action="store_true", help="only the people with no parents in the tree")
     p.add_argument("--min-score", type=int, default=6)
+    p.add_argument("--encoding", help="force the index encoding (default: UTF-8, UTF-16 or Windows-1252 by what decodes)")
+    p.add_argument("--limit", type=int, default=0, help="print at most this many rows (0 = all)")
     p.add_argument("--format", choices=("tsv", "json"), default="tsv")
     a = p.parse_args(argv)
     try:
-        rows = read_index(a.index)
+        rows = read_index(a.index, a.encoding)
         with open(a.dump, encoding="utf-8") as fh:
             people = tree_people(json.load(fh), a.only_parentless)
-    except (OSError, ValueError, KeyError) as e:
-        print("gwt-cross: %s" % e, file=sys.stderr)
+    except (OSError, ValueError, KeyError, LookupError) as e:
+        print("gwt-cross: cannot read the index or the dump: %s" % e, file=sys.stderr)
         return 2
     found = cross(rows, people, a.min_score)
+    if a.limit > 0:
+        found = found[:a.limit]
+    print("gwt-cross: %d rows, %d people, %d leads" % (len(rows), len(people), len(found)), file=sys.stderr)
     if a.format == "json":
         print(json.dumps(found, ensure_ascii=False, indent=1))
     else:
