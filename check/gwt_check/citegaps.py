@@ -108,5 +108,5 @@ def write_ops(rep: dict, path: str) -> int:
     with open(path, "x", encoding="utf-8") as fh:
         for x in rep["proposals"]:
             fh.write(json.dumps({"op": "attach_existing", "key": f"cite-gap-{x['event']}-{x['citation']}", "ruling": "",
-                                 "object": x["citation"], "attach": x["event"]}, ensure_ascii=False) + "\n")
+                                 "object": {"citation": x["citation"]}, "attach": [{"event": x["event"]}]}, ensure_ascii=False) + "\n")
     return len(rep["proposals"])

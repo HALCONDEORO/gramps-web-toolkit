@@ -62,7 +62,7 @@ def test_the_ops_file_has_an_empty_ruling_and_is_never_replaced(tmp_path):
     p = str(tmp_path / "ops.jsonl")
     n = write_ops(_rep(_tree()), p)
     row = json.loads(open(p).readline())
-    assert n >= 1 and row["op"] == "attach_existing" and row["ruling"] == "" and row["attach"] == "E0001"
+    assert n >= 1 and row["op"] == "attach_existing" and row["ruling"] == "" and row["object"] == {"citation": "C0001"} and row["attach"] == [{"event": "E0001"}]
     with pytest.raises(FileExistsError):
         write_ops(_rep(_tree()), p)
 
