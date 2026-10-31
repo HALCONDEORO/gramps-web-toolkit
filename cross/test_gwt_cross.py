@@ -82,6 +82,23 @@ class CrossTest(unittest.TestCase):
         open(self.idx, "w").write("Nom\tPrénom\nDupre\tMarie\nDupre\tMarie\n")
         self.assertEqual(len(self.run_(self.idx, "--dump", self.dump, "--limit", "1")[1].splitlines()), 1)
 
+    def test_qualified_headers_and_phonetic_spelling(self):
+        d = json.loads(json.dumps(DUMP))
+        d["objects"]["people"][0]["primary_name"]["surname_list"] = [{"surname": "Vidal"}, {"surname": "Gil"}]
+        json.dump(d, open(self.dump, "w"))
+        open(self.idx, "w").write("ID\tNombre\tApellidos_nacimiento\tFecha_nacimiento\nX1\tMarie\tBidal Jil\t1850-01-01\n")
+        code, out, _ = self.run_(self.idx, "--dump", self.dump)
+        self.assertEqual(code, 0)
+        self.assertIn("I1", out)
+        self.assertIn("fonetico", out)
+
+    def test_ties_list_every_person(self):
+        d = json.loads(json.dumps(DUMP))
+        d["objects"]["people"].append(dict(d["objects"]["people"][0], handle="z", gramps_id="I9"))
+        json.dump(d, open(self.dump, "w"))
+        code, out, _ = self.run_(self.idx, "--dump", self.dump)
+        self.assertIn("I1,I9", out)
+
 
 if __name__ == "__main__":
     unittest.main()

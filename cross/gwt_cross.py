@@ -11,9 +11,12 @@ never an identification.
 INDEX needs a header. Recognised columns (any of the names): surname (apellido, nom, surname), given (nombre,
 prenom, given), year (ano, annee, year), place (lugar, lieu, place, commune), ref (ref, cote, id, url), spouse.
 Score: surname equal +4 (close spelling +2), given name equal +3 (close +1, initial +1), place equal +2,
-year within 5 of a birth, baptism or death +2 (within 15, +1). A row with no surname agreement is dropped.
+full given name equal +1 more, year equal to a birth, baptism or death +3 (within 5, +2; within 15, +1). A row with no surname agreement is dropped.
 
 Delimiter (tab, semicolon, comma or bar) and encoding (UTF-8, UTF-16, Windows-1252) are detected; --encoding forces one.
+
+A row that fits several people equally lists all their IDs, comma separated (a sign of duplicates in the tree
+or of a common name, never a pick).
 
 Exit 0 when a row reached --min-score, 1 when none did, 2 when INDEX or the dump cannot be read.
 """
@@ -26,7 +29,7 @@ import unicodedata
 
 HEADERS = {"surname": ("surname", "apellido", "apellidos", "nom", "lastname", "family"),
            "given": ("given", "nombre", "prenom", "prenoms", "firstname", "forename"),
-           "year": ("year", "ano", "año", "annee", "année", "date"),
+           "year": ("year", "ano", "año", "annee", "année", "date", "fecha"),
            "place": ("place", "lugar", "lieu", "commune", "localidad"),
            "ref": ("ref", "cote", "id", "url", "link", "reference"),
            "spouse": ("spouse", "conyuge", "cónyuge", "conjoint")}
@@ -35,6 +38,14 @@ HEADERS = {"surname": ("surname", "apellido", "apellidos", "nom", "lastname", "f
 def norm(text):
     t = unicodedata.normalize("NFKD", str(text or "")).encode("ascii", "ignore").decode().lower()
     return " ".join("".join(c if c.isalnum() else " " for c in t).split())
+
+
+def phon(text):
+    """A rough Spanish/French spelling key: Vidal and Bidal, Gil and Jil, Pérez and Peres agree."""
+    t = norm(text).replace("ll", "y").replace("qu", "k").replace("ph", "f")
+    for a, b in (("v", "b"), ("w", "b"), ("z", "s"), ("c", "k"), ("g", "j"), ("h", ""), ("y", "i"), ("x", "ks")):
+        t = t.replace(a, b)
+    return t
 
 
 def close(a, b):
@@ -51,7 +62,9 @@ def columns(header):
     out = {}
     for i, h in enumerate(header):
         for field, names in HEADERS.items():
-            if field not in out and norm(h) in [norm(n) for n in names]:
+            hn = norm(h)
+            # exact name, or a name followed by a qualifier: "Apellidos_nacimiento", "Fecha_nacimiento"
+            if field not in out and any(hn == norm(n) or hn.startswith(norm(n) + " ") for n in names):
                 out[field] = i
     return out
 
@@ -90,6 +103,8 @@ def score(row, person):
     elif any(sur and (set(sur.split()) <= set(x.split()) or set(x.split()) <= set(sur.split())) and len(sur) > 3
              for x in person["surnames"]):
         s += 3; why.append("apellido(partes)")  # "de la Fontaine" against "Fontaine"
+    elif any(any(a == b for a in phon(sur).split() for b in phon(x).split()) for x in person["surnames"]):
+        s += 3; why.append("apellido(fonetico)")
     elif any(close(sur, x) for x in person["surnames"]):
         s += 2; why.append("apellido~")
     else:
@@ -98,6 +113,8 @@ def score(row, person):
     if g and pg:
         if g.split()[0] == pg.split()[0] or set(g.split()) & set(pg.split()):
             s += 3; why.append("nombre")
+            if g == pg:
+                s += 1; why.append("nombre completo")
         elif close(g.split()[0], pg.split()[0]):
             s += 1; why.append("nombre~")
         elif g[0] == pg[0]:
@@ -106,7 +123,9 @@ def score(row, person):
         s += 2; why.append("lugar")
     if row["year"] and person["years"]:
         d = min(abs(row["year"] - y) for y in person["years"])
-        if d <= 5:
+        if d == 0:
+            s += 3; why.append("ano exacto")
+        elif d <= 5:
             s += 2; why.append("ano")
         elif d <= 15:
             s += 1; why.append("ano~")
@@ -114,19 +133,22 @@ def score(row, person):
 
 
 def cross(rows, people, min_score):
-    """Rows are only scored against people whose surname starts with the same letter (a close spelling can
-    differ elsewhere, rarely in the first letter): 20,000 rows against 5,000 people stays under a few seconds."""
+    """Rows are only scored against people with a surname word that starts with the same sound letter (after the
+    phonetic key: v/b, g/j, c/k share a letter): 20,000 rows against 5,000 people stays under a few seconds."""
     found = []
     bucket = {}
     for p in people:
         for x in p["surnames"]:
-            bucket.setdefault(x[:1], []).append(p)
+            for tok in phon(x).split() or [""]:
+                bucket.setdefault(tok[:1], []).append(p)
     for r in rows:
-        cand = bucket.get(r["surname"][:1], [])
-        best = max(((score(r, p), p) for p in cand), key=lambda x: x[0][0], default=((0, []), None))
-        (s, why), p = best
-        if p and s >= min_score:
-            found.append({"score": s, "person": p["id"], "why": "+".join(why), "row": r["raw"], "ref": r["ref"]})
+        cand = {id(p): p for tok in (phon(r["surname"]).split() or [""]) for p in bucket.get(tok[:1], [])}.values()
+        scored = [(score(r, p), p) for p in cand]
+        top = max((x[0][0] for x in scored), default=0)
+        if top >= min_score:
+            tied = [(x, p) for x, p in scored if x[0] == top]  # equal scores: show every person, never pick one by order
+            found.append({"score": top, "person": ",".join(p["id"] for _, p in tied), "why": "+".join(tied[0][0][1]),
+                          "row": r["raw"], "ref": r["ref"], "ties": len(tied)})
     return sorted(found, key=lambda f: -f["score"])
 
 
@@ -190,6 +212,9 @@ def main(argv=None):
     if a.limit > 0:
         found = found[:a.limit]
     print("gwt-cross: %d rows, %d people, %d leads" % (len(rows), len(people), len(found)), file=sys.stderr)
+    if sys.stdout.isatty() is False:
+        import signal
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # `| head` ends quietly
     if a.format == "json":
         print(json.dumps(found, ensure_ascii=False, indent=1))
     else:
