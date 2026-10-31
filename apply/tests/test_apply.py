@@ -4004,6 +4004,28 @@ def test_server_backup_refused_writes_nothing(fake, tmp_path, monkeypatch, capsy
     assert set(fake.store["notes"]) == notes  # the lock is released and the change list added nothing
 
 
+def test_server_backup_202_waits_for_the_backup_to_be_listed(fake, tmp_path, monkeypatch, capsys):
+    import gwt_apply.cli as climod
+    monkeypatch.setattr(climod.time, "sleep", lambda s: None)
+    p = _server_backup_env(fake, tmp_path, monkeypatch)
+    fake.backup_status = 202
+    assert main([str(p), "--apply", "--server-backup", "--log", str(tmp_path / "a.jsonl")]) == 0
+    assert "server backup stored: bk1" in capsys.readouterr().out
+    assert not any("restore" in c[1] for c in fake.calls)
+
+
+def test_server_backup_202_never_listed_writes_nothing(fake, tmp_path, monkeypatch, capsys):
+    import gwt_apply.cli as climod
+    monkeypatch.setattr(climod.time, "sleep", lambda s: None)
+    p = _server_backup_env(fake, tmp_path, monkeypatch)
+    fake.backup_status = 202
+    fake.backup_never_listed = True
+    notes = set(fake.store["notes"])
+    assert main([str(p), "--apply", "--server-backup", "--log", str(tmp_path / "a.jsonl")]) == 1
+    assert "none was listed after 60 s" in capsys.readouterr().err
+    assert set(fake.store["notes"]) == notes
+
+
 def test_server_backup_needs_apply(fake, tmp_path, monkeypatch):
     p = _server_backup_env(fake, tmp_path, monkeypatch)
     with pytest.raises(SystemExit):

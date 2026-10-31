@@ -161,7 +161,13 @@ class FakeGrampsWeb:
 
     def _route(self, method, path, headers, params, body, data):
         parts = [p for p in path.split("/") if p][1:]  # drop "api"
+        if parts == ["backups"] and method == "GET":
+            return Resp(200, [{"id": f"bk{i}"} for i in range(1, getattr(self, "backups", 0) + 1)])
         if parts == ["backups"] and method == "POST":
+            if getattr(self, "backup_status", 201) == 202:  # built in the background: the id shows up in the list, not in the answer
+                if not getattr(self, "backup_never_listed", False):
+                    self.backups = getattr(self, "backups", 0) + 1
+                return Resp(202, {"task": {"id": "t1"}})
             if getattr(self, "backup_status", 201) != 201:
                 return Resp(self.backup_status, {"error": {"message": "Forbidden"}})
             self.backups = getattr(self, "backups", 0) + 1
