@@ -34,4 +34,4 @@ For a wider view there is a dataset on data.gouv.fr, [Principaux corpus d'archiv
 
 ## Pace and terms
 
-Read each site's current terms before automating anything on it; stop on a captcha or a block. FamilySearch's terms are at [churchofjesuschrist.org](https://www.churchofjesuschrist.org/learn/legal/terms-of-use/go?lang=eng); read them yourself.
+Read each site's current terms before automating anything on it; stop on a captcha or a block. [FamilySearch legal page](https://www.familysearch.org/en/legal/terms): consult the current terms there.
