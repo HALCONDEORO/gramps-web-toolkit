@@ -48,6 +48,8 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 - Catalogue offline tests now reject denial-title, non-English human-challenge, reCAPTCHA-widget and unmarked empty terminal candidates. Previous synthetic-empty-table positive assertions used an unsafe completion oracle; coverage guard unit tests now explicitly assume completeness without claiming archive compatibility. No live archive validation or invented terminal marker.
 - A person with no death born more than 100 years ago is presumed dead (`LIVING_YEARS` 110 to 100 in `gwt-check`), so `living-media-sensitive` and `living-visible` are less strict for people born 100 to 110 years ago. No change list is affected.
+- `gwt-leads --archives FILE` tells each gap which archive keeps its record and whether its year is online there. The file is a TSV with `match`, `archive`, `series`, `years` and `url` columns, plus an optional `access` (`online`, `browser`, `letter`, `unknown`; empty reads `unknown`). A row matches any level of the gap's event place, whole names folded for case and accents; the deepest level wins, then the first row. `url` takes `{place}` and `{year}` only. A matched gap gets a `where` object in `--format json` and a `where:` part in the `--format queue` note; `online` is unknown for a "before" or "after" year. The file is read as plain UTF-8 tab-separated text, so a quote is an ordinary character, and a gap looks up each level of its place, so a commune-sized file stays fast. A bad file (not UTF-8, a repeated column among others) exits 2. Without the flag the output is unchanged. `examples/archives.tsv` is an invented file.
+
 
 ### Fixed
 
