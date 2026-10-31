@@ -4098,3 +4098,20 @@ def test_server_backup_needs_apply(fake, tmp_path, monkeypatch):
 def test_an_event_given_as_a_handle_is_refused(op):
     errors = validate([{**op, "key": "k", "ruling": R}])
     assert any("neither key:<key> nor a Gramps ID" in e for e in errors)
+
+
+def test_private_new_makes_every_created_object_private_and_default_does_not(fake, scan):
+    ops = full_list(scan)
+    client = Client("https://gw.example", "u", "pw", tree="tree-test", dry_run=False, session=fake)
+    res = Applier(client, retries=1, retry_wait=0, private_new=True).run(ops)
+    assert all(r.status == "done" for r in res), [r.actions for r in res]
+    created = [fake.store[ns][stable_handle(k)] for ns, k in
+               [("people", "p-john"), ("families", "f-anna"), ("citations", "c-bapt"), ("media", "m-bapt"), ("notes", "n-john")]]
+    assert all(o["private"] is True for o in created)
+
+
+def test_without_private_new_created_objects_are_not_forced_private(fake, scan):
+    ops = full_list(scan)
+    client = Client("https://gw.example", "u", "pw", tree="tree-test", dry_run=False, session=fake)
+    Applier(client, retries=1, retry_wait=0).run(ops)
+    assert not fake.store["notes"][stable_handle("n-john")].get("private")
