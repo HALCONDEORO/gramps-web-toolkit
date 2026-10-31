@@ -15,7 +15,7 @@ never talks to a site. A person opens the image, then types what it showed.
 Dates are YYYY, YYYY-MM or YYYY-MM-DD. The log is a TSV: --log, else $GWT_BOOKS, else ./libros.tsv.
 Standard library only.
 """
-import argparse, csv, datetime, os, re, sys
+import argparse, csv, datetime, os, re, sys, tempfile
 
 COLUMNS = ('book', 'image', 'date', 'note', 'seen')
 
@@ -225,13 +225,14 @@ def cmd_export(args):
     if not args.out:
         write_csv(sys.stdout, args.book, marks)
         return 0
-    tmp = f'{args.out}.tmp{os.getpid()}'
+    directory = os.path.dirname(os.path.abspath(args.out))
+    fd, tmp = tempfile.mkstemp(prefix='.gwt-books-', suffix='.tmp', dir=directory)
     try:
-        with open(tmp, 'w', newline='', encoding='utf-8') as fh:
+        with os.fdopen(fd, 'w', newline='', encoding='utf-8') as fh:
             write_csv(fh, args.book, marks)
         os.replace(tmp, args.out)
     finally:
-        if os.path.exists(tmp):
+        if os.path.lexists(tmp):
             os.remove(tmp)
     return 0
 

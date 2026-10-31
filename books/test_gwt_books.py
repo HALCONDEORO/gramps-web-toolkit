@@ -196,3 +196,16 @@ def test_an_empty_zone_is_said_plainly_never_as_the_end_of_the_book_or_an_invert
     z = gb.zone(marks((10, '1900-01-01')), D(1950, 1, 1), 10)
     assert 'none' in gb.zone_line(z)
     assert 'to the end of the book' in gb.zone_line(gb.zone(marks((10, '1900-01-01')), D(1950, 1, 1)))
+
+
+def test_export_never_writes_through_a_preexisting_temporary_name(tmp_path, monkeypatch):
+    log, before = _two_books(tmp_path)
+    out = str(tmp_path / 'out.csv')
+    for name in (f'{out}.tmp{os.getpid()}', str(tmp_path / '.gwt-books-x.tmp')):
+        for link in (os.link, os.symlink):
+            if os.path.lexists(name):
+                os.remove(name)
+            link(log, name)
+    assert gb.main(['--log', log, 'export', '--book', 'A', '--out', out]) == 0
+    assert open(log, encoding='utf-8').read() == before
+    assert open(out, encoding='utf-8').read().splitlines()[1] == 'A,1,1900-01-01,'
