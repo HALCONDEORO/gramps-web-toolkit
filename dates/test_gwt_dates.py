@@ -71,6 +71,7 @@ def test_a_day_that_does_not_exist_is_refused():
 
 def test_note_has_the_form_gwt_check_reads_back():
     assert gd.note(D(1805, 4, 4)) == '14 germinal an 13 = 04/04/1805'
+    assert gd.note(D(1799, 11, 9)) == '18 brumaire an 8 = 09/11/1799'
 
 
 def test_cli_prints_one_line_and_exits_2_on_a_bad_date(capsys):
@@ -83,3 +84,8 @@ def test_cli_prints_one_line_and_exits_2_on_a_bad_date(capsys):
     assert gd.main(['g2r', '1900-01-01']) == 2
     assert gd.main(['r2g', '14 germinal an XIII', '--as-note']) == 0
     assert capsys.readouterr().out == '14 germinal an 13 = 04/04/1805\n'
+
+
+def test_roman_numerals_cover_every_year():
+    assert [gd.roman(y) for y in (1, 4, 9, 14)] == ['I', 'IV', 'IX', 'XIV']
+    assert all(gd.ROMAN[gd.roman(y).lower()] == y for y in range(1, 15))

@@ -20,6 +20,7 @@ MONTHS = ('vendemiaire', 'brumaire', 'frimaire', 'nivose', 'pluviose', 'ventose'
           'prairial', 'messidor', 'thermidor', 'fructidor')
 ROMAN = {'i': 1, 'ii': 2, 'iii': 3, 'iv': 4, 'v': 5, 'vi': 6, 'vii': 7, 'viii': 8, 'ix': 9, 'x': 10, 'xi': 11,
          'xii': 12, 'xiii': 13, 'xiv': 14}
+NUMERALS = ('I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV')
 SEXTILE = (3, 7, 11)
 LAST_DAY = datetime.date(1805, 12, 31)  # 10 nivose an XIV, the last day of the calendar
 OLD_STYLE = {'7bre': 9, '8bre': 10, '9bre': 11, '10bre': 12, 'xbre': 12}
@@ -75,7 +76,7 @@ def to_republican(date):
 
 
 def roman(n):
-    return next(k for k, v in ROMAN.items() if v == n).upper()
+    return NUMERALS[n - 1]
 
 
 def label(day, month, year):
