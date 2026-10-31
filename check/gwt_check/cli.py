@@ -364,6 +364,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="print the result as JSON")
     live_opts(p)
 
+    p = sub.add_parser("cite-gaps", help="events with no citation whose owner has a citation that writes their date; proposals only")
+    p.add_argument("tree", nargs="?", help="dump file; without it the live tree is read")
+    p.add_argument("--ops", metavar="FILE", help="also write the proposals to a new file as gwt-apply attach_existing ops with an empty ruling")
+    p.add_argument("--json", action="store_true", help="print the result as JSON")
+    p.add_argument("--limit", type=int, default=30, help="proposals printed (default 30)")
+    live_opts(p)
+
     p = sub.add_parser("republican", help="recompute the Republican-to-Gregorian conversions written in notes; exits 1 when one differs")
     p.add_argument("tree", nargs="?", help="dump file; without it the live tree is read")
     p.add_argument("--json", action="store_true", help="print the result as JSON")
@@ -488,6 +495,23 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(rep, ensure_ascii=False, indent=1))
             else:
                 print_cites(rep)
+            return 0
+        if args.cmd == "cite-gaps":
+            from .citegaps import print_gaps, propose_citations, write_ops
+            tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
+            if tree.partial:
+                raise BadInput(f"{tree.source}: a .gramps backup has no citation text; use a dump")
+            rep = propose_citations(tree)
+            if args.ops:
+                try:
+                    n = write_ops(rep, args.ops)
+                except OSError as exc:
+                    raise BadInput(f"{args.ops}: {exc} (an existing file is never replaced)") from exc
+                print(f"{n} ops written to {args.ops} with an empty ruling; nothing was applied", file=sys.stderr)
+            if args.json:
+                print(json.dumps(rep, ensure_ascii=False, indent=1))
+            else:
+                print_gaps(rep, args.limit)
             return 0
         if args.cmd == "fill-places":
             from .fill import print_places, propose_places, write_ops

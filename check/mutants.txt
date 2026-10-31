@@ -100,3 +100,7 @@ gwt_check/public.py | LEAKS = ("private-visible", "private-reference", "private-
 gwt_check/public.py | if path and x.get("private") is True: | if x.get("private") is True: | a visible private object is one row, not also a sub-object row with no path
 gwt_check/checks.py | if e and e.get("type") in ("Birth", "Baptism")] | if e and e.get("type") in ("Birth",)] | a recent baptism alone makes a person possibly living
 gwt_check/public.py | if not rep["rows"]: | if False: | a clean comparison says nothing found
+gwt_check/citegaps.py | if key[0] > living_after: | if False: | nothing about people born after the living cutoff is proposed
+gwt_check/citegaps.py | (held if prob else proposals) | (proposals if prob else held) | a citation of another act is held back, never proposed
+gwt_check/citegaps.py | if key not in found: | if False: | only a citation that writes the event's own date is proposed
+gwt_check/citegaps.py | if any(w in _fold(text) for w in NEGATIVE): | if False: | a citation that records a negative search is never proposed
