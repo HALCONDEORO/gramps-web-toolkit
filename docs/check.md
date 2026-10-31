@@ -84,6 +84,17 @@ It trusts the stamps for everything else. A change that reaches the database wit
 
 **Known findings.** Every finding has a `check` and a `key` built from Gramps IDs, for example `repeated-ref` / `F0012 citation_list C0034`. The key stays the same from run to run while the problem does. Pass the first run's report as `--known` and the exit code then reflects only new problems.
 
+## Citations for events that have none (`cite-gaps`)
+
+`gwt-check cite-gaps [DUMP] [--ops FILE] [--json] [--limit N]` reads a dump (or the live tree) and writes nothing to it. For each event with no citation and a full date (day, month, year), it looks in the page text and the notes of the citations of the event's person or family. A citation that writes the event's exact date, as `5/5/1860`, `1860-05-05`, `5 de mayo de 1860`, `5 mai 1860` or `1er mai 1860`, is proposed, with the words as written. A citation whose page says it is another kind of act or a marginal mention (see `cites`) is listed as held back. Events dated after 1926 are left alone (the living rule). Events with only a year are counted, never proposed. Month words are one table in `citegaps.py`.
+
+```
+gwt-check cite-gaps dump.json.gz                      # proposals, with a quote each
+gwt-check cite-gaps dump.json.gz --ops cite.jsonl     # also a new file of gwt-apply attach_existing ops, ruling empty
+```
+
+`--ops` never replaces a file. The ops have an empty ruling, so `gwt-apply` refuses them until someone has read each record: the same date can be written in an act about someone else. The exit code is always 0.
+
 ## Places for events that have none (`fill-places`)
 
 `gwt-check fill-places [DUMP]` reads a dump (or the live tree) and writes nothing to it. For each event with no place, it looks for a place named in the page text and the notes of the event's own citations, and prints the place with the passage that names it.
