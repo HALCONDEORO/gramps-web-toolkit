@@ -1,0 +1,12 @@
+gwt_acts.py |     out = [f'missing {k}' for k in REQUIRED if not get(k)] |     out = [] | a card without cote, ark, url, filiation or date is accepted
+gwt_acts.py |     if get('state') not in STATES: |     if False: | an unknown state is accepted
+gwt_acts.py |         if not get('zoom'): |         if False: | verificado-zoom without a zoom is accepted
+gwt_acts.py |         if any('?' in get(k) for k in ('given', 'surname', 'father', 'mother')): |         if False: | verificado-zoom is accepted with a name marked (?)
+gwt_acts.py |         if get('date_iso') and get('date_iso') != want: |         if False: | a Republican date that gives another day than the card is accepted
+gwt_acts.py |     if 'delivre' in text and not get('date_iso').startswith('bef '): |     if False: | an acte delivre is accepted as the date of the event
+gwt_acts.py |     if top < POSSIBLE: |     if top < 0: | every card is reported as a possible duplicate
+gwt_acts.py |     verdict = f'already as {ids}' if top >= SAME else f'possible duplicate (?) {ids}' |     verdict = f'possible duplicate (?) {ids}' | an exact match is not told apart from a possible one
+gwt_acts.py |                 if theirs != iso and not iso.startswith(theirs):  # a vaguer tree date that holds the day is no conflict |                 if False: | a different day for the same person is not reported as a conflict
+gwt_acts.py |                 if theirs != iso and not iso.startswith(theirs):  # a vaguer tree date that holds the day is no conflict |                 if theirs != iso: | a vaguer tree date that holds the day is reported as a conflict
+gwt_acts.py |             if (card.get('state') or '').strip() != 'verificado-zoom': |             if False: | parents of an unverified card are not marked read-only
+gwt_acts.py |     return "'" + out if out[:1] in ('=', '+', '-', '@') else out |     return out | a formula in a card is written back as a formula
