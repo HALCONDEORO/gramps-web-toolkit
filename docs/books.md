@@ -27,6 +27,12 @@ gwt-books show --book register-1 --target 1926-05
 
 `next` picks the image by linear interpolation between the nearest landmarks before and after the target. It never picks an image you already read. With no landmarks it opens the middle of the book (it needs `--total`). With landmarks on one side only it moves toward the other end. It prints how many images are left in the window. When two images next to each other bracket the target, it says so and stops: the page is not in this register, or the register skips that date. It exits 1 when it has no image to suggest.
 
+## Where the images come from
+
+On FamilySearch an unindexed collection is a "Browse Images" collection, grouped in waypoints. The viewer shows the current image number and how many images the group has (that count is your `--total`), and lets you type an image number to jump to it. See [Search unindexed record images](https://www.familysearch.org/en/help/helpcenter/article/how-do-i-find-an-image-in-an-unindexed-collection-in-historical-records). The *Explore Historical Images* tool (Search, then Images) narrows images by place and date before you browse, so use it first to get the right group: [announcement](https://www.familysearch.org/en/blog/explore-historical-images-tool-unlocks-data-in-digital-records).
+
+FamilySearch's terms of use forbid robots, spiders or other automatic devices on the site, which is why this tool only records what a person read. Public scripts that walk image URLs exist; this project does not use them.
+
 ## What it does not do
 
 It does not read the image for you, and it does not know whether the register is sorted by date. Baptisms are usually sorted; a register that mixes years will mislead the interpolation, and the landmarks will show that when the dates stop rising.
