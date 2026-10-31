@@ -25,7 +25,7 @@ gwt-books next --book register-1 --target 1926-05 --total 640
 gwt-books show --book register-1 --target 1926-05
 ```
 
-`next` picks the image by linear interpolation between the nearest landmarks before and after the target. It never picks an image you already read. With no landmarks it opens the middle of the book (it needs `--total`). With landmarks on one side only it moves toward the other end. It prints how many images are left in the window. When two images next to each other bracket the target, it says so and stops: the page is not in this register, or the register skips that date. It exits 1 when it has no image to suggest.
+`next` picks the image by linear interpolation between the nearest landmarks before and after the target. It never picks an image you already read. With no landmarks it opens the middle of the book (it needs `--total`). With landmarks on one side only it moves toward the other end. It prints how many images are left in the window. When two images next to each other bracket the target, it says so and stops: the date is on one of those two images, or on a page the images do not show. Review both. A date per image is all it records, so it cannot tell which page of an image holds a given date. It exits 1 when it has no image to suggest. `add` refuses a tab or line break in `--book` or `--note`, an empty book, and an image or `--total` below 1.
 
 ## Where the images come from
 

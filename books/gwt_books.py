@@ -27,7 +27,7 @@ def parse_date(text):
             raise ValueError
         return datetime.date(nums[0], nums[1] if len(nums) > 1 else 1, nums[2] if len(nums) > 2 else 1)
     except ValueError:
-        raise SystemExit('bad date %r: use YYYY, YYYY-MM or YYYY-MM-DD' % text)
+        raise SystemExit(f'bad date {text!r}: use YYYY, YYYY-MM or YYYY-MM-DD')
 
 
 def log_path(args):
@@ -67,48 +67,69 @@ def window(marks, target):
     return lo, hi
 
 
-def suggest(marks, target, total=None):
-    """(image, why): the next image to open, never one already seen."""
-    seen = {n for n, _, _ in marks}
-    lo, hi = window(marks, target)
-    if lo and hi and lo[1] == target:
-        return lo[0], 'image %d already shows the target date' % lo[0]
-    if lo and hi:
-        if hi[0] - lo[0] <= 1:
-            return None, 'the target falls between images %d and %d, which are next to each other' % (lo[0], hi[0])
-        span = (hi[1] - lo[1]).days or 1
-        frac = (target - lo[1]).days / span
-        guess = lo[0] + round(frac * (hi[0] - lo[0]))
-        guess = min(max(guess, lo[0] + 1), hi[0] - 1)
-        return guess, 'between %d (%s) and %d (%s)' % (lo[0], lo[1], hi[0], hi[1])
-    if not marks:
-        if not total:
-            return None, 'no landmarks yet: pass --total (images in the book) to get a first image'
-        return max(total // 2, 1), 'no landmarks yet: open the middle of the book'
-    if lo and not hi:
+def _between(lo, hi, target):
+    if hi[0] - lo[0] <= 1:
+        return None, f'images {lo[0]} and {hi[0]} are next to each other and bracket the target: review both'
+    span = (hi[1] - lo[1]).days or 1
+    guess = lo[0] + round((target - lo[1]).days / span * (hi[0] - lo[0]))
+    guess = min(max(guess, lo[0] + 1), hi[0] - 1)
+    return guess, f'between {lo[0]} ({lo[1]}) and {hi[0]} ({hi[1]})'
+
+
+def _one_side(lo, hi, total):
+    """Landmarks on one side of the target only: move toward the unexplored end."""
+    if lo:
         if not total or lo[0] >= total:
-            return None, 'every landmark is earlier than the target and the book has no image after %d' % lo[0]
-        step = max((total - lo[0]) // 2, 1)
-        return min(lo[0] + step, total), 'all landmarks are earlier than the target: look later in the book'
-    step = max(hi[0] // 2, 1)
-    guess = max(hi[0] - step, 1)
-    while guess in seen and guess > 1:
-        guess -= 1
+            return None, f'every landmark is earlier than the target and the book has no image after {lo[0]}'
+        return min(lo[0] + max((total - lo[0]) // 2, 1), total), 'all landmarks are earlier than the target: look later'
     if hi[0] <= 1:
         return None, 'every landmark is later than the target and image 1 is already seen'
-    return guess, 'all landmarks are later than the target: look earlier in the book'
+    return max(hi[0] - max(hi[0] // 2, 1), 1), 'all landmarks are later than the target: look earlier'
+
+
+def suggest(marks, target, total=None):
+    """(image, why): the next image to open, never one already seen."""
+    lo, hi = window(marks, target)
+    if lo and hi and lo[1] == target:
+        return lo[0], f'image {lo[0]} already shows the target date'
+    if lo and hi:
+        return _between(lo, hi, target)
+    if marks:
+        return _one_side(lo, hi, total)
+    if not total:
+        return None, 'no landmarks yet: pass --total (images in the book) to get a first image'
+    return max(total // 2, 1), 'no landmarks yet: open the middle of the book'
+
+
+def clean(text, what):
+    """A book label or note lives in one TSV cell: no tab or line break."""
+    if any(c in text for c in '\t\r\n'):
+        raise SystemExit(f'{what} must not contain a tab or a line break')
+    return text
+
+
+def positive(text):
+    try:
+        n = int(text)
+    except ValueError:
+        n = 0
+    if n < 1:
+        raise argparse.ArgumentTypeError(f'{text!r} is not a positive whole number')
+    return n
 
 
 def cmd_add(args):
     parse_date(args.date)
+    book, note = clean(args.book, '--book').strip(), clean(args.note, '--note')
+    if not book:
+        raise SystemExit('--book must not be empty')
     path = log_path(args)
     new = not os.path.exists(path) or os.path.getsize(path) == 0
     with open(path, 'a', encoding='utf-8') as fh:
         if new:
             fh.write('\t'.join(COLUMNS) + '\n')
-        fh.write('\t'.join([args.book, str(args.image), args.date, args.note.replace('\t', ' '),
-                            datetime.date.today().isoformat()]) + '\n')
-    print('noted: %s image %d = %s' % (args.book, args.image, args.date))
+        fh.write('\t'.join([book, str(args.image), args.date, note, datetime.date.today().isoformat()]) + '\n')
+    print(f'noted: {book} image {args.image} = {args.date}')
     return 0
 
 
@@ -118,20 +139,20 @@ def cmd_next(args):
     if image is None:
         print(why)
         return 1
-    print('open image %d: %s' % (image, why))
+    print(f'open image {image}: {why}')
     lo, hi = window(marks, parse_date(args.target))
     if lo and hi and hi[0] > lo[0]:
-        print('%d images left between %d and %d' % (hi[0] - lo[0] - 1, lo[0], hi[0]))
+        print(f'{hi[0] - lo[0] - 1} images left between {lo[0]} and {hi[0]}')
     return 0
 
 
 def cmd_show(args):
     marks = landmarks(read_log(log_path(args)), args.book)
     for n, d, note in marks:
-        print('%6d  %s  %s' % (n, d, note))
+        print(f'{n:6d}  {d}  {note}')
     if args.target:
         lo, hi = window(marks, parse_date(args.target))
-        print('target %s: from image %s to image %s' % (args.target, lo[0] if lo else '?', hi[0] if hi else '?'))
+        print(f"target {args.target}: from image {lo[0] if lo else '?'} to image {hi[0] if hi else '?'}")
     return 0
 
 
@@ -141,13 +162,13 @@ def main(argv=None):
     sub = ap.add_subparsers(dest='cmd', required=True)
     a = sub.add_parser('add')
     a.add_argument('--book', required=True)
-    a.add_argument('--image', type=int, required=True)
+    a.add_argument('--image', type=positive, required=True)
     a.add_argument('--date', required=True)
     a.add_argument('--note', default='')
     n = sub.add_parser('next')
     n.add_argument('--book', required=True)
     n.add_argument('--target', required=True)
-    n.add_argument('--total', type=int)
+    n.add_argument('--total', type=positive)
     s = sub.add_parser('show')
     s.add_argument('--book', required=True)
     s.add_argument('--target')

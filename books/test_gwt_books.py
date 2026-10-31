@@ -64,3 +64,35 @@ def test_a_reread_image_keeps_its_latest_date(tmp_path):
     gb.main(['--log', log, 'add', '--book', 'B', '--image', '7', '--date', '1900'])
     gb.main(['--log', log, 'add', '--book', 'B', '--image', '7', '--date', '1901'])
     assert gb.landmarks(gb.read_log(log), 'B') == [(7, D(1901, 1, 1), '')]
+
+
+def test_a_tab_or_line_break_in_book_or_note_is_refused_and_the_log_stays_readable(tmp_path):
+    log = str(tmp_path / 'b.tsv')
+    for flag, bad in (('--book', 'a\tb'), ('--book', 'a\nb'), ('--note', 'x\ty'), ('--note', 'x\r\ny')):
+        args = ['--log', log, 'add', '--book', 'B', '--image', '1', '--date', '1900', '--note', '']
+        args[args.index(flag) + 1] = bad
+        with pytest.raises(SystemExit):
+            gb.main(args)
+    assert not os.path.exists(log) or gb.read_log(log) == []
+    with pytest.raises(SystemExit):
+        gb.main(['--log', log, 'add', '--book', '  ', '--image', '1', '--date', '1900'])
+
+
+def test_a_note_with_spaces_and_accents_roundtrips(tmp_path):
+    log = str(tmp_path / 'b.tsv')
+    gb.main(['--log', log, 'add', '--book', 'Libro 1', '--image', '3', '--date', '1900', '--note', 'bautismos, año 1900'])
+    assert gb.landmarks(gb.read_log(log), 'Libro 1') == [(3, D(1900, 1, 1), 'bautismos, año 1900')]
+
+
+@pytest.mark.parametrize('bad', ['0', '-4', 'x', '1.5'])
+def test_image_and_total_must_be_positive_whole_numbers(bad, tmp_path):
+    log = str(tmp_path / 'b.tsv')
+    with pytest.raises(SystemExit):
+        gb.main(['--log', log, 'add', '--book', 'B', '--image', bad, '--date', '1900'])
+    with pytest.raises(SystemExit):
+        gb.main(['--log', log, 'next', '--book', 'B', '--target', '1900', '--total', bad])
+
+
+def test_adjacent_images_say_review_both_not_that_the_date_is_missing():
+    _, why = gb.suggest(marks((100, '1900-01-01'), (101, '1900-12-31')), D(1900, 6, 1))
+    assert 'review both' in why and 'not in' not in why
