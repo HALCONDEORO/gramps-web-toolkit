@@ -96,7 +96,8 @@ def republican_problems(get):
             want = dates.parse_republican(get('republican')).isoformat()
         except ValueError as e:
             return [str(e)]
-        if get('date_iso') and get('date_iso') != want:
+        core = (split_date(get('date_iso')) or ('', ''))[1]
+        if get('date_iso') and core != want:
             out.append(f'republican date gives {want}, the card says {get("date_iso")}')
     text = dates.fold(' '.join(get(k) for k in ('date', 'notes')))
     if 'delivre' in text and not get('date_iso').startswith('bef '):
@@ -105,16 +106,19 @@ def republican_problems(get):
 
 
 def tree_dates(dump):
-    """gramps id -> {event type: [YYYY-MM-DD or YYYY-MM or YYYY]} for the events that carry a date."""
+    """gramps id -> {event type: [YYYY-MM-DD or YYYY-MM or YYYY, with a leading ? when the date is not an exact Gregorian one]}."""
     objs = dump.get('objects', dump)
     events = {e['handle']: e for e in objs['events']}
     out = {}
     for p in objs['people']:
         for ref in p.get('event_ref_list') or []:
             e = events.get(ref.get('ref')) or {}
-            v = (e.get('date') or {}).get('dateval') or []
+            d = e.get('date') or {}
+            v = d.get('dateval') or []
             if len(v) > 2 and v[2]:
                 iso = f'{v[2]:04d}' + (f'-{v[1]:02d}' if v[1] else '') + (f'-{v[0]:02d}' if v[1] and v[0] else '')
+                if len(v) != 4 or any(d.get(k) for k in ('calendar', 'modifier', 'quality', 'newyear')):
+                    iso = '?' + iso  # before/after/about, a span, another calendar or a doubtful date: not compared
                 out.setdefault(p.get('gramps_id'), {}).setdefault(e.get('type'), []).append(iso)
     return out
 
@@ -126,11 +130,11 @@ def spelled_differently(why):
 def judge(top, why, tied):
     """The verdict for the best match and the notes that go with it."""
     ids = ','.join(p['id'] for p in tied)
-    named = 'nombre' in why and any(k in why for k in ('ano exacto', 'ano'))
+    named = 'nombre' in why and 'ano exacto' in why
     verdict = f'already as {ids}' if top >= SAME and named else f'possible duplicate (?) {ids}'
     notes = []
     if top >= SAME and not named:
-        notes.append('not enough to say it is the same person: the given name and the year must both match')
+        notes.append('not enough to say it is the same person: the given name and the exact year must both match')
     if spelled_differently(why):
         notes.append('spelling: the tree writes ' + '/'.join(sorted({x for p in tied for x in p['surnames']})))
     return verdict, notes
@@ -159,6 +163,9 @@ def conflicts(card, qual, iso, tied, by_id):
     out = []
     for p in tied:
         for theirs in by_id.get(p['id'], {}).get(kind, []):
+            if theirs.startswith('?'):
+                out.append(f'not compared {p["id"]} {kind}: the tree date is not an exact Gregorian date')
+                continue
             n = min(len(theirs), len(iso))  # a vaguer tree date that holds the day is no conflict
             if (qual == 'bef' and theirs[:n] > iso[:n]) or (not qual and theirs[:n] != iso[:n]):
                 what = 'the act says at most' if qual else 'the act says'

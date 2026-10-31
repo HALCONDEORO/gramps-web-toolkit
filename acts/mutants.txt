@@ -14,3 +14,7 @@ gwt_acts.py |     kind = EVENTS.get(cross.norm(card.get('type'))) |     kind = '
 gwt_acts.py | (qual == 'bef' and theirs[:n] > iso[:n]) | (qual == 'bef' and theirs[:n] != iso[:n]) | a bound is compared as an exact day
 gwt_acts.py |     year = int(iso[:4]) if iso and not qual else None |     year = int(iso[:4]) if iso else None | a bound is matched as an exact year
 gwt_acts.py | not qual and theirs[:n] != iso[:n] | not qual and False | a different exact day is no conflict
+gwt_acts.py | if get('date_iso') and core != want: | if get('date_iso') and get('date_iso') != want: | a Republican issue date with bef is rejected
+gwt_acts.py | named = 'nombre' in why and 'ano exacto' in why | named = 'nombre' in why and 'ano' in why | an approximate year is called the same person
+gwt_acts.py | if len(v) != 4 or any(d.get(k) for k in ('calendar', 'modifier', 'quality', 'newyear')): | if False: | a tree date that is not exact Gregorian is compared as exact
+gwt_acts.py | if theirs.startswith('?'): | if False: | an inexact tree date is not reported as not compared

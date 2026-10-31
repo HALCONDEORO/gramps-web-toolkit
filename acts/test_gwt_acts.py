@@ -158,3 +158,29 @@ def test_a_name_and_place_without_a_year_is_not_already_in_the_tree():
 
 def test_a_bound_is_never_enough_to_say_it_is_already_in_the_tree():
     assert verdict(card(date_iso='bef 1771-03-09', date='acte delivre'))[1].startswith('possible duplicate (?)')
+
+
+def test_a_republican_issue_date_is_compared_on_its_converted_day():
+    c = card(republican='14 germinal an XIII', date='acte delivre', date_iso='bef 1805-04-04')
+    assert verdict(c, None)[1] == 'ok'
+    assert 'republican date gives' in verdict(card(republican='14 germinal an XIII', date_iso='bef 1805-04-05'), None)[2]
+
+
+def test_a_year_off_by_a_few_is_not_already_in_the_tree():
+    r = verdict(card(date_iso='1775'))
+    assert r[1].startswith('possible duplicate (?)') and 'not enough' in r[2]
+
+
+@pytest.mark.parametrize('extra', [{'modifier': 1}, {'calendar': 2}, {'quality': 1}, {'newyear': 1}])
+def test_a_tree_date_that_is_not_exact_gregorian_is_not_compared(extra):
+    d = json.loads(json.dumps(DUMP))
+    d['objects']['events'][0]['date'].update(extra)
+    r = verdict(card(date_iso='1771-03-01'), d)
+    assert not r[3] and 'not compared I1 Birth' in r[2]
+
+
+def test_a_span_in_the_tree_is_not_compared():
+    d = json.loads(json.dumps(DUMP))
+    d['objects']['events'][0]['date']['dateval'] = [1, 3, 1771, False, 5, 3, 1771, False]
+    r = verdict(card(date_iso='1771-03-01'), d)
+    assert not r[3] and 'not compared' in r[2]
