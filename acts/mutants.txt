@@ -1,0 +1,24 @@
+gwt_acts.py |     if get('state') not in STATES: |     if False: | an unknown state is accepted
+gwt_acts.py |         if not get('zoom'): |         if False: | verificado-zoom without a zoom is accepted
+gwt_acts.py |         if any('?' in get(k) for k in ('given', 'surname', 'father', 'mother')): |         if False: | verificado-zoom is accepted with a name marked (?)
+gwt_acts.py |         if get('date_iso') and core != want: |         if False: | a Republican date that gives another day than the card is accepted
+gwt_acts.py |     if 'delivre' in text and not get('date_iso').startswith('bef '): |     if False: | an acte delivre is accepted as the date of the event
+gwt_acts.py |     if top < POSSIBLE: |     if top < 0: | every card is reported as a possible duplicate
+gwt_acts.py | and (card.get('state') or '').strip() != 'verificado-zoom': | and False: | parents of an unverified card are not marked read-only
+gwt_acts.py |     return "'" + out if out[:1] in ('=', '+', '-', '@') else out |     return out | a formula in a card is written back as a formula
+gwt_acts.py | for k in ('type', 'given', 'surname') + REQUIRED if not get(k)] | for k in REQUIRED if not get(k)] | a card without type, given name or surname is accepted
+gwt_acts.py |     if get('date_iso') and not split_date(get('date_iso')): |     if False: | a date_iso that is not a date is accepted
+gwt_acts.py |         datetime.date(int(y), int(mo or 1), int(d or 1)) |         pass | month 99 or day 30 of February is accepted
+gwt_acts.py | if top >= SAME and not weak else | if top >= SAME else | a name without a matching year is called the same person
+gwt_acts.py |     kind = EVENTS.get(cross.norm(card.get('type'))) |     kind = 'Birth' | a baptism is compared with a birth
+gwt_acts.py | (qual == 'bef' and theirs[:n] > iso[:n]) | (qual == 'bef' and theirs[:n] != iso[:n]) | a bound is compared as an exact day
+gwt_acts.py |     year = int(iso[:4]) if iso and not qual else None |     year = int(iso[:4]) if iso else None | a bound is matched as an exact year
+gwt_acts.py | not qual and theirs[:n] != iso[:n] | not qual and False | a different exact day is no conflict
+gwt_acts.py | and 'ano exacto' in why | and 'ano' in why | an approximate year is called the same person
+gwt_acts.py | inexact = len(v) != 4 or v[3] or any( | inexact = len(v) != 4 or any( | a dual date is taken as exact
+gwt_acts.py | if theirs.startswith('?'): | if False: | an inexact tree date is not reported as not compared
+gwt_acts.py | core = (split_date(get('date_iso')) or ('', ''))[1] | core = get('date_iso') | a Republican issue date with bef is rejected
+gwt_acts.py | scored = [(cross.score(row, exact_years(p, by_id)), p) | scored = [(cross.score(row, p), p) | the years of a doubtful tree date count in the match
+gwt_acts.py | if not ('nombre completo' in why and 'ano exacto' in why)] | if not ('nombre' in why and 'ano exacto' in why)] | a first given name alone is called the same person
+gwt_acts.py |         return [int(d[:4]) for k in kinds for d in when.get(k, []) if not d.startswith('?')] |         return [int(d[:4]) for k in kinds for d in when.get(k, [])] | a doubtful tree year is kept
+gwt_acts.py | for p, why in tied if not ('nombre completo' | for p, why in tied[:1] if not ('nombre completo' | only the first tied candidate is judged
