@@ -14,4 +14,3 @@ gwt_books.py |     if args.out and same_file(args.out, log): |     if False: | e
 gwt_books.py |         return True |         return False | a path that resolves to the log is the log
 gwt_books.py |     return os.path.exists(a) and os.path.exists(b) and os.path.samefile(a, b) |     return False | a symlink or hard link to the log is the log
 gwt_books.py |     if count == 0: |     if False: | an empty zone is said plainly
-gwt_books.py |     end = 'the end of the book' if last is None else f'image {last}' |     end = 'the end of the book' if not last else f'image {last}' | a zone ending at image 0 is not the end of the book
