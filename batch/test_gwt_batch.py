@@ -90,6 +90,29 @@ class BatchTest(unittest.TestCase):
         self.assertIn("blocked (captcha", out)
         self.assertIn("skipped (host blocked", out)
 
+    def test_blocked_is_listed_and_marked_not_confused_with_none(self):
+        self.queue(("a", "captcha one", 9), ("a", "two", 8), ("b", "x", 7), ("c", "y", 6))
+        self.templates(("a", self.base + "/captcha?q={query}"), ("b", self.base.replace("127.0.0.1", "localhost") + "/ok?q={query}"),
+                       ("c", self.base.replace("127.0.0.1", "localhost") + "/private?q={query}"))
+        raw = os.path.join(self.d.name, "raw")
+        _, _, err = self.run_("--fetch", "--out", raw, "--mark")
+        self.assertIn("3 task(s)", err)
+        manual = open(os.path.join(raw, "manual.tsv")).read().splitlines()
+        self.assertEqual(sorted(l.split("\t")[0] for l in manual[1:]), ["q1", "q2", "q4"])
+        rows = {r["id"]: r for r in Q.read_file(self.q)}
+        self.assertEqual((rows["q1"]["status"], rows["q1"]["result"]), ("done", "blocked"))
+        self.assertEqual(rows["q2"]["result"], "blocked")
+        self.assertEqual(rows["q4"]["result"], "denied")
+        self.assertEqual(rows["q3"]["status"], "open")  # a page that came back is the reader's call
+        self.assertIn("captcha", rows["q1"]["note"])
+        self.assertIn("ok", open(os.path.join(raw, "outcomes.tsv")).read())
+
+    def test_without_mark_the_queue_is_untouched(self):
+        self.queue(("a", "captcha one", 9))
+        self.templates(("a", self.base + "/captcha?q={query}"))
+        self.run_("--fetch", "--out", os.path.join(self.d.name, "raw"))
+        self.assertEqual(Q.read_file(self.q)[0]["status"], "open")
+
     def test_bad_template_exits_2_and_no_task_exits_1(self):
         self.queue(("a", "q", 1))
         open(self.t, "w").write("source\turl\na\tftp://x/{query}\n")

@@ -10,8 +10,13 @@ and {label} placeholders), delay (seconds between two requests to that host, def
 Manners, not negotiable: robots.txt is read first and a disallowed URL is never fetched; one request at a time
 per host with at least `delay` seconds between them; a descriptive User-Agent; a host that answers 403, 429 or
 shows a captcha or a "too many requests" page is left alone for the rest of the run; no form submission, no
-login, no captcha solving. The page is saved as OUT/<task id>.html for the reader; the queue is never changed
-(the reader decides whether a task is done, with `gwt-queue done`).
+login, no captcha solving. The page is saved as OUT/<task id>.html for the reader.
+
+A captcha or rate limit is not "nothing found". Every fetch is listed in OUT/outcomes.tsv, and the ones a person
+has to do by hand (captcha, 403/429, host left alone) are also in OUT/manual.tsv with their URL. With --mark the
+queue row of such a task becomes done with result "blocked" (robots.txt: "denied") and a note with the reason, so
+it counts as not searched (a re-seed does not skip it) and shows in `gwt-queue list --result blocked`. Without
+--mark the queue is never changed. A page that came back ok is left to the reader (`gwt-queue done`).
 
 Exit 0 when at least one URL was built, 1 when no open task has a template, 2 on a bad file.
 """
@@ -106,6 +111,26 @@ class Polite:
         return "ok", body
 
 
+def outcome(status):
+    """'blocked', 'denied' or '' (a page came back, or a plain error to retry later) from a fetch status."""
+    if status.startswith("skipped (robots"):
+        return "denied"
+    if status.startswith(("blocked", "skipped (host blocked", "http 403", "http 429")):
+        return "blocked"
+    return ""
+
+
+def mark(queue, results):
+    """Queue rows (id -> (result, note)) become done with that result; only rows still open are touched."""
+    def fn(rows):
+        for r in rows:
+            if r["id"] in results and r["status"] == "open":
+                r["status"], r["done_at"] = "done", Q.now_iso()
+                r["result"], r["note"] = results[r["id"]][0], Q.clean(results[r["id"]][1])
+        return rows, 0
+    Q.with_queue(queue, fn)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="gwt-batch", description=__doc__.split("\n\n")[0])
     p.add_argument("--queue", default=os.environ.get("GWT_QUEUE", "cola.tsv"))
@@ -114,6 +139,7 @@ def main(argv=None):
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--fetch", action="store_true")
     p.add_argument("--out", default="raw")
+    p.add_argument("--mark", action="store_true", help="record blocked/denied tasks in the queue (done, result blocked/denied)")
     p.add_argument("--delay", type=float, default=0.0, help="minimum seconds between requests to one host (never below the template's)")
     a = p.parse_args(argv)
     try:
@@ -128,6 +154,7 @@ def main(argv=None):
     polite = Polite(a.delay)
     if a.fetch:
         os.makedirs(a.out, exist_ok=True)
+    log, manual, marks = [], [], {}
     for r, t, url in todo:
         if not a.fetch:
             print("%s\t%s\t%s" % (r["id"], r["source"], url))
@@ -137,6 +164,20 @@ def main(argv=None):
             with open(os.path.join(a.out, "%s.html" % r["id"]), "wb") as fh:
                 fh.write(body)
         print("%s\t%s\t%s\t%d bytes\t%s" % (r["id"], r["source"], status, len(body), url))
+        res = outcome(status)
+        log.append((r["id"], r["source"], status, res or ("ok" if body else "error"), url))
+        if res:
+            manual.append((r["id"], r["person_label"], r["source"], res, status, url))
+            marks[r["id"]] = (res, "%s: %s (%s)" % (res, status, url))
+    if a.fetch:
+        for name, head, rows in (("outcomes.tsv", "id\tsource\tstatus\tresult\turl", log),
+                                 ("manual.tsv", "id\tperson\tsource\tresult\tstatus\turl", manual)):
+            with open(os.path.join(a.out, name), "w", encoding="utf-8") as fh:
+                fh.write(head + "\n" + "".join("\t".join(x) + "\n" for x in rows))
+        if manual:
+            print("gwt-batch: %d task(s) need a person (captcha, block or robots): see %s" % (len(manual), os.path.join(a.out, "manual.tsv")), file=sys.stderr)
+        if a.mark and marks:
+            mark(a.queue, marks)
     return 0
 
 
