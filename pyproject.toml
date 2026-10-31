@@ -33,6 +33,7 @@ Issues = "https://github.com/GeiserX/gramps-web-toolkit/issues"
 [project.scripts]
 gwt = "gwt_core.cli:main"
 gwt-apply = "gwt_apply.cli:main"
+gwt-act = "gwt_apply.act:main"
 gwt-check = "gwt_check.cli:main"
 gwt-fetch = "gwt_fetch.cli:main"
 gwt-ledger = "gwt_ledger:main"
