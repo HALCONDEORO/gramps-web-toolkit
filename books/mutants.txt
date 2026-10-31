@@ -4,3 +4,6 @@ gwt_books.py |     if lo and hi and lo[1] == target: |     if False: | a landmar
 gwt_books.py |             seen[int(r['image'])] = (parse_date(r['date']), r['note']) |             seen.setdefault(int(r['image']), (parse_date(r['date']), r['note'])) | a re-read image keeps its latest date
 gwt_books.py |     if any(c in text for c in '\t\r\n'): |     if False: | a tab or line break in a book label or note is refused, so the log stays one row per line
 gwt_books.py |     if n < 1: |     if n < -999: | an image or total below 1 is refused
+gwt_books.py |     m = DATE.fullmatch(text or '') |     m = DATE.match(text or '') | a date with anything after it is refused
+gwt_books.py |     if args.total and marks and args.total < marks[-1][0]: |     if False: | a total below a marked image is refused
+gwt_books.py |     name = clean(text, '--book').strip() |     name = clean(text, '--book') | the book label drops its edge spaces in every command

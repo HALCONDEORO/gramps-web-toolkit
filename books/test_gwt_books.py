@@ -96,3 +96,31 @@ def test_image_and_total_must_be_positive_whole_numbers(bad, tmp_path):
 def test_adjacent_images_say_review_both_not_that_the_date_is_missing():
     _, why = gb.suggest(marks((100, '1900-01-01'), (101, '1900-12-31')), D(1900, 6, 1))
     assert 'review both' in why and 'not in' not in why
+
+
+@pytest.mark.parametrize('bad', ['1900\n', '1900\t', ' 1900', '1900-01-01\n', '1900-1', '19000', 'x'])
+def test_a_date_with_anything_around_it_is_refused_and_nothing_is_written(bad, tmp_path):
+    log = str(tmp_path / 'b.tsv')
+    with pytest.raises(SystemExit):
+        gb.main(['--log', log, 'add', '--book', 'B', '--image', '1', '--date', bad])
+    assert not os.path.exists(log)
+
+
+def test_total_below_a_marked_image_is_refused(tmp_path):
+    log = str(tmp_path / 'b.tsv')
+    for img, d in ((3, '1900'), (200, '1950')):
+        gb.main(['--log', log, 'add', '--book', 'B', '--image', str(img), '--date', d])
+    with pytest.raises(SystemExit):
+        gb.main(['--log', log, 'next', '--book', 'B', '--target', '1960', '--total', '10'])
+    assert gb.main(['--log', log, 'next', '--book', 'B', '--target', '1960', '--total', '400']) == 0
+
+
+def test_book_label_edge_spaces_are_dropped_in_every_command(tmp_path, capsys):
+    log = str(tmp_path / 'b.tsv')
+    gb.main(['--log', log, 'add', '--book', ' B ', '--image', '1', '--date', '1900'])
+    gb.main(['--log', log, 'add', '--book', 'B', '--image', '9', '--date', '1910'])
+    capsys.readouterr()
+    assert gb.main(['--log', log, 'next', '--book', ' B ', '--target', '1905']) == 0
+    assert 'open image' in capsys.readouterr().out
+    gb.main(['--log', log, 'show', '--book', ' B '])
+    assert capsys.readouterr().out.count('1900') >= 1

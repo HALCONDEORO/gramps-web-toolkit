@@ -13,19 +13,21 @@ never talks to a site. A person opens the image, then types what it showed.
 Dates are YYYY, YYYY-MM or YYYY-MM-DD. The log is a TSV: --log, else $GWT_BOOKS, else ./libros.tsv.
 Standard library only.
 """
-import argparse, datetime, os, sys
+import argparse, datetime, os, re, sys
 
 COLUMNS = ('book', 'image', 'date', 'note', 'seen')
 
 
+DATE = re.compile(r'(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?')
+
+
 def parse_date(text):
-    """YYYY, YYYY-MM or YYYY-MM-DD as a date; a short form means its first day."""
-    parts = (text or '').strip().split('-')
+    """YYYY, YYYY-MM or YYYY-MM-DD as a date; a short form means its first day. Nothing else around it."""
+    m = DATE.fullmatch(text or '')
     try:
-        nums = [int(p) for p in parts]
-        if not 1 <= len(nums) <= 3:
+        if not m:
             raise ValueError
-        return datetime.date(nums[0], nums[1] if len(nums) > 1 else 1, nums[2] if len(nums) > 2 else 1)
+        return datetime.date(int(m[1]), int(m[2] or 1), int(m[3] or 1))
     except ValueError:
         raise SystemExit(f'bad date {text!r}: use YYYY, YYYY-MM or YYYY-MM-DD')
 
@@ -108,6 +110,14 @@ def clean(text, what):
     return text
 
 
+def book_name(text):
+    """The same label in every command: no tab or line break, no edge spaces, not empty."""
+    name = clean(text, '--book').strip()
+    if not name:
+        raise argparse.ArgumentTypeError('--book must not be empty')
+    return name
+
+
 def positive(text):
     try:
         n = int(text)
@@ -120,9 +130,7 @@ def positive(text):
 
 def cmd_add(args):
     parse_date(args.date)
-    book, note = clean(args.book, '--book').strip(), clean(args.note, '--note')
-    if not book:
-        raise SystemExit('--book must not be empty')
+    book, note = args.book, clean(args.note, '--note')
     path = log_path(args)
     new = not os.path.exists(path) or os.path.getsize(path) == 0
     with open(path, 'a', encoding='utf-8') as fh:
@@ -135,6 +143,8 @@ def cmd_add(args):
 
 def cmd_next(args):
     marks = landmarks(read_log(log_path(args)), args.book)
+    if args.total and marks and args.total < marks[-1][0]:
+        raise SystemExit(f'--total {args.total} is below image {marks[-1][0]}, which is already marked')
     image, why = suggest(marks, parse_date(args.target), args.total)
     if image is None:
         print(why)
@@ -161,16 +171,16 @@ def main(argv=None):
     ap.add_argument('--log')
     sub = ap.add_subparsers(dest='cmd', required=True)
     a = sub.add_parser('add')
-    a.add_argument('--book', required=True)
+    a.add_argument('--book', type=book_name, required=True)
     a.add_argument('--image', type=positive, required=True)
     a.add_argument('--date', required=True)
     a.add_argument('--note', default='')
     n = sub.add_parser('next')
-    n.add_argument('--book', required=True)
+    n.add_argument('--book', type=book_name, required=True)
     n.add_argument('--target', required=True)
     n.add_argument('--total', type=positive)
     s = sub.add_parser('show')
-    s.add_argument('--book', required=True)
+    s.add_argument('--book', type=book_name, required=True)
     s.add_argument('--target')
     args = ap.parse_args(argv)
     return {'add': cmd_add, 'next': cmd_next, 'show': cmd_show}[args.cmd](args)
