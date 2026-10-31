@@ -8,6 +8,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
+- `gwt-access set --alias`: another name for an archive. `show`, `plan` and `corpus --into` find a row by name or alias, so `corpus --into` no longer adds a second row for an archive that has a short name.
 - `gwt-check server` (history, undo-check, relation, search, living) and `gwt-check timeline` ask the Gramps Web server read-only. `gwt-apply --server-backup` stores a server backup before the first write and writes nothing if the server refuses; it never restores. **`--server-backup` has not been tried against a live server**: the login it was developed with got HTTP 403 on `/api/backups/`, so it is tested only against the fake server.
 
 ### Changed
