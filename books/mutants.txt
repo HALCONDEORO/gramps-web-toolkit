@@ -14,4 +14,4 @@ gwt_books.py |     if args.out and same_file(args.out, log): |     if False: | e
 gwt_books.py |         return True |         return False | a path that resolves to the log is the log
 gwt_books.py |     return os.path.exists(a) and os.path.exists(b) and os.path.samefile(a, b) |     return False | a symlink or hard link to the log is the log
 gwt_books.py |     if count == 0: |     if False: | an empty zone is said plainly
-gwt_books.py |     fd, tmp = tempfile.mkstemp(prefix='.gwt-books-', suffix='.tmp', dir=directory) |     tmp = f'{args.out}.tmp{os.getpid()}'; fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC) | a predictable temporary name can be a link to the log
+gwt_books.py |     fd, tmp = tempfile.mkstemp(prefix='.gwt-books-', suffix='.tmp', dir=directory) |     tmp = f'{args.out}.tmp{os.getpid()}'; fd = os.open(tmp, os.O_WRONLY + os.O_CREAT + os.O_TRUNC) | a predictable temporary name can be a link to the log
