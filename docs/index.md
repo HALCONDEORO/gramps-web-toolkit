@@ -68,6 +68,7 @@ The toolkit works for genealogy in any country. `gwt-spanish-poller` and some `g
 
 - [gwt-queue](queue.md): what to search next, handed out to lanes, with leases and back-off.
 - [gwt-ledger](ledger.md): the shared "already searched" ledger, so lanes stop repeating negative searches.
+- [gwt-books](books.md): which image of an unindexed register to open next, from the dates already seen. Offline, never fetches.
 - [gwt-rank](rank.md): orders record-search results by how well they fit a person, and never hides a row.
 - [gwt-fetch](fetch.md): archive images and text without a browser: IIIF, Europeana, and Spanish sources.
 - [gwt-mh](myheritage.md): MyHeritage records through a signed-in browser, on a free or a paid account.

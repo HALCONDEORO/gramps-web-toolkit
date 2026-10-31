@@ -37,6 +37,7 @@ gwt-act = "gwt_apply.act:main"
 gwt-check = "gwt_check.cli:main"
 gwt-fetch = "gwt_fetch.cli:main"
 gwt-ledger = "gwt_ledger:main"
+gwt-books = "gwt_books:main"
 gwt-gate = "gwt_gate:main"
 gwt-fscache = "gwt_fscache:main"
 gwt-queue = "gwt_queue:main"
@@ -58,10 +59,11 @@ source = "vcs"
 packages = ["apply/gwt_apply", "check/gwt_check", "fetch/gwt_fetch", "core/gwt_core"]
 # `pip install -e .` puts these folders on sys.path instead of copying files
 dev-mode-dirs = ["apply", "check", "fetch", "core", "ledger", "gate", "fscache", "queue", "leads", "rank",
-                 "access", "cross", "batch", "importxl", "rawstore", "myheritage", "read"]
+                 "access", "cross", "batch", "importxl", "rawstore", "myheritage", "read", "books"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "ledger/gwt_ledger.py" = "gwt_ledger.py"
+"books/gwt_books.py" = "gwt_books.py"
 "gate/gwt_gate.py" = "gwt_gate.py"
 "fscache/gwt_fscache.py" = "gwt_fscache.py"
 "queue/gwt_queue.py" = "gwt_queue.py"

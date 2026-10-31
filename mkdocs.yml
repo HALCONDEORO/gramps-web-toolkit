@@ -138,6 +138,7 @@ nav:
   - Research tools:
       - gwt-queue: queue.md
       - gwt-ledger: ledger.md
+      - gwt-books: books.md
       - gwt-rank: rank.md
       - gwt-cross: cross.md
       - gwt-access: access.md
