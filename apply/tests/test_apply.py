@@ -4004,7 +4004,97 @@ def test_server_backup_refused_writes_nothing(fake, tmp_path, monkeypatch, capsy
     assert set(fake.store["notes"]) == notes  # the lock is released and the change list added nothing
 
 
+def _backup_202(fake, monkeypatch, script, items):
+    import gwt_apply.cli as climod
+    monkeypatch.setattr(climod.time, "sleep", lambda s: None)
+    fake.backup_status = 202
+    fake.task_script = script
+    fake.backup_items = items
+
+
+PENDING = {"state": "PENDING", "status": "queued"}
+GOOD = [{"id": "bk9", "size": 10, "restorable": True}]
+
+
+def _done(bid="bk9"):
+    return {"state": "SUCCESS", "status": "succeeded", "info": json.dumps({"id": bid, "size": 10, "restorable": True})}
+
+
+def test_server_backup_202_waits_for_the_task_then_checks_the_backup(fake, tmp_path, monkeypatch, capsys):
+    p = _server_backup_env(fake, tmp_path, monkeypatch)
+    _backup_202(fake, monkeypatch, [PENDING, PENDING, _done()], GOOD)
+    assert main([str(p), "--apply", "--server-backup", "--log", str(tmp_path / "a.jsonl")]) == 0
+    assert "server backup stored: bk9" in capsys.readouterr().out
+    task_gets = [c for c in fake.calls if c == ("GET", "/api/tasks/t1")]
+    assert len(task_gets) == 3  # it polled until the task finished
+    assert [c for c in fake.calls if c == ("POST", "/api/backups/")] == [("POST", "/api/backups/")]
+    assert not any("restore" in c[1] for c in fake.calls)
+
+
+def test_server_backup_202_ignores_a_foreign_or_unrestorable_backup(fake, tmp_path, monkeypatch, capsys):
+    p = _server_backup_env(fake, tmp_path, monkeypatch)
+    # the task names bk9, which is not listed; another, unrestorable backup is
+    _backup_202(fake, monkeypatch, [_done()], [{"id": "foreign", "size": 10, "restorable": False}])
+    notes = set(fake.store["notes"])
+    assert main([str(p), "--apply", "--server-backup", "--log", str(tmp_path / "a.jsonl")]) == 1
+    assert "not in the server's list" in capsys.readouterr().err
+    assert set(fake.store["notes"]) == notes
+
+
+def test_server_backup_202_refuses_a_listed_backup_that_is_not_restorable(fake, tmp_path, monkeypatch, capsys):
+    p = _server_backup_env(fake, tmp_path, monkeypatch)
+    _backup_202(fake, monkeypatch, [_done()], [{"id": "bk9", "size": 10, "restorable": False}])
+    notes = set(fake.store["notes"])
+    assert main([str(p), "--apply", "--server-backup", "--log", str(tmp_path / "a.jsonl")]) == 1
+    assert "not restorable" in capsys.readouterr().err
+    assert set(fake.store["notes"]) == notes
+
+
+def test_server_backup_202_task_that_never_finishes_writes_nothing(fake, tmp_path, monkeypatch, capsys):
+    p = _server_backup_env(fake, tmp_path, monkeypatch)
+    _backup_202(fake, monkeypatch, [PENDING], GOOD)
+    notes = set(fake.store["notes"])
+    assert main([str(p), "--apply", "--server-backup", "--log", str(tmp_path / "a.jsonl")]) == 1
+    assert "did not finish in 60 s" in capsys.readouterr().err
+    assert set(fake.store["notes"]) == notes
+
+
+def test_server_backup_202_failed_task_writes_nothing(fake, tmp_path, monkeypatch, capsys):
+    p = _server_backup_env(fake, tmp_path, monkeypatch)
+    _backup_202(fake, monkeypatch, [{"state": "FAILURE", "status": "failed"}], GOOD)
+    notes = set(fake.store["notes"])
+    assert main([str(p), "--apply", "--server-backup", "--log", str(tmp_path / "a.jsonl")]) == 1
+    assert "failed" in capsys.readouterr().err
+    assert set(fake.store["notes"]) == notes
+
+
+def test_server_backup_202_retries_a_busy_read_but_not_the_post(fake, tmp_path, monkeypatch, capsys):
+    p = _server_backup_env(fake, tmp_path, monkeypatch)
+    _backup_202(fake, monkeypatch, [_done()], GOOD)
+    fake.task_get_failures = 1
+    fake.backup_get_failures = 1
+    assert main([str(p), "--apply", "--server-backup", "--log", str(tmp_path / "a.jsonl")]) == 0
+    assert "server backup stored: bk9" in capsys.readouterr().out
+    assert len([c for c in fake.calls if c == ("POST", "/api/backups/")]) == 1  # one POST only, the 503 reads were retried
+
+
+def test_server_backup_201_path_is_unchanged(fake, tmp_path, monkeypatch, capsys):
+    p = _server_backup_env(fake, tmp_path, monkeypatch)
+    assert main([str(p), "--apply", "--server-backup", "--log", str(tmp_path / "a.jsonl")]) == 0
+    assert "server backup stored: bk1" in capsys.readouterr().out
+
+
 def test_server_backup_needs_apply(fake, tmp_path, monkeypatch):
     p = _server_backup_env(fake, tmp_path, monkeypatch)
     with pytest.raises(SystemExit):
         main([str(p), "--server-backup"])
+
+
+@pytest.mark.parametrize("op", [
+    {"op": "move_event", "event": "abc123handle0000000000", "from": {"person": "I1"}, "to": {"family": "F1"}},
+    {"op": "link_event", "person": "I1", "event": "abc123handle0000000000", "role": "Witness"},
+    {"op": "update_event", "event": "abc123handle0000000000", "set": {"description": "d"}},
+])
+def test_an_event_given_as_a_handle_is_refused(op):
+    errors = validate([{**op, "key": "k", "ruling": R}])
+    assert any("neither key:<key> nor a Gramps ID" in e for e in errors)
