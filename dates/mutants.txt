@@ -1,0 +1,8 @@
+gwt_dates.py | 366 if year in SEXTILE else 365 | 365 | the sextile years 3, 7 and 11 lose their sixth complementary day
+gwt_dates.py | if out > LAST_DAY: | if False: | a day after the end of the calendar is converted instead of refused
+gwt_dates.py | if not 1 <= day <= (6 if year in SEXTILE else 5): | if not 1 <= day <= 6: | a sixth complementary day is accepted in a common year
+gwt_dates.py | while year < 14 and date >= year_start(year + 1): | while year < 13 and date >= year_start(year + 1): | the days of an XIV are given as an XIII
+gwt_dates.py | '7bre': 9, '8bre': 10, '9bre': 11, '10bre': 12, 'xbre': 12 | '7bre': 9, '8bre': 10, '9bre': 9, '10bre': 12, 'xbre': 12 | 9bre is read as September instead of November
+gwt_dates.py | words = [w for w in words if w not in ('de', 'du', 'd')] | pass | the Spanish "3 de marzo de 1805" is not read
+gwt_dates.py | return f'{shown} = {date:%d/%m/%Y}' | return f'{shown} = {date:%m/%d/%Y}' | the note writes the Gregorian day month first
+gwt_dates.py | m = REPUBLICAN.fullmatch(fold(text)) | m = REPUBLICAN.fullmatch(fold(text).replace('.', '')) | a stray dot inside the day or the year is dropped, so "an 1.3" reads as an 13
