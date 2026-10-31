@@ -1,0 +1,14 @@
+gwt_fetch/touraine.py |         if len(got) < BATCH: |         if len(got) <= BATCH: | a register longer than one batch of 100 pages is cut after the first batch
+gwt_fetch/touraine.py |     if len(chosen) > min(args.max, MAX_IMAGES): |     if False: | more than 30 images are downloaded in one run
+gwt_fetch/touraine.py |     if len(chosen) > min(args.max, MAX_IMAGES): |     if len(chosen) > args.max: | --max is trusted without the absolute limit of 30
+gwt_fetch/touraine.py |     return "'" + out if out[:1] in ("=", "+", "-", "@") else out |     return out | a result title that starts with = is written to the TSV as a formula
+gwt_fetch/touraine.py |     client.delay = max(getattr(client, "delay", 0.0), 1.0) |     pass | --delay 0 makes the tool go faster than one request a second
+gwt_fetch/touraine.py |     client.retries = 0 |     pass | a refusal is retried
+gwt_fetch/touraine.py |     return client.get(url, allow_redirects=False, **kw) |     return client.get(url, **kw) | a redirect is followed outside the pacing
+gwt_fetch/touraine.py |     if not ARK.fullmatch(args.ark): |     if False: | an ark with a slash or a query string changes the URL that is requested
+gwt_fetch/touraine.py |         if r.status_code != 200 or not ctype.startswith("image/"): |         if False: | a refusal or an HTML challenge on an image is saved or skipped instead of stopping the run
+gwt_fetch/touraine.py |         if message == NOT_EDEPOT: |         if False: | an E-depot register is not reported as one
+gwt_fetch/touraine.py |         if message == END_OF_REGISTER: |         if message: | any 400 message is taken for the end of the register
+gwt_fetch/touraine.py |     if r.status_code == 400: |     if r.status_code >= 400: | a 403 or 500 with a string body is taken for the end of the register
+gwt_fetch/touraine.py |         if store.done(stem, f"page {n}", image_url, manifest_url): |         if False: | a re-run downloads the pages it already has
+gwt_fetch/cli.py |     if not 1 <= n <= touraine.MAX_IMAGES: |     if n < 1: | --max accepts any number above 30
