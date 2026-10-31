@@ -2,7 +2,8 @@
 
 Read only, one request at a time. It works for the digitised civil registers (cotes 6NUM). The E-depot
 fonds (EDEP) answer "Group with index 0 not found" and need a real browser: this module says so and stops.
-It never downloads a whole register: `pages` refuses more than --max images (default 30).
+It selects at most 30 images per run (`--max`, never above 30), and it stops the whole run, not just one page,
+on any refusal: a redirect, a 4xx or 5xx status, a page that is not an image or the expected JSON.
 """
 from __future__ import annotations
 
@@ -19,6 +20,12 @@ BATCH = 100  # the visualizer returns at most this many pages per request
 ARK = re.compile(r"[A-Za-z0-9]{6,40}")
 UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 MAX_IMAGES = 30
+END_OF_REGISTER = "Invalid request: group index or ArkName or start/end boundaries values are not valid"
+NOT_EDEPOT = "Group with index 0 not found"
+
+
+class Blocked(Exception):
+    """The site refused, redirected or answered with something else than expected: stop, never go around it."""
 
 
 class Edepot(Exception):
@@ -53,26 +60,48 @@ def parse_results(page: str) -> list[dict]:
     return rows
 
 
+def _get(client, url: str, **kw):
+    """One GET that follows no redirect, so every request goes through the client's pacing."""
+    return client.get(url, allow_redirects=False, **kw)
+
+
+def _ok(r, url: str, kinds: tuple = ("text/", "application/json")) -> None:
+    ctype = (r.headers.get("Content-Type", "") or "").lower()
+    if r.status_code != 200 or not ctype.startswith(kinds):
+        raise Blocked(f"HTTP {r.status_code} {ctype or 'no content type'} from {url}")
+
+
 def search(client, query: str, start: int = 0, per_page: int = 80) -> list[dict]:
     params = {"q": query, "scope": "archival", "resultsPerPage": per_page}
     if start:
         params["start"] = start
-    r = client.get(BASE + "/search/results", params=params)
-    r.raise_for_status()
+    r = _get(client, BASE + "/search/results", params=params)
+    _ok(r, BASE + "/search/results", ("text/html",))
     return parse_results(r.text)
 
 
 def _batch(client, ark: str, start: int, end: int):
     """Pages start..end as {number: url}, or None when the range runs past the end of the register."""
-    r = client.get(f"{BASE}/visualizer/api", params={"naan": NAAN, "arkName": ark, "start": start,
-                                                      "end": end, "group": 0})
+    url = f"{BASE}/visualizer/api"
+    r = _get(client, url, params={"naan": NAAN, "arkName": ark, "start": start, "end": end, "group": 0})
     text = r.text.strip()
-    if "Group with index 0 not found" in text:
-        raise Edepot(ark)
-    if text.startswith('"'):  # the site answers HTTP 400 with an error serialized as a JSON string
-        return None
-    r.raise_for_status()
-    data = json.loads(text)
+    if r.status_code == 400:  # the site's own two answers: past the end of the register, and an E-depot fonds
+        try:
+            message = json.loads(text)
+        except ValueError:
+            message = None
+        if message == NOT_EDEPOT:
+            raise Edepot(ark)
+        if message == END_OF_REGISTER:
+            return None
+        raise Blocked(f"HTTP 400 with an unknown message from {url}")
+    _ok(r, url)
+    try:
+        data = json.loads(text)
+    except ValueError:
+        raise Blocked(f"not JSON from {url}") from None
+    if not isinstance(data, dict):
+        raise Blocked(f"unexpected JSON from {url}")
     return {int(k): v["url"] for k, v in data.items() if k.isdigit() and isinstance(v, dict) and "url" in v}
 
 
@@ -123,9 +152,14 @@ def parse_range(spec: str | None, total: int) -> list[int]:
 
 def run(args, client) -> int:
     client.delay = max(getattr(client, "delay", 0.0), 1.0)  # one request per second at most, whatever --delay says
-    if args.action == "search":
-        return _run_search(args, client)
-    return _run_pages(args, client)
+    client.retries = 0  # a refusal is not retried
+    try:
+        if args.action == "search":
+            return _run_search(args, client)
+        return _run_pages(args, client)
+    except Blocked as e:
+        print(f"gwt-fetch: stopped, the site did not answer as expected ({e}); nothing further was requested", file=sys.stderr)
+        return 1
 
 
 def _run_search(args, client) -> int:
@@ -154,7 +188,7 @@ def _run_pages(args, client) -> int:
         for n in chosen:
             print(f"{n}\t{pages[n]}\t{uuid_of(pages[n])}")
         return 0
-    if len(chosen) > args.max:
+    if len(chosen) > min(args.max, MAX_IMAGES):
         print(f"gwt-fetch: {len(chosen)} images selected, more than --max {args.max}; "
               "narrow --pages (this tool does not download whole registers)", file=sys.stderr)
         return 2
@@ -164,18 +198,15 @@ def _run_pages(args, client) -> int:
 def _download(args, client, pages, chosen) -> int:
     store = Store(args.out)
     manifest_url = f"{BASE}/ark:/{NAAN}/{args.ark}"
-    failed = 0
     for n in chosen:
         image_url = f"{BASE}/images/{uuid_of(pages[n])}.jpg"
         stem = f"{args.ark}_p{n:04d}"
         if store.done(stem, f"page {n}", image_url, manifest_url):
             continue
-        r = client.get(image_url, stream=True)
+        r = _get(client, image_url, stream=True)
         ctype = r.headers.get("Content-Type", "")
-        if r.ok and ctype.startswith("image/"):
-            print(store.write(stem, r.iter_content(1 << 16), ctype, f"page {n}", image_url, manifest_url), file=sys.stderr)
-        else:
-            failed += 1
-            print(f"gwt-fetch: page {n} failed: {image_url} -> {r.status_code} {ctype}", file=sys.stderr)
+        if r.status_code != 200 or not ctype.startswith("image/"):
             r.close()
-    return 1 if failed else 0
+            raise Blocked(f"page {n}: HTTP {r.status_code} {ctype or 'no content type'} from {image_url}")
+        print(store.write(stem, r.iter_content(1 << 16), ctype, f"page {n}", image_url, manifest_url), file=sys.stderr)
+    return 0

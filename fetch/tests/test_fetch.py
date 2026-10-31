@@ -40,9 +40,11 @@ class FakeClient:
     def __init__(self, routes):
         self.routes = routes  # url (or url prefix) -> Resp or callable
         self.calls = []
+        self.kw = []
 
     def get(self, url, referer=None, stream=False, params=None, **kw):
         self.calls.append((url, referer, params))
+        self.kw.append(kw)
         for key, val in self.routes.items():
             if url == key or (key.endswith("*") and url.startswith(key[:-1])):
                 r = val(url, params) if callable(val) else val
@@ -407,11 +409,59 @@ def test_touraine_downloads_selected_pages_with_manifest_and_resumes(tmp_path):
     assert len([u for u, *_ in c.calls if "/images/" in u]) == n + 1
 
 
-def test_touraine_a_html_answer_is_a_failed_page_not_a_saved_file(tmp_path):
-    c = FakeClient({touraine.BASE + "/visualizer/api": visualizer(2),
-                    touraine.BASE + "/images/*": Resp("<html>error</html>", "text/html")})
+def _images(c):
+    return [u for u, *_ in c.calls if "/images/" in u]
+
+
+@pytest.mark.parametrize("answer", [Resp("<html>challenge</html>", "text/html"), Resp("", "text/html", status=403),
+                                    Resp("", "text/html", status=429), Resp("", "text/html", status=302),
+                                    Resp("x", "image/jpeg", status=500)])
+def test_touraine_any_refusal_on_an_image_stops_the_whole_run(tmp_path, answer):
+    c = FakeClient({touraine.BASE + "/visualizer/api": visualizer(5), touraine.BASE + "/images/*": answer})
     assert touraine.run(_targs(tmp_path), c) == 1
+    assert len(_images(c)) == 1  # the first page was refused: no second page is asked for
     assert not list(tmp_path.glob("*.jpg"))
+
+
+def test_touraine_a_refusal_on_page_3_keeps_the_first_two_and_asks_for_no_page_4(tmp_path):
+    def image(url, params):
+        return Resp(b"jpeg", "image/jpeg") if UUID_A % 3 not in url else Resp("", "text/html", status=403)
+    c = FakeClient({touraine.BASE + "/visualizer/api": visualizer(6), touraine.BASE + "/images/*": image})
+    assert touraine.run(_targs(tmp_path), c) == 1
+    assert sorted(p.name for p in tmp_path.glob("*.jpg")) == ["abc123def_p0001.jpg", "abc123def_p0002.jpg"]
+    assert len(_images(c)) == 3
+
+
+def test_touraine_requests_follow_no_redirect_and_are_never_retried(tmp_path):
+    c = FakeClient({touraine.BASE + "/visualizer/api": visualizer(1), touraine.BASE + "/images/*": Resp(b"j", "image/jpeg")})
+    touraine.run(_targs(tmp_path), c)
+    assert c.kw and all(k.get("allow_redirects") is False for k in c.kw)
+    assert c.retries == 0
+
+
+@pytest.mark.parametrize("answer", [Resp('"Access denied"', "application/json", status=403),
+                                    Resp('"Internal error"', "application/json", status=500),
+                                    Resp('"Access denied"', "application/json", status=200),
+                                    Resp("<html>challenge</html>", "text/html"),
+                                    Resp('"Invalid request: something else"', "application/json", status=400),
+                                    Resp("{}", "application/json", status=302)])
+def test_touraine_only_the_exact_end_message_with_status_400_is_the_end(tmp_path, answer, capsys):
+    c = FakeClient({touraine.BASE + "/visualizer/api": answer})
+    assert touraine.run(_targs(tmp_path, list=True), c) == 1
+    assert "stopped" in capsys.readouterr().err
+
+
+def test_touraine_a_refused_search_stops(capsys):
+    c = FakeClient({touraine.BASE + "/search/results": Resp("<html>anubis</html>", "text/html", status=403)})
+    assert touraine.run(argparse.Namespace(action="search", query="x", start=0, limit=5), c) == 1
+
+
+def test_touraine_max_cannot_be_raised_above_30():
+    from gwt_fetch.cli import parser
+    assert parser().parse_args(["touraine", "pages", "abc123def", "--max", "30"]).max == 30
+    for bad in ("31", "0", "-1", "9999"):
+        with pytest.raises(SystemExit):
+            parser().parse_args(["touraine", "pages", "abc123def", "--max", bad])
 
 
 def test_touraine_rejects_an_ark_that_could_change_the_url(tmp_path, capsys):
@@ -438,5 +488,5 @@ def test_touraine_search_prints_tsv_with_a_header(capsys):
 
 def test_touraine_a_server_error_is_an_error_not_the_end_of_the_register():
     c = FakeClient({touraine.BASE + "/visualizer/api": Resp("<html>oops</html>", status=500)})
-    with pytest.raises(RuntimeError):
+    with pytest.raises(touraine.Blocked):
         touraine.list_pages(c, "abc123def")

@@ -8,6 +8,13 @@ from . import digibib, europeana, gazeta, geo, iiif, touraine
 from .net import Client
 
 
+def _max_images(text: str) -> int:
+    n = int(text)
+    if not 1 <= n <= touraine.MAX_IMAGES:
+        raise argparse.ArgumentTypeError(f"must be 1 to {touraine.MAX_IMAGES}")
+    return n
+
+
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="gwt-fetch", description=__doc__)
     p.add_argument("--delay", type=float, default=1.0, help="seconds between requests to one host (default 1)")
@@ -67,7 +74,8 @@ def parser() -> argparse.ArgumentParser:
     tp = t.add_parser("pages", help="list the pages of one register, or download a few")
     tp.add_argument("ark", help="the ark name from `search`")
     tp.add_argument("--pages", help="1-based page numbers, e.g. 1-5,9,12-")
-    tp.add_argument("--max", type=int, default=touraine.MAX_IMAGES, help=f"most images one run downloads (default {touraine.MAX_IMAGES})")
+    tp.add_argument("--max", type=_max_images, default=touraine.MAX_IMAGES,
+                    help=f"most images one run downloads, 1 to {touraine.MAX_IMAGES} (default {touraine.MAX_IMAGES})")
     tp.add_argument("--out", default=".")
     tp.add_argument("--list", action="store_true", help="print page numbers and uuids, download nothing")
     return p
