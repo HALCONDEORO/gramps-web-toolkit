@@ -13,7 +13,7 @@ DUMP = {"objects": {
                {"handle": "e2", "type": "Birth", "date": {"dateval": [0, 0, 1750, False]}, "place": "p1"}],
     "places": [{"handle": "p1", "name": {"value": "Saint-Test"}}], "families": []}}
 
-BASE = dict(card="c1", type="bautismo", given="Rosa Maria", surname="Marlot", date="9 mars 1771", date_iso="1771-03-09",
+BASE = dict(card="c1", type="nacimiento", given="Rosa Maria", surname="Marlot", date="9 mars 1771", date_iso="1771-03-09",
             republican="", father="", mother="", state="verificado-zoom", cote="6NUM0/000/001", ark="abc123def456",
             url="https://example.org/ark:/1/abc123def456/uuid", filiation="fille de A et de B", zoom="crop p12 full/max",
             place="Saint-Test", notes="")
@@ -119,3 +119,42 @@ def test_an_exact_match_is_told_apart_from_a_possible_one():
     assert verdict(card())[1] == 'already as I1'
     r = verdict(card(given='Paul'))
     assert r[1] == 'possible duplicate (?) I1'
+
+
+@pytest.mark.parametrize('bad', ['1771-99-99', 'anything', '1771-02-30', 'bef', 'x 1771-03-09', '17710309'])
+def test_a_date_iso_that_is_not_a_date_is_rejected(bad):
+    r = verdict(card(date_iso=bad), None)
+    assert r[1] == 'rejected' and 'not a date' in r[2]
+
+
+@pytest.mark.parametrize('ok', ['1771', '1771-03', '1771-03-09', 'bef 1810-03-12', 'aft 1771', 'abt 1771-03'])
+def test_real_dates_with_or_without_a_qualifier_pass(ok):
+    assert verdict(card(date_iso=ok), None)[1] == 'ok'
+
+
+@pytest.mark.parametrize('field', ['given', 'surname', 'type'])
+def test_given_surname_and_type_are_required(field):
+    assert f'missing {field}' in verdict(card(**{field: ''}), None)[2]
+
+
+def test_a_baptism_is_compared_with_a_baptism_not_with_a_birth():
+    r = verdict(card(type='bautismo', date_iso='1771-03-12'))
+    assert not r[3]
+
+
+def test_a_bound_is_kept_and_a_tree_date_inside_it_is_no_conflict():
+    assert not verdict(card(date_iso='bef 1810-03-12', date='acte delivre'))[3]
+    r = verdict(card(date_iso='bef 1771-03-01', date='acte delivre'))
+    assert r[3] and 'at most 1771-03-01' in r[2]
+
+
+def test_a_name_and_place_without_a_year_is_not_already_in_the_tree():
+    d = json.loads(json.dumps(DUMP))
+    d['objects']['events'][0]['date'] = {}
+    r = verdict(card(date_iso='1900-01-01'), d)
+    assert r[1] == 'possible duplicate (?) I1' and 'not enough' in r[2]
+    assert verdict(card())[1] == 'already as I1'
+
+
+def test_a_bound_is_never_enough_to_say_it_is_already_in_the_tree():
+    assert verdict(card(date_iso='bef 1771-03-09', date='acte delivre'))[1].startswith('possible duplicate (?)')

@@ -26,7 +26,7 @@ is reported, never replaced.
 Output: one TSV line per card (card, verdict, detail). Exit 0 when nothing was rejected and no conflict was
 found, 1 otherwise, 2 when a file cannot be read.
 """
-import argparse, csv, json, os, re, sys
+import argparse, csv, datetime, json, os, re, sys
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 for sibling in ('cross', 'dates'):
@@ -37,8 +37,21 @@ import gwt_dates as dates
 STATES = ('verificado-zoom', 'dudoso', 'por-confirmar-acta')
 REQUIRED = ('cote', 'ark', 'url', 'filiation', 'date_iso')
 SAME, POSSIBLE = 10, 7
-EVENTS = {'bautismo': ('Baptism', 'Birth'), 'nacimiento': ('Birth', 'Baptism'), 'entierro': ('Death', 'Burial'),
-          'defuncion': ('Death', 'Burial')}
+EVENTS = {'bautismo': 'Baptism', 'nacimiento': 'Birth', 'entierro': 'Burial', 'defuncion': 'Death'}
+DATE = re.compile(r'^(?:(bef|aft|abt) )?(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$')
+
+
+def split_date(text):
+    """(qualifier, YYYY[-MM[-DD]]) of a card date, or None when it is not a real date."""
+    m = DATE.match((text or '').strip())
+    if not m:
+        return None
+    q, y, mo, d = m.groups()
+    try:
+        datetime.date(int(y), int(mo or 1), int(d or 1))
+    except ValueError:
+        return None
+    return q or '', text.strip().split(' ')[-1]
 
 
 def cell(text):
@@ -60,7 +73,11 @@ def card_problems(card):
     def get(k):
         return (card.get(k) or '').strip()
 
-    out = [f'missing {k}' for k in REQUIRED if not get(k)]
+    out = [f'missing {k}' for k in ('type', 'given', 'surname') + REQUIRED if not get(k)]
+    if get('date_iso') and not split_date(get('date_iso')):
+        out.append('date_iso is not a date: use YYYY, YYYY-MM or YYYY-MM-DD, optionally after bef, aft or abt')
+    if get('type') and cross.norm(get('type')) not in EVENTS:
+        out.append('type must be one of ' + ', '.join(EVENTS) + ' (other kinds are not looked up)')
     if get('state') not in STATES:
         out.append(f'state must be one of {", ".join(STATES)}')
     if get('state') == 'verificado-zoom':
@@ -108,8 +125,8 @@ def spelled_differently(why):
 
 def lookup(card, people, by_id):
     """(verdict, details) for one card against the tree."""
-    iso = (card.get('date_iso') or '').replace('bef ', '').strip()
-    year = int(iso[:4]) if iso[:4].isdigit() else None
+    qual, iso = split_date(card.get('date_iso')) or ('', '')
+    year = int(iso[:4]) if iso and not qual else None  # a bound is not a year to match on
     row = {'surname': cross.norm(card.get('surname')), 'given': cross.norm(card.get('given')),
            'place': cross.norm(card.get('place')), 'year': year}
     scored = [(cross.score(row, p), p) for p in people if row['surname']]
@@ -118,25 +135,29 @@ def lookup(card, people, by_id):
         return 'nouveau', []
     tied = [p for s, p in scored if s[0] == top]
     ids = ','.join(p['id'] for p in tied)
-    verdict = f'already as {ids}' if top >= SAME else f'possible duplicate (?) {ids}'
-    notes = []
     why = next((s[1] for s, _ in scored if s[0] == top), '')
+    named = 'nombre' in why and any(k in why for k in ('ano exacto', 'ano'))
+    verdict = f'already as {ids}' if top >= SAME and named else f'possible duplicate (?) {ids}'
+    notes = []
+    if top >= SAME and not named:
+        notes.append('not enough to say it is the same person: the given name and the year must both match')
     if spelled_differently(why):
         notes.append('spelling: the tree writes ' + '/'.join(sorted({x for p in tied for x in p['surnames']})))
-    notes += conflicts(card, iso, tied, by_id)
+    notes += conflicts(card, qual, iso, tied, by_id)
     return verdict, notes
 
 
-def conflicts(card, iso, tied, by_id):
-    kinds = EVENTS.get(cross.norm(card.get('type')))
-    if not kinds or len(iso) != 10:
+def conflicts(card, qual, iso, tied, by_id):
+    kind = EVENTS.get(cross.norm(card.get('type')))
+    if not kind or qual == 'aft' or qual == 'abt' or (not qual and len(iso) != 10):
         return []
     out = []
     for p in tied:
-        for kind in kinds:
-            for theirs in by_id.get(p['id'], {}).get(kind, []):
-                if theirs != iso and not iso.startswith(theirs):  # a vaguer tree date that holds the day is no conflict
-                    out.append(f'CONFLICT {p["id"]} {kind}: the act says {iso}, the tree says {theirs}')
+        for theirs in by_id.get(p['id'], {}).get(kind, []):
+            n = min(len(theirs), len(iso))  # a vaguer tree date that holds the day is no conflict
+            if (qual == 'bef' and theirs[:n] > iso[:n]) or (not qual and theirs[:n] != iso[:n]):
+                what = 'the act says at most' if qual else 'the act says'
+                out.append(f'CONFLICT {p["id"]} {kind}: {what} {iso}, the tree says {theirs}')
     return out
 
 
