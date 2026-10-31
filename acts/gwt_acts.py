@@ -137,14 +137,23 @@ def spelled_differently(why):
 def judge(top, why, tied):
     """The verdict for the best match and the notes that go with it."""
     ids = ','.join(p['id'] for p in tied)
-    named = 'nombre' in why and 'ano exacto' in why
+    named = 'nombre completo' in why and 'ano exacto' in why
     verdict = f'already as {ids}' if top >= SAME and named else f'possible duplicate (?) {ids}'
     notes = []
     if top >= SAME and not named:
-        notes.append('not enough to say it is the same person: the given name and the exact year must both match')
+        notes.append('not enough to say it is the same person: the full given name and the exact year must both match')
     if spelled_differently(why):
         notes.append('spelling: the tree writes ' + '/'.join(sorted({x for p in tied for x in p['surnames']})))
     return verdict, notes
+
+
+def exact_years(person, by_id):
+    """The person with only the birth and death years that come from exact Gregorian dates."""
+    when = by_id.get(person['id'], {})
+    def keep(kinds):
+        return [int(d[:4]) for k in kinds for d in when.get(k, []) if not d.startswith('?')]
+
+    return {**person, 'births': keep(('Birth', 'Baptism')), 'deaths': keep(('Death',))}
 
 
 def lookup(card, people, by_id):
@@ -153,7 +162,7 @@ def lookup(card, people, by_id):
     year = int(iso[:4]) if iso and not qual else None  # a bound is not a year to match on
     row = {'surname': cross.norm(card.get('surname')), 'given': cross.norm(card.get('given')),
            'place': cross.norm(card.get('place')), 'year': year}
-    scored = [(cross.score(row, p), p) for p in people if row['surname']]
+    scored = [(cross.score(row, exact_years(p, by_id)), p) for p in people if row['surname']]
     top = max((s[0] for s, _ in scored), default=0)
     if top < POSSIBLE:
         return 'nouveau', []

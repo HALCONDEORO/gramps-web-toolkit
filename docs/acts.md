@@ -28,7 +28,7 @@ A card with `father` or `mother` and any state other than `verificado-zoom` is m
 With `--dump`, each card that was not rejected gets one verdict from the tree:
 
 - `nouveau`: nobody in the tree fits;
-- `already as P000123`: the surname, given name, year and place all agree;
+- `already as P000123`: the surname, the full given name and the exact year agree (the place only adds weight); a tree date with a modifier, another calendar, a quality or a span is never used for the year;
 - `possible duplicate (?) P000123`: they agree in part. Several ids mean equal scores, never a pick.
 
 The score is the one `gwt-cross` uses, so spelling variants count (a surname that matches only by sound gets a `spelling:` note naming the tree's spelling). When the person is found and the act's full day differs from the tree's for the same kind of event (baptism or birth, burial or death), the line says `CONFLICT P000123 Birth: the act says ..., the tree says ...`. A tree date that is vaguer but contains the act's day (a month, a year) is not a conflict. Nothing is replaced: the conflict is for a person to decide.

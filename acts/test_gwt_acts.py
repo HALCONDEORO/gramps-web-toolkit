@@ -184,3 +184,16 @@ def test_a_span_in_the_tree_is_not_compared():
     d['objects']['events'][0]['date']['dateval'] = [1, 3, 1771, False, 5, 3, 1771, False]
     r = verdict(card(date_iso='1771-03-01'), d)
     assert not r[3] and 'not compared' in r[2]
+
+
+@pytest.mark.parametrize('extra', [{'modifier': 1}, {'calendar': 2}, {'quality': 1}, {'newyear': 1}])
+def test_a_tree_year_that_is_not_exact_never_makes_it_already_in_the_tree(extra):
+    d = json.loads(json.dumps(DUMP))
+    d['objects']['events'][0]['date'].update(extra)
+    r = verdict(card(date_iso='1771-03-09'), d)
+    assert r[1].startswith('possible duplicate (?)') and 'not enough' in r[2]
+
+
+def test_only_the_first_given_name_agreeing_is_not_enough():
+    r = verdict(card(given='Rosa Other'))
+    assert r[1].startswith('possible duplicate (?)') and 'not enough' in r[2]

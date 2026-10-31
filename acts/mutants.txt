@@ -18,3 +18,6 @@ gwt_acts.py | named = 'nombre' in why and 'ano exacto' in why | named = 'nombre'
 gwt_acts.py | inexact = len(v) != 4 or any(d.get(k) for k in ('calendar', 'modifier', 'quality', 'newyear')) | inexact = False | a tree date that is not exact Gregorian is compared as exact
 gwt_acts.py | if theirs.startswith('?'): | if False: | an inexact tree date is not reported as not compared
 gwt_acts.py | core = (split_date(get('date_iso')) or ('', ''))[1] | core = get('date_iso') | a Republican issue date with bef is rejected
+gwt_acts.py | scored = [(cross.score(row, exact_years(p, by_id)), p) | scored = [(cross.score(row, p), p) | the years of a doubtful tree date count in the match
+gwt_acts.py | named = 'nombre completo' in why and | named = 'nombre' in why and | a first given name alone is called the same person
+gwt_acts.py |         return [int(d[:4]) for k in kinds for d in when.get(k, []) if not d.startswith('?')] |         return [int(d[:4]) for k in kinds for d in when.get(k, [])] | a doubtful tree year is kept
