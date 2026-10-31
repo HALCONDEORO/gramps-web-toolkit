@@ -31,23 +31,24 @@ def clean_cell(text: str) -> str:
     return "'" + out if out[:1] in ("=", "+", "-", "@") else out
 
 
+def _field(block: str, pattern: str) -> str:
+    m = re.search(pattern, block, re.S)
+    return clean_cell(m.group(1)) if m else ""
+
+
 def parse_results(page: str) -> list[dict]:
-    """The registers on one results page: ark, title, dates, cote, context."""
+    """The registers on one results page: ark, title, dates, cote."""
     rows = []
+    link_pattern = rf'href="(?:https://archives\.touraine\.fr)?/?ark:/{NAAN}/([A-Za-z0-9]+)[^"]*"'
     for block in re.findall(r'<li class="element-list">(.*?)</li>', page, re.S):
-        link = re.search(r'href="(?:https://archives\.touraine\.fr)?/?ark:/%s/([A-Za-z0-9]+)[^"]*"' % NAAN, block)
+        link = re.search(link_pattern, block)
         if not link:
             continue
-
-        def field(pattern):
-            m = re.search(pattern, block, re.S)
-            return clean_cell(m.group(1)) if m else ""
-
         rows.append({
             "ark": link.group(1),
-            "title": field(r"<h2>\s*<span>(.*?)</span>"),
-            "date": field(r"<h3>Date</h3>\s*<p><span>(.*?)</span>"),
-            "cote": field(r'<p class="referenceCodes">(.*?)</p>'),
+            "title": _field(block, r"<h2>\s*<span>(.*?)</span>"),
+            "date": _field(block, r"<h3>Date</h3>\s*<p><span>(.*?)</span>"),
+            "cote": _field(block, r'<p class="referenceCodes">(.*?)</p>'),
         })
     return rows
 
@@ -123,11 +124,19 @@ def parse_range(spec: str | None, total: int) -> list[int]:
 def run(args, client) -> int:
     client.delay = max(getattr(client, "delay", 0.0), 1.0)  # one request per second at most, whatever --delay says
     if args.action == "search":
-        rows = search(client, args.query, args.start)
-        print("ark\ttitle\tdate\tcote")
-        for r in rows[: args.limit]:
-            print("\t".join(r[k] for k in ("ark", "title", "date", "cote")))
-        return 0
+        return _run_search(args, client)
+    return _run_pages(args, client)
+
+
+def _run_search(args, client) -> int:
+    rows = search(client, args.query, args.start)
+    print("ark\ttitle\tdate\tcote")
+    for r in rows[: args.limit]:
+        print("\t".join(r[k] for k in ("ark", "title", "date", "cote")))
+    return 0
+
+
+def _run_pages(args, client) -> int:
     if not ARK.fullmatch(args.ark):
         print(f"gwt-fetch: {args.ark!r} is not an ark name", file=sys.stderr)
         return 2
@@ -149,13 +158,16 @@ def run(args, client) -> int:
         print(f"gwt-fetch: {len(chosen)} images selected, more than --max {args.max}; "
               "narrow --pages (this tool does not download whole registers)", file=sys.stderr)
         return 2
+    return _download(args, client, pages, chosen)
+
+
+def _download(args, client, pages, chosen) -> int:
     store = Store(args.out)
     manifest_url = f"{BASE}/ark:/{NAAN}/{args.ark}"
     failed = 0
     for n in chosen:
-        u = uuid_of(pages[n])
+        image_url = f"{BASE}/images/{uuid_of(pages[n])}.jpg"
         stem = f"{args.ark}_p{n:04d}"
-        image_url = f"{BASE}/images/{u}.jpg"
         if store.done(stem, f"page {n}", image_url, manifest_url):
             continue
         r = client.get(image_url, stream=True)

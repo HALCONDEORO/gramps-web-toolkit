@@ -67,7 +67,7 @@ def parser() -> argparse.ArgumentParser:
     tp = t.add_parser("pages", help="list the pages of one register, or download a few")
     tp.add_argument("ark", help="the ark name from `search`")
     tp.add_argument("--pages", help="1-based page numbers, e.g. 1-5,9,12-")
-    tp.add_argument("--max", type=int, default=touraine.MAX_IMAGES, help="most images one run downloads (default %d)" % touraine.MAX_IMAGES)
+    tp.add_argument("--max", type=int, default=touraine.MAX_IMAGES, help=f"most images one run downloads (default {touraine.MAX_IMAGES})")
     tp.add_argument("--out", default=".")
     tp.add_argument("--list", action="store_true", help="print page numbers and uuids, download nothing")
     return p
