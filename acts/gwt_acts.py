@@ -72,6 +72,26 @@ def read_cards(path):
     return rows
 
 
+def type_problems(get):
+    out = []
+    kind = cross.norm(get('type'))
+    if get('type') and kind not in EVENTS and kind != MILITARY:
+        out.append('type must be one of ' + ', '.join(EVENTS) + ', ' + MILITARY)
+    if kind == MILITARY:
+        out += [f'missing {k} (a matricule card needs the class and the register number)' for k in MILITARY_REQUIRED if not get(k)]
+    return out
+
+
+def zoom_problems(get):
+    out = []
+    if get('state') == 'verificado-zoom':
+        if not get('zoom'):
+            out.append('verificado-zoom needs a zoom (the crop the identity lines were read on)')
+        if any('?' in get(k) for k in ('given', 'surname', 'father', 'mother')):
+            out.append('verificado-zoom with a name marked (?)')
+    return out
+
+
 def card_problems(card):
     """Why this card is rejected: a list of short messages, empty when it is fine."""
     def get(k):
@@ -80,18 +100,10 @@ def card_problems(card):
     out = [f'missing {k}' for k in ('type', 'given', 'surname') + REQUIRED if not get(k)]
     if get('date_iso') and not split_date(get('date_iso')):
         out.append('date_iso is not a date: use YYYY, YYYY-MM or YYYY-MM-DD, optionally after bef, aft or abt')
-    kind = cross.norm(get('type'))
-    if get('type') and kind not in EVENTS and kind != MILITARY:
-        out.append('type must be one of ' + ', '.join(EVENTS) + ', ' + MILITARY)
-    if kind == MILITARY:
-        out += [f'missing {k} (a matricule card needs the class and the register number)' for k in MILITARY_REQUIRED if not get(k)]
+    out += type_problems(get)
     if get('state') not in STATES:
         out.append(f'state must be one of {", ".join(STATES)}')
-    if get('state') == 'verificado-zoom':
-        if not get('zoom'):
-            out.append('verificado-zoom needs a zoom (the crop the identity lines were read on)')
-        if any('?' in get(k) for k in ('given', 'surname', 'father', 'mother')):
-            out.append('verificado-zoom with a name marked (?)')
+    out += zoom_problems(get)
     out += republican_problems(get)
     return out
 
