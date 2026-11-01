@@ -9,6 +9,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 ### Added
 
 - `gwt-surname-clusters`: offline suggestions from human-maintained cluster IDs and aliases, preserving spelling and provenance. Shared folded aliases are ambiguous and require human review; no identity proof, automatic clustering or merges. Uses existing names folding; variants integration is deferred.
+- `gwt-fetch variants --surname` suggests sorted, unique surname spellings offline, preserving the original. Optional local JSON mappings and bounded, opt-in single-edit rules add suggestions; `--regex` escapes literal spellings for case-insensitive matching on accent-folded text. Suggestions are never identity or merge evidence; no catalogue or ledger integration.
 - `gwt-apply` `merge_source`: merges two sources that are one register entered twice, with Gramps' own merge. The dry run names every citation that moves; a loser whose title, author, publication info or abbreviation differs is a conflict, so no text is lost. It answers `dup-source-ark` findings.
 - `gwt-fetch touraine search --table`: lists the registers of a place in the site's table mode sorted by cote, with the ark and the cote in the same row (20, 40 or 80 rows a page).
 - `gwt-fetch boe search` and `boe fetch` search and download the BOE from 1960 onwards, which `gazeta` does not cover. `gazeta fetch` also reads the PDF link of modern documents. A date with non-ASCII digits or a blank `--text`/`--title` is refused with exit 2, and the form's error box exits 2 instead of printing 0 results.
@@ -253,3 +254,5 @@ Lists written for the first public commit of `gwt-apply` behave differently in t
 - `gwt-ledger`: a shared catalogue prefix no longer hides a different search, an unreadable ledger exits 2, and non-Latin and blocked queries are found again.
 - `gwt-gate`: a dead session or a permission refusal is no longer reported as a rate limit.
 - `gwt-leads`, `gwt-rank`, `gwt-import-excel` and `gwt-queue`: fixes to living-person detection, surname-first rows and lease handling.
+
+- Variants: normalize explicit local configuration paths and reject non-regular files before reading.
