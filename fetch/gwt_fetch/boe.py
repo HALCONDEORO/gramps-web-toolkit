@@ -20,7 +20,7 @@ SEARCH = BASE + "/buscar/boe.php"
 COLUMNS = ["ref", "date", "number", "department", "title", "doc_url"]
 MAX_LIMIT = HITS[-1]
 ISO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")  # ASCII digits only: \d also reads Arabic-Indic digits, which the form refuses
-REFUSED = re.compile(r"valores\s+de\s+b\S{1,12}squeda\s+enviados\s+son\s+incorrectos", re.I)
+REFUSED = re.compile(r"valores\s+de\s+b[uú]squeda\s+enviados\s+son\s+incorrectos", re.I)
 
 
 class SearchRefused(RuntimeError):
