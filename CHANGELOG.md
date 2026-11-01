@@ -8,6 +8,8 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
+- `gwt-check` `homonym-birth-gap` (for information only): same-name people whose possible Primary Birth dates are more than ten years apart are flagged for review and withheld from same-name duplicate hints. Shared date intervals preserve uncertainty; unknown births and baptism alone cannot prove the gap. The strict threshold uses civil anniversaries (conservatively March 1 for February 29), not elapsed-day averages. Output is bounded to one row per normalized-name group, with an exact scoped pair count and deterministic witness for larger groups; two-person pair keys are preserved. Every incompatible pair retains the duplicate-hint guard. No automatic merge.
+
 - `gwt-apply` `merge_source`: merges two sources that are one register entered twice, with Gramps' own merge. The dry run names every citation that moves; a loser whose title, author, publication info or abbreviation differs is a conflict, so no text is lost. It answers `dup-source-ark` findings.
 - `gwt-fetch touraine search --table`: lists the registers of a place in the site's table mode sorted by cote, with the ark and the cote in the same row (20, 40 or 80 rows a page).
 - `gwt-fetch boe search` and `boe fetch` search and download the BOE from 1960 onwards, which `gazeta` does not cover. `gazeta fetch` also reads the PDF link of modern documents. A date with non-ASCII digits or a blank `--text`/`--title` is refused with exit 2, and the form's error box exits 2 instead of printing 0 results.
