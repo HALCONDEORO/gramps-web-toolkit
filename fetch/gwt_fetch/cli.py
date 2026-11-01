@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, index_locator, names, notarial, touraine, variants
+from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, index_locator, leads, names, notarial, touraine, variants
 
 
 def _max_images(text: str) -> int:
@@ -137,11 +137,18 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("index-locate", help="exact local index-to-image crosswalk; offline")
     s.add_argument("reference", help="local JSON: book, folio/face or page, source and checked date")
     s.add_argument("--mapping", help="optional exact local JSON mapping with explicit zero/one image base")
+    leads.add_parser(sub)
     return p
 
 
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
+    if args.cmd == "leads":
+        try:
+            return leads.run(args, None)
+        except (OSError, ValueError) as exc:
+            print(f"gwt-fetch: {exc}", file=sys.stderr)
+            return 2
     if args.cmd == "variants":
         return variants.run(args)
     if args.cmd == "names" and not args.source:
