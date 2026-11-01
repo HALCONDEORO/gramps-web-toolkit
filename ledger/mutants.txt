@@ -1,0 +1,26 @@
+gwt_ledger.py | if args.cmd == 'mark' and args.image_from > args.image_to: | if False: | reversed ranges exit 2 without a write
+gwt_ledger.py | if n < 1: | if n < 0: | zero image numbers and totals are refused
+gwt_ledger.py | choices=READING_RESULTS | choices=READING_RESULTS + ('maybe',) | unknown reading results cannot enter the ledger
+gwt_ledger.py | if row.get('ark') != ark: | if False: | coverage is scoped to the exact source identifier
+gwt_ledger.py | events[end + 1][row['reader']] -= 1 | events[end][row['reader']] -= 1 | range endpoints are inclusive
+gwt_ledger.py | readers = sum(count > 0 for count in active.values()) | readers = sum(active.values()) | repeat marks from one reader are not independent double readings
+gwt_ledger.py | rows = read_rows(path) | rows = [] | consecutive search and reading marks preserve older rows
+gwt_ledger.py | unknown_tail=total is None | unknown_tail=False | no total means the tail remains unknown
+gwt_ledger.py | if total is not None and total < upper: | if False: | a total cannot silently truncate recorded coverage
+gwt_ledger.py | fcntl.flock(lock, fcntl.LOCK_EX) | pass | both writers lock before reading and hold the lock through rename
+gwt_ledger.py | os.replace(tmp, path) | pass | a complete temporary file must replace the destination
+gwt_ledger.py | if r.get('ark'): | if False: | the existing find API never returns a reading as a person search
+gwt_ledger.py | if not stat.S_ISREG(info.st_mode) or info.st_nlink > 1: | if False: | symlinks, hardlinks and non-regular ledgers are refused without mutation
+gwt_ledger.py | path = os.path.realpath(path) | path = os.path.abspath(path) | directory aliases share one canonical read, write and lock path
+gwt_ledger.py | os.fchmod(fd, stat.S_IMODE(original.st_mode)) | pass | replacement keeps the original permission bits
+gwt_ledger.py | os.fchown(fd, original.st_uid, original.st_gid) | pass | replacement keeps the original ownership
+gwt_ledger.py | os.removexattr(fd, name) | pass | inherited ACLs or attributes absent from the original are removed
+gwt_ledger.py | os.setxattr(fd, name, value) | pass | original ACLs and extended attributes are copied to the replacement
+gwt_ledger.py | if columns not in (COLUMNS[:-1], COLUMNS, COLUMNS + READING_COLUMNS): | if False: | unknown header columns such as extra=KEEP are refused before any write
+gwt_ledger.py | if len(parts) not in widths: | if False: | rows with unexpected extra cells are refused rather than truncated
+gwt_ledger.py | if (file_version(original) != file_version(current) or | if (False or | an external edit between read and rename is refused
+gwt_ledger.py | if any(r.get(c) for r in rows for c in READING_COLUMNS) else COLUMNS | if any(r.get('ark') for r in rows) else COLUMNS | reading cells without an ark are not dropped on rewrite
+
+gwt_ledger.py | if info.st_uid != os.geteuid(): | if False: | foreign UID ledger writes must be refused
+gwt_ledger.py | if resolved not in seen: | if True: | overlapping main and lane paths must not duplicate recorded rows
+gwt_ledger.py | resolved = os.path.realpath(path) | resolved = os.path.abspath(path) | directory aliases must not duplicate the shared ledger during discovery
