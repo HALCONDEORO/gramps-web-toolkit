@@ -2110,11 +2110,11 @@ class Applier:
             o.setdefault("_class", "Source")
         if winner["handle"] == loser["handle"]:
             raise Conflict("winner and loser are the same source")
-        for field in ("title", "author", "pubinfo", "abbrev"):
-            w, l_ = (winner.get(field) or "").strip(), (loser.get(field) or "").strip()
+        for attr in ("title", "author", "pubinfo", "abbrev"):
+            w, l_ = (winner.get(attr) or "").strip(), (loser.get(attr) or "").strip()
             if l_ and w != l_:
                 raise Conflict(
-                    f"Source {self.label(winner)} and {self.label(loser)} differ in {field}"
+                    f"Source {self.label(winner)} and {self.label(loser)} differ in {attr}"
                     + ("" if w else f" ({self.label(winner)} has none, the merge would lose it)")
                     + "; correct one with update_source first"
                 )
