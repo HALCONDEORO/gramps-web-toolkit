@@ -104,3 +104,9 @@ gwt_check/citegaps.py | if key[0] > living_after: | if False: | nothing about pe
 gwt_check/citegaps.py | (held if prob else proposals) | (proposals if prob else held) | a citation of another act is held back, never proposed
 gwt_check/citegaps.py | if key not in found: | if False: | only a citation that writes the event's own date is proposed
 gwt_check/citegaps.py | if any(w in _fold(text) for w in NEGATIVE): | if False: | a citation that records a negative search is never proposed
+gwt_check/checks.py |         if len(ss) > 1 and any(in_scope("sources", x["handle"]) for x in ss): |         if len(ss) > 1: | a duplicate source ark is reported with no source in scope
+gwt_check/checks.py |         if len(ss) > 1 and any(in_scope("sources", x["handle"]) for x in ss): |         if len(ss) > 0 and any(in_scope("sources", x["handle"]) for x in ss): | one source alone is called a duplicate of its ark
+gwt_check/checks.py | {4,9})/([A-Za-z0-9]{8,}) | {4,9})/([A-Za-z0-9]{2,}) | an ark id of 2 characters counts as an ark
+gwt_check/checks.py |     return {(m[1], m[2].lower()) for m in _ARK.finditer("\n".join(texts))} |     return {(m[1], m[2]) for m in _ARK.finditer("\n".join(texts))} | an ark in capitals differs from the same ark in lower case
+gwt_check/checks.py |     return {(m[1], m[2].lower()) for m in _ARK.finditer("\n".join(texts))} |     return {("", m[2].lower()) for m in _ARK.finditer("\n".join(texts))} | the archive number of an ark is ignored
+gwt_check/checks.py |     texts += [str(a.get("value") or "") for a in src.get("attribute_list", [])] |     texts += [] | a source attribute is not searched for an ark

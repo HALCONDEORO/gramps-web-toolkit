@@ -1884,3 +1884,53 @@ def test_a_person_born_more_than_100_years_ago_with_no_death_is_presumed_dead():
     assert possibly_living(*person(1925), 2026) is False  # over 100: presumed dead
     assert possibly_living({"event_ref_list": []}, {}, 2026) is True   # never dated: still possibly living
     assert possibly_living({"event_ref_list": []}, {}, 2026, undated=False) is False
+
+
+# -- dup-source-ark --------------------------------------------------------------------------------
+
+def _src(d, gid, title="", note="", attr=""):
+    obj = {**copy.deepcopy(d["sources"][0]), "handle": "h" + gid, "gramps_id": gid, "title": title,
+           "abbrev": "", "pubinfo": "", "note_list": [], "attribute_list": []}
+    if note:
+        d["notes"].append(selftest._base("N" + gid, text={"string": note}, format=0, tag_list=[]))
+        obj["note_list"] = ["hN" + gid]
+    if attr:
+        obj["attribute_list"] = [{"type": "Url", "value": attr}]
+    d["sources"].append(obj)
+
+
+def _ark_findings(d, scope=None):
+    findings, _ = checks.run_checks(Tree(copy.deepcopy(d)), scope)
+    return sorted((f["key"], f["detail"]) for f in findings if f["check"] == "dup-source-ark")
+
+
+def test_dup_source_ark_reads_title_note_and_attribute_in_both_spellings():
+    d = selftest.clean_tree()
+    d["sources"][0]["title"] = "no ark here"
+    _src(d, "S0090", title="Register 12, ark 12345/ABCD1234EFGH")
+    _src(d, "S0091", note="see https://example.test/ark:/12345/abcd1234efgh/view")
+    _src(d, "S0092", attr="https://example.test/ark:/12345/abcd1234efgh")
+    assert _ark_findings(d) == [("S0090,S0091,S0092", "ark 12345/abcd1234efgh")]
+
+
+def test_dup_source_ark_ignores_other_arks_short_ids_and_one_source():
+    d = selftest.clean_tree()
+    _src(d, "S0090", title="ark 12345/abcd1234efgh")
+    _src(d, "S0091", title="ark 12345/zzzz1234efgh")  # another ark
+    _src(d, "S0092", title="ark 99999/abcd1234efgh")  # another authority
+    _src(d, "S0093", title="ark 12345/abcd")  # too short to be an ark id
+    _src(d, "S0094", title="ark 12345/abcd")
+    _src(d, "S0095", title="ark 12345/abcd1234efgh, ark:/12345/abcd1234efgh")  # twice in one source
+    assert _ark_findings(d) == [("S0090,S0095", "ark 12345/abcd1234efgh")]
+
+
+def test_dup_source_ark_is_info_and_needs_one_side_in_scope(tmp_path, capsys):
+    d = selftest.clean_tree()
+    _src(d, "S0090", title="ark 12345/abcd1234efgh")
+    _src(d, "S0091", title="ark 12345/abcd1234efgh")
+    assert _ark_findings(d, {("sources", "hS0091")}) == [("S0090,S0091", "ark 12345/abcd1234efgh")]
+    assert _ark_findings(d, {("people", "hI0001")}) == []
+    dump = tmp_path / "t.json"
+    dump.write_text(json.dumps(d), encoding="utf-8")
+    assert main(["check", str(dump)]) == 0
+    assert "info dup-source-ark" in capsys.readouterr().out
