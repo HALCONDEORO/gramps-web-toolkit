@@ -64,7 +64,7 @@ gwt_fetch/notarial.py | chain.append( | chain.clear(); chain.append( | same-name
 gwt_fetch/cli.py | if args.cmd in ("coverage", "notarial-plan"): | if args.cmd == "coverage": | notarial planning must bypass all network imports and client creation
 gwt_fetch/notarial.py | or fold(row['locality']).strip() != fold(locality).strip() |  | the Spanish helper must not erase distinguishing non-ASCII letters in locality labels
 
-gwt_fetch/notarial.py | data = json.load(stream, object_pairs_hook=_unique_object, parse_constant=_reject_constant) | data = json.load(stream) | reject ambiguous duplicate keys and non-JSON constants before any plan
+gwt_fetch/notarial.py | object_pairs_hook=_unique_object, parse_constant=_reject_constant, | object_pairs_hook=dict, parse_constant=float, | reject ambiguous duplicate keys and non-JSON constants before any plan
 gwt_fetch/touraine_catalogue.py | if not rows: | if len(rows) < per_page: | a short populated page is discarded as terminal without retaining row provenance
 gwt_fetch/touraine_catalogue.py | if not result["complete"] or not rows: | if not rows: | partial pagination certifies uncovered years
 gwt_fetch/touraine_catalogue.py | re.fullmatch(r"([0-9]{4})(?:\s*[-–]\s*([0-9]{4}))?", date.strip()) | re.search(r"([0-9]{4})(?:\s*[-–]\s*([0-9]{4}))?", date.strip()) | uncertain dates silently become exact years
@@ -101,3 +101,5 @@ gwt_fetch/variants.py | if not isinstance(value, str) or not value.strip() or le
 gwt_fetch/variants.py | ("ph", "f"), ("f", "ph") | ("ph", "ph"), ("f", "f") | ph and f are not suggested in either direction
 
 gwt_fetch/variants.py | path = os.path.realpath(os.path.abspath(os.path.expanduser(path))) | path = path | local config paths must be normalized before opening
+
+gwt_fetch/notarial.py | if not math.isfinite(number): | if False: | overflowing JSON exponents must not produce Infinity in preserved metadata

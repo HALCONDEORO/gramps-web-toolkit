@@ -222,3 +222,30 @@ def test_strict_json_before_any_output(raw, tmp_path, capsys):
     result = capsys.readouterr()
     assert result.out == ''
     assert 'duplicate' in result.err or 'non-JSON' in result.err
+
+
+@pytest.mark.parametrize('number', ['1e400', '-1e400', '9.9e9999'])
+def test_overflowing_json_number_in_metadata_has_no_partial_output(number, tmp_path, capsys):
+    from gwt_fetch.cli import main
+    data = catalogue()
+    data['entries'][0]['extra'] = {'measurements': ['NUMBER']}
+    path = tmp_path / 'overflow.json'
+    path.write_text(json.dumps(data).replace('"NUMBER"', number))
+    assert main(['notarial-plan', str(path), '--locality', 'Villaejemplo',
+                 '--from', '1800', '--to', '1806']) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ''
+    assert 'finite' in captured.err
+
+
+def test_finite_json_numbers_in_metadata_remain_supported(tmp_path, capsys):
+    from gwt_fetch.cli import main
+    data = catalogue()
+    data['entries'][0]['extra'] = {'measurements': [1.25, -2.5e20, 1e300]}
+    path = tmp_path / 'finite.json'
+    path.write_text(json.dumps(data))
+    assert main(['notarial-plan', str(path), '--locality', 'Villaejemplo',
+                 '--from', '1800', '--to', '1806']) == 0
+    captured = capsys.readouterr()
+    assert captured.err == ''
+    assert json.loads(captured.out) == plan(data)

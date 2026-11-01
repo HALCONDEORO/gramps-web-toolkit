@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
 import stat
 
@@ -131,13 +132,21 @@ def _reject_constant(value):
     raise ValueError("non-JSON constant in catalogue: " + value)
 
 
+def _finite_float(value):
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError('catalogue numbers must be finite')
+    return number
+
+
 def run(args, _client=None):
     # Only the explicit local JSON file is read; references are inert metadata.
     path = os.path.realpath(os.path.abspath(os.path.expanduser(args.catalogue)))
     if not stat.S_ISREG(os.stat(path).st_mode):
         raise ValueError('catalogue must be a regular local file')
     with open(path, encoding='utf-8') as stream:
-        data = json.load(stream, object_pairs_hook=_unique_object, parse_constant=_reject_constant)
+        data = json.load(stream, object_pairs_hook=_unique_object, parse_constant=_reject_constant,
+                         parse_float=_finite_float)
     result = plan(data, args.locality, args.year_from, args.year_to)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
