@@ -216,6 +216,76 @@ For every spelling it searches the two orders the gazettes print names in, `"Giv
 $ gwt-fetch names 'Given/Surname1 Surname2' --spell Surnameone --from 1940-01-01 --to 1946-12-31 --out research/raw/fuentes/boe
 ```
 
+## `variants`: offline surname search suggestions
+
+`gwt-fetch variants --surname Alfa` prints one literal spelling per line, unique and
+sorted by Unicode code point, always preserving the original exactly. Without
+`--file` or `--rules`, even an unknown surname returns only the original. No default
+file is read. This command makes no requests and creates no HTTP client.
+
+Pass `--file variants.json` to read a local UTF-8 JSON object. Keys match exactly,
+including accents and case; values are lists of literal spellings. This invented
+example is also in `fetch/variants.example.json` in the source checkout:
+
+```json
+{
+  "Alfa": ["Alfa", "Alpha", "Alfha"],
+  "Beta": ["Beta", "Bheta"]
+}
+```
+
+```text
+gwt-fetch variants --surname Alfa --file variants.json
+Alfa
+Alfha
+Alpha
+```
+
+Duplicate spellings, blank spellings and empty lists warn on stderr; duplicates and
+blank spellings are ignored. Missing/unreadable files, invalid JSON, duplicate JSON
+keys, invalid entry types and invalid surnames exit 2 with no stdout. Files are
+limited to 1 MiB. Input surnames, config keys and nonblank config spellings must be
+1–128 characters, without control characters or line separators. Empty or
+whitespace-only `--surname` exits 2. No spelling is evaluated as code or shell text.
+An apostrophe such as in `D'Alfa` is literal; pass it as a quoted shell argument,
+for example `--surname "D'Alfa"`.
+
+`--rules` explicitly enables these heuristic ASCII substitutions in both directions:
+
+- `s` ↔ `z`, `c` ↔ `s`, `ph` ↔ `f`, `y` ↔ `i`.
+- Double a single ASCII consonant (`bcdfghjklmnpqrstvwxyz`), or shorten an adjacent
+  doubled consonant. A consonant already next to the same letter is not doubled.
+
+Each suggestion makes **one edit at one position in the original**. Rules never
+process their own output or configured spellings. There are at most `1 + 6*n`
+rule spellings for an input of `n` characters (at most 769 including the original);
+configured spellings are added separately. Rule output may be one character longer
+than the input limit. Uppercase and initial capitals are retained; accented letters
+and punctuation are not substituted. For example, `Besa --rules` includes `Besa`,
+`Beza` and `Bessa`, but does not combine edits to produce `Bbeza` or `Bezza`.
+
+`--regex` replaces the list with one Python regex: `(?i)(?:alfa|alfha|alpha)` for
+the config example. Every alternative is escaped with `re.escape`, so `.`, `*`,
+`[`, `|`, backslashes and all other regex metacharacters in a surname remain literal.
+`(?i)` supplies case-insensitive matching. **Regex alone does not fold accents**:
+apply the existing `gwt_fetch.names.fold` helper to the text first (NFKD
+normalization, lowercase, remove combining marks). That also handles decomposed
+accents. For example, within Python:
+
+```python
+import re
+from gwt_fetch.names import fold
+
+pattern = re.compile(r"(?i)(?:alfa|alfha|alpha)")  # literal CLI output
+assert pattern.fullmatch(fold("ÁLFA"))
+```
+
+Use `fullmatch` for a whole surname or `search` for occurrences within text; the
+pattern adds no word boundaries. Do not pass regex output through shell `eval`.
+Plain output retains the original accents and case. Every successful run reminds
+the caller on stderr: these are **search suggestions only, never identity or merge
+evidence**. There is no catalogue or ledger integration.
+
 ## `europeana`: Spanish records with a manifest
 
 The Europeana Search API needs a free key: get one at https://pro.europeana.eu/pages/get-api and `export EUROPEANA_KEY=...`. Without a key, the command prints a message and exits 0, so pipelines carry on.

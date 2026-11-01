@@ -32,7 +32,7 @@ def test_inclusive_clipped_chain_with_gap_overlap_and_office_provenance():
     assert [r['office'] for r in result['chain'][:2]] == ['OfficeAlfa', 'OfficeBeta']
     assert result['unknown_coverage'] == ['CAT-U']
     for row in result['chain']:
-        original = next(r for r in catalogue()['entries'] if r['id'] == row['id'])
+        original = {r['id']: r for r in catalogue()['entries']}[row['id']]
         assert row['metadata'] == original
         assert row['status'] == 'candidate'
     assert 'not evidence of a contract, marriage or parentage' in result['warning']
@@ -123,7 +123,7 @@ def test_cli_reads_only_local_json_without_client_or_socket(monkeypatch, tmp_pat
 def test_cli_subprocess_works_without_requests():
     cli = Path(__file__).resolve().parents[1] / 'gwt-fetch'
     p = subprocess.run([sys.executable, str(cli), 'notarial-plan', str(FIXTURE.resolve()),
-        '--locality', 'Villaejemplo', '--from', '1802', '--to', '1802'], capture_output=True, text=True)
+        '--locality', 'Villaejemplo', '--from', '1802', '--to', '1802'], capture_output=True, text=True, check=False)
     assert p.returncode == 0, p.stderr
     assert json.loads(p.stdout)['catalogue_coverage'] == '1802'
 
