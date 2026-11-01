@@ -82,7 +82,7 @@ gwt-fetch coverage 240 --dir /tmp/reg              # files named NNNN_label.jpg 
 
 - It prints how many views were read, which ranges are missing, and a warning when every missing view is even (or odd) and every other one was read.
 - Exit 0 when every view was read, 1 when some are missing, 2 for a bad number, a view outside `1-total`, a backwards range or no `--read`/`--dir`.
-- `--dir` counts only non-empty files whose name starts with four or more digits and an underscore. It does not check that a file is a complete image.
+- `--dir` counts only non-empty files whose name starts with four or more digits and an underscore, leaving out the downloader's `.part` files. It does not check that a file is a complete image.
 
 ## `digibib`: DIGIBIB viewers without IIIF
 

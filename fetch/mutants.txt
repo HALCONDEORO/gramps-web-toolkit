@@ -14,9 +14,10 @@ gwt_fetch/touraine.py |         if store.done(stem, f"page {n}", image_url, mani
 gwt_fetch/cli.py |     if not 1 <= n <= touraine.MAX_IMAGES: |     if n < 1: | --max accepts any number above 30
 gwt_fetch/coverage.py |         if not 1 <= lo <= hi <= total: |         if not 1 <= lo <= total: | a backwards range of views is accepted
 gwt_fetch/coverage.py |     if len(missing) >= 3 and len(read) >= 3: |     if len(missing) >= 1 and len(read) >= 1: | two missing views are called a pattern
-gwt_fetch/coverage.py |         if m and f.is_file() and f.stat().st_size > 0: |         if m and f.is_file(): | an empty file counts as a view that was read
+gwt_fetch/coverage.py |         if m and f.is_file() and f.suffix not in TEMPORARY and f.stat().st_size > 0: |         if m and f.is_file() and f.suffix not in TEMPORARY: | an empty file counts as a view that was read
 gwt_fetch/coverage.py |             if not 1 <= n <= total: |             if False: | a file numbered outside the register is counted
 gwt_fetch/coverage.py |     return 0 if complete else 1 |     return 0 | an incomplete sweep exits 0
 gwt_fetch/coverage.py |     if not 1 <= args.total <= MAX_VIEWS: |     if args.total < 1: | a register of a million views is accepted
 gwt_fetch/coverage.py |         elif n == prev + 1: |         elif n == prev + 2: | views two apart are joined into one range
 gwt_fetch/coverage.py | (total if dash else lo) | lo | an open range such as 8- reads only its first view
+gwt_fetch/coverage.py |         if m and f.is_file() and f.suffix not in TEMPORARY and f.stat().st_size > 0: |         if m and f.is_file() and f.stat().st_size > 0: | a partial download counts as a view that was read

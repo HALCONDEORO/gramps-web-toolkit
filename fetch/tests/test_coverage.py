@@ -80,3 +80,10 @@ def test_the_command_exits_0_1_or_2(capsys, tmp_path):
     assert main(["coverage", "100001", "--read", "1"]) == 2
     (tmp_path / "0001_a.jpg").write_bytes(b"x")
     assert main(["coverage", "2", "--read", "2", "--dir", str(tmp_path)]) == 0
+
+
+def test_a_partial_download_is_not_a_view_that_was_read(tmp_path):
+    (tmp_path / "0001_p1.jpg.part").write_bytes(b"half")
+    (tmp_path / "0002_p2.jpg").write_bytes(b"whole")
+    assert cov.views_in_folder(str(tmp_path), 2) == {2}
+    assert main(["coverage", "2", "--dir", str(tmp_path)]) == 1

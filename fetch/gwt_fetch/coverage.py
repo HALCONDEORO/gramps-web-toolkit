@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 
 MAX_VIEWS = 100000
+# the downloader writes NNNN_label.jpg.part until a file is whole (store.py)
+TEMPORARY = (".part", ".tsv")
 STEM = re.compile(r"^(\d{4,})_")
 
 
@@ -39,7 +41,7 @@ def views_in_folder(folder: str, total: int) -> set[int]:
     out = set()
     for f in path.iterdir():
         m = STEM.match(f.name)
-        if m and f.is_file() and f.stat().st_size > 0:
+        if m and f.is_file() and f.suffix not in TEMPORARY and f.stat().st_size > 0:
             n = int(m[1])
             if not 1 <= n <= total:
                 raise ValueError(f"{f.name} is view {n}, outside 1-{total}")
@@ -78,8 +80,8 @@ def report(total: int, read: set[int]) -> tuple[list[str], bool]:
     return lines, False
 
 
-def run(args, client) -> int:
-    del client  # offline
+def run(args, _client) -> int:
+    """Offline: the client the other commands share is not used."""
     if not 1 <= args.total <= MAX_VIEWS:
         print(f"gwt-fetch: total must be between 1 and {MAX_VIEWS}", file=sys.stderr)
         return 2
