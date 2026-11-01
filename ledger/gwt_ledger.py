@@ -241,8 +241,8 @@ def positive_image(value):
     return n
 
 
-def reading_coverage(rows, ark, total=None):
-    """Sweep interval endpoints, retaining independent readers without expanding images."""
+def reading_events(rows, ark):
+    """Validated marks of one source, plus reader-count changes at each interval endpoint."""
     marks = []
     events = collections.defaultdict(collections.Counter)
     for row in rows:
@@ -256,22 +256,21 @@ def reading_coverage(rows, ark, total=None):
         marks.append(mark)
         events[start][row['reader']] += 1
         events[end + 1][row['reader']] -= 1
-    upper = max((r['image_to'] for r in marks), default=0)
-    if total is not None and total < upper:
-        raise ValueError('--total is below a logged image')
-    bound = total if total is not None else upper
-    events[1]  # start at image 1, including any known leading gap
-    events[bound + 1]
+    return marks, events
+
+
+def append_range(ranges, lo, hi):
+    if ranges and ranges[-1][1] + 1 == lo:
+        ranges[-1][1] = hi
+    else:
+        ranges.append([lo, hi])
+
+
+def sweep_ranges(events):
+    """Covered, unread and distinct-reader double-read ranges between sorted endpoints."""
     covered, unread, double = [], [], []
     active = collections.Counter()
     points = sorted(events)
-
-    def append_range(ranges, lo, hi):
-        if ranges and ranges[-1][1] + 1 == lo:
-            ranges[-1][1] = hi
-        else:
-            ranges.append([lo, hi])
-
     for i, lo in enumerate(points[:-1]):
         active.update(events[lo])
         hi = points[i + 1] - 1
@@ -279,8 +278,31 @@ def reading_coverage(rows, ark, total=None):
         append_range(covered if readers else unread, lo, hi)
         if readers >= 2:
             append_range(double, lo, hi)
+    return covered, unread, double
+
+
+def reading_coverage(rows, ark, total=None):
+    """Sweep interval endpoints, retaining independent readers without expanding images."""
+    marks, events = reading_events(rows, ark)
+    upper = max((r['image_to'] for r in marks), default=0)
+    if total is not None and total < upper:
+        raise ValueError('--total is below a logged image')
+    bound = total if total is not None else upper
+    # Start at image 1, including any known leading gap, and end after the bound.
+    events.setdefault(1, collections.Counter())
+    events.setdefault(bound + 1, collections.Counter())
+    covered, unread, double = sweep_ranges(events)
     return dict(ark=ark, rows=marks, covered=covered, unread=unread, double_read=double,
                 total=total, unknown_tail=total is None)
+
+
+def same_lookup(r, pk, sk, q, exact):
+    """The row belongs to this person and source and, with exact, has the identical normalized query."""
+    if pk and key(r['person_key']) != pk:
+        return False
+    if sk and key(r['source']) != sk:
+        return False
+    return not exact or normalize(r['query']) == q
 
 
 def find(rows, person=None, source=None, query=None, threshold=DEFAULT_THRESHOLD, exact=False):
@@ -292,11 +314,7 @@ def find(rows, person=None, source=None, query=None, threshold=DEFAULT_THRESHOLD
     for i, r in enumerate(rows):
         if r.get('ark'):
             continue  # reading marks never satisfy a person/search lookup
-        if pk and key(r['person_key']) != pk:
-            continue
-        if sk and key(r['source']) != sk:
-            continue
-        if exact and normalize(r['query']) != q:
+        if not same_lookup(r, pk, sk, q, exact):
             continue
         score = 1.0 if exact or not q else similarity(q, normalize(r['query']))
         if exact or score >= threshold:
@@ -309,7 +327,7 @@ def find(rows, person=None, source=None, query=None, threshold=DEFAULT_THRESHOLD
 def print_rows(scored, with_score=False):
     for score, r in scored:
         cells = [r[c] for c in COLUMNS]
-        sys.stdout.write(('%.2f\t' % score if with_score else '') + '\t'.join(cells) + '\n')
+        sys.stdout.write((f'{score:.2f}\t' if with_score else '') + '\t'.join(cells) + '\n')
 
 
 def iso_date(value):
@@ -317,7 +335,7 @@ def iso_date(value):
     return datetime.date.fromisoformat(value).isoformat() if value else ''
 
 
-def main(argv=None):
+def build_parser():
     p = argparse.ArgumentParser(prog='gwt-ledger', description=__doc__.split('\n')[0])
     p.add_argument('--ledger', default=os.environ.get('GWT_LEDGER', 'buscado.tsv'))
     p.add_argument('--ledger-dir', default=os.environ.get('GWT_LEDGER_DIR', ''),
@@ -355,57 +373,80 @@ def main(argv=None):
     q.add_argument('--ark', required=True, help='exact source identifier')
     q.add_argument('--total', type=positive_image,
                    help='known final image; without it the tail after known coverage stays unknown')
+    return p
+
+
+def lane_path(p, args, lane, message):
+    """The main ledger, or this lane's file inside --ledger-dir."""
+    if not args.ledger_dir:
+        return args.ledger
+    if not key(lane):
+        p.error(message)
+    return os.path.join(args.ledger_dir, key(lane) + '.tsv')
+
+
+def run_reading(p, args):
+    """mark and query: offline reading index commands."""
+    for name in (('ark', 'reader', 'ref', 'date') if args.cmd == 'mark' else ('ark',)):
+        value = getattr(args, name)
+        if not value.strip() or clean(value) != value:
+            p.error(f'--{name} must be non-empty with no tabs, newlines or edge spaces')
+    if args.cmd == 'mark' and args.image_from > args.image_to:
+        p.error('--image-from must not exceed --image-to')
+    try:
+        if args.cmd == 'mark':
+            path = lane_path(p, args, args.reader, '--reader needs a lane name after normalising')
+            add_row(path, {c: getattr(args, c) for c in
+                          ('ark', 'image_from', 'image_to', 'reader', 'date', 'result', 'ref')})
+        else:
+            rows = [r for path in ledger_paths(args.ledger, args.ledger_dir) for r in read_rows(path)]
+            print(json.dumps(reading_coverage(rows, args.ark, args.total), ensure_ascii=False))
+    except (OSError, UnicodeDecodeError) as exc:  # before ValueError: UnicodeDecodeError is a ValueError
+        sys.stderr.write(f'gwt-ledger: cannot read/write the ledger: {exc}\n')
+        return 2
+    except ValueError as exc:
+        p.error(str(exc))
+    return 0
+
+
+def run_add(p, args):
+    path = lane_path(p, args, args.agent, 'add needs --agent (or $GWT_AGENT): rows go to <ledger-dir>/<agent>.tsv')
+    try:
+        add_row(path, {'person_key': key(args.person), 'person_label': args.label,
+                       'source': key(args.source), 'query': normalize(args.query), 'date': args.date,
+                       'result': args.result, 'evidence': args.evidence, 'agent': args.agent,
+                       'next_date': args.next_date})
+    except (OSError, UnicodeDecodeError) as exc:
+        sys.stderr.write(f'gwt-ledger: cannot read/write the ledger: {exc}\n')
+        return 2
+    return 0
+
+
+def print_stats(rows):
+    print(f'rows\t{len(rows)}')
+    print(f"persons\t{len({key(r['person_key']) for r in rows})}")
+    for col in ('result', 'source', 'agent'):
+        for value, n in collections.Counter(r[col] for r in rows).most_common():
+            print(f"{col}\t{value or '-'}\t{n}")
+
+
+def main(argv=None):
+    p = build_parser()
     args = p.parse_args(argv)
     if args.cmd in ('mark', 'query'):
-        for name in (('ark', 'reader', 'ref', 'date') if args.cmd == 'mark' else ('ark',)):
-            value = getattr(args, name)
-            if not value.strip() or clean(value) != value:
-                p.error('--%s must be non-empty with no tabs, newlines or edge spaces' % name)
-        if args.cmd == 'mark' and args.image_from > args.image_to:
-            p.error('--image-from must not exceed --image-to')
-        try:
-            if args.cmd == 'mark':
-                path = args.ledger
-                if args.ledger_dir:
-                    if not key(args.reader):
-                        p.error('--reader needs a lane name after normalising')
-                    path = os.path.join(args.ledger_dir, key(args.reader) + '.tsv')
-                add_row(path, {c: getattr(args, c) for c in
-                              ('ark', 'image_from', 'image_to', 'reader', 'date', 'result', 'ref')})
-            else:
-                rows = [r for path in ledger_paths(args.ledger, args.ledger_dir) for r in read_rows(path)]
-                print(json.dumps(reading_coverage(rows, args.ark, args.total), ensure_ascii=False))
-        except ValueError as exc:
-            p.error(str(exc))
-        except (OSError, UnicodeDecodeError) as exc:
-            sys.stderr.write('gwt-ledger: cannot read/write the ledger: %s\n' % exc)
-            return 2
-        return 0
+        return run_reading(p, args)
     # A query or person that normalizes to nothing (only punctuation, say) would match every row.
     for name in ('query', 'person'):
         value = getattr(args, name, None)
         if value is not None and not normalize(value):
-            p.error('--%s %r: nothing left to match after normalising' % (name, value))
+            p.error(f'--{name} {value!r}: nothing left to match after normalising')
 
     if args.cmd == 'add':
-        path = args.ledger
-        if args.ledger_dir:
-            if not key(args.agent):
-                p.error('add needs --agent (or $GWT_AGENT): rows go to <ledger-dir>/<agent>.tsv')
-            path = os.path.join(args.ledger_dir, key(args.agent) + '.tsv')
-        try:
-            add_row(path, {'person_key': key(args.person), 'person_label': args.label,
-                           'source': key(args.source), 'query': normalize(args.query), 'date': args.date,
-                           'result': args.result, 'evidence': args.evidence, 'agent': args.agent,
-                           'next_date': args.next_date})
-        except (OSError, UnicodeDecodeError) as exc:
-            sys.stderr.write('gwt-ledger: cannot read/write the ledger: %s\n' % exc)
-            return 2
-        return 0
+        return run_add(p, args)
     try:
         rows = [r for path in ledger_paths(args.ledger, args.ledger_dir) for r in read_rows(path) if not r.get('ark')]
     except (OSError, UnicodeDecodeError) as exc:  # an unreadable ledger is an error, never "not searched yet"
-        sys.stderr.write('gwt-ledger: cannot read the ledger: %s\n' % exc)
+        sys.stderr.write(f'gwt-ledger: cannot read the ledger: {exc}\n')
         return 2
     if args.cmd == 'check':
         if args.exact and not key(args.source or ''):
@@ -423,11 +464,7 @@ def main(argv=None):
     if args.cmd == 'list':
         print_rows(find(rows, args.person, args.source))
         return 0
-    print('rows\t%d' % len(rows))
-    print('persons\t%d' % len({key(r['person_key']) for r in rows}))
-    for col in ('result', 'source', 'agent'):
-        for value, n in collections.Counter(r[col] for r in rows).most_common():
-            print('%s\t%s\t%d' % (col, value or '-', n))
+    print_stats(rows)
     return 0
 
 

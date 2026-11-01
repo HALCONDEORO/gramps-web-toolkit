@@ -157,10 +157,10 @@ class LedgerTest(unittest.TestCase):
     def test_cli_launcher(self):
         self.add()
         p = subprocess.run([sys.executable, CLI, '--ledger', self.path, 'check', '--query', 'ana peiro bautismo 1850 1860'],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, check=False)
         self.assertEqual(p.returncode, 0, p.stderr)
         env = dict(os.environ, GWT_LEDGER=self.path)
-        p = subprocess.run([sys.executable, CLI, 'stats'], capture_output=True, text=True, env=env)
+        p = subprocess.run([sys.executable, CLI, 'stats'], capture_output=True, text=True, env=env, check=False)
         self.assertIn('rows\t1', p.stdout)
 
     def test_blocked_and_denied_rows_are_listed_but_not_done(self):

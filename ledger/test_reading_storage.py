@@ -81,9 +81,9 @@ class StorageTest(unittest.TestCase):
                 # A synthetic xattr ensures get/set are needed, without a real ACL dependency.
                 os.setxattr(self.path, 'user.gwt_test', b'KEEP')
                 before = self.snapshot()
-                with patch.object(L.os, name, side_effect=OSError(errno.EPERM, 'invented capability failure')):
-                    with self.assertRaises(OSError):
-                        self.add()
+                with patch.object(L.os, name, side_effect=OSError(errno.EPERM, 'invented capability failure')), \
+                        self.assertRaises(OSError):
+                    self.add()
                 self.assertEqual(self.snapshot(), before)
                 self.assertEqual(list(self.path.parent.glob('.gwt-ledger-*.tmp')), [])
 
@@ -158,9 +158,8 @@ class StorageTest(unittest.TestCase):
         def external_edit(fd):
             real_fsync(fd)
             self.path.write_text('invented external update\n')
-        with patch.object(L.os, 'fsync', side_effect=external_edit):
-            with self.assertRaises(OSError):
-                self.add()
+        with patch.object(L.os, 'fsync', side_effect=external_edit), self.assertRaises(OSError):
+            self.add()
         self.assertEqual(self.path.read_text(), 'invented external update\n')
         self.assertEqual(list(self.path.parent.glob('.gwt-ledger-*.tmp')), [])
 
@@ -173,7 +172,7 @@ class StorageTest(unittest.TestCase):
             os.setxattr(self.path, 'system.posix_acl_access', acl)
         except OSError as exc:
             if exc.errno in (errno.ENOTSUP, errno.EPERM, errno.EACCES, errno.EINVAL):
-                self.skipTest('temporary filesystem cannot install a POSIX ACL: %s' % exc)
+                self.skipTest(f'temporary filesystem cannot install a POSIX ACL: {exc}')
             raise
         os.setxattr(self.path, 'user.gwt_test', b'KEEP')
         before = self.snapshot()
@@ -211,7 +210,9 @@ class StorageTest(unittest.TestCase):
         alias.symlink_to(self.path.parent, target_is_directory=True)
         real_lock, real_read, real_replace = L.fcntl.flock, L.read_rows, L.os.replace
         def lock(f, op):
-            self.assertEqual(f.name, str(self.path) + '.lock')
+            self.assertEqual((os.fstat(f.fileno()).st_dev, os.fstat(f.fileno()).st_ino),
+                             (Path(str(self.path) + '.lock').stat().st_dev,
+                              Path(str(self.path) + '.lock').stat().st_ino))
             return real_lock(f, op)
         def read(path):
             self.assertEqual(path, str(self.path))

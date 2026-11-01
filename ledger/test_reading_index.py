@@ -112,24 +112,26 @@ class ReadingIndexTest(unittest.TestCase):
 
     def test_launcher_help_and_query(self):
         launcher = str(Path(L.__file__).with_name('gwt-ledger'))
-        help_run = subprocess.run([sys.executable, launcher, 'query', '--help'], capture_output=True, text=True)
+        help_run = subprocess.run([sys.executable, launcher, 'query', '--help'],
+                                  capture_output=True, text=True, check=False)
         self.assertEqual(help_run.returncode, 0)
         self.assertIn('--total', help_run.stdout)
         self.assertIn('unknown', help_run.stdout)
         self.mark()
         result = subprocess.run([sys.executable, launcher, '--ledger', str(self.path), '--ledger-dir', '',
-                                 'query', '--ark', 'ark:/fake/register-A'], capture_output=True, text=True)
+                                 'query', '--ark', 'ark:/fake/register-A'],
+                                capture_output=True, text=True, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(json.loads(result.stdout)['unknown_tail'])
 
     def test_failed_replace_leaves_old_file_and_no_temp(self):
         self.mark()
         before = self.path.read_bytes()
-        with patch.object(L.os, 'replace', side_effect=OSError('invented write failure')):
-            with redirect_stderr(io.StringIO()):
-                code = L.main(['--ledger', str(self.path), 'mark', '--ark', 'ark:/fake/register-A',
-                               '--image-from', '16', '--image-to', '19', '--reader', 'ReaderB',
-                               '--result', 'negative', '--ref', 'fake'])
+        with patch.object(L.os, 'replace', side_effect=OSError('invented write failure')), \
+                redirect_stderr(io.StringIO()):
+            code = L.main(['--ledger', str(self.path), 'mark', '--ark', 'ark:/fake/register-A',
+                           '--image-from', '16', '--image-to', '19', '--reader', 'ReaderB',
+                           '--result', 'negative', '--ref', 'fake'])
         self.assertEqual(code, 2)
         self.assertEqual(self.path.read_bytes(), before)
         self.assertEqual(sorted(p.name for p in self.path.parent.iterdir()), ['shared.tsv', 'shared.tsv.lock'])
@@ -138,8 +140,13 @@ class ReadingIndexTest(unittest.TestCase):
         real_flock, real_read, real_replace = L.fcntl.flock, L.read_rows, L.os.replace
         held = []
 
+        lock_path = Path(str(self.path) + '.lock')
+
         def flock(file, operation):
-            self.assertEqual(file.name, str(self.path) + '.lock')
+            # The sidecar is opened with os.fdopen, so file.name is an int; compare the inode.
+            self.assertIsInstance(file.name, int)
+            self.assertEqual((os.fstat(file.fileno()).st_dev, os.fstat(file.fileno()).st_ino),
+                             (lock_path.stat().st_dev, lock_path.stat().st_ino))
             if operation == L.fcntl.LOCK_EX:
                 held.append(True)
             elif operation == L.fcntl.LOCK_UN:
