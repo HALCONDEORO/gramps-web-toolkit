@@ -51,3 +51,15 @@ gwt_fetch/touraine.py | return "" if text == "'-" else text | return text | the 
 gwt_fetch/touraine.py | if table and given["page"] is not None and given["page"] < 1: | if False: | page 0 or a negative page is sent to the site
 gwt_fetch/touraine.py | wrong = [f"--{k.replace('_', '-')}" for k in other if given[k] is not None] | wrong = [f"--{k.replace('_', '-')}" for k in other if given[k]] | an option of the other mode is accepted when it is given with its default value
 gwt_fetch/touraine.py | rows[: 80 if limit is None else limit] | rows[: limit or 80] | --limit 0 prints 80 rows
+gwt_fetch/variants.py | found = {surname, *configured.get(surname, [])} | found = set(configured.get(surname, [])) | a config list replaces the original spelling
+gwt_fetch/variants.py | if rules: | if True: | rules silently run without explicit opt-in
+gwt_fetch/variants.py | found.update(rule_variants(surname)) | found.update(rule_variants(surname)); found.update(v for s in list(found) for v in rule_variants(s)) | rules recurse into suggestions and configured spellings
+gwt_fetch/variants.py | return sorted(found) | return sorted(found, reverse=True) | output is not sorted in ascending order
+gwt_fetch/variants.py | re.escape(s) for s in | s for s in | surname regex metacharacters become operators
+gwt_fetch/variants.py | {fold(x) for x in spellings} | set(spellings) | regex alternatives retain accents instead of matching folded text
+gwt_fetch/variants.py | if spelling in seen: | if False: | duplicate config spellings do not warn
+gwt_fetch/variants.py | print("gwt-fetch: warning: empty variant ignored", file=sys.stderr) | pass | empty config spellings are silently discarded
+gwt_fetch/variants.py | if not isinstance(value, str) or not value.strip() or len(value) > MAX_LENGTH: | if not isinstance(value, str) or len(value) > MAX_LENGTH: | empty and whitespace surnames are accepted
+gwt_fetch/variants.py | ("ph", "f"), ("f", "ph") | ("ph", "ph"), ("f", "f") | ph and f are not suggested in either direction
+
+gwt_fetch/variants.py | path = os.path.realpath(os.path.abspath(os.path.expanduser(path))) | path = path | local config paths must be normalized before opening
