@@ -22,10 +22,12 @@ def decision_complexity(node):
 
 def test_homonym_complexity_stays_outside_run_checks():
     module = ast.parse(inspect.getsource(checks))
-    run_checks = next(n for n in module.body if isinstance(n, ast.FunctionDef) and n.name == 'run_checks')
-    assert decision_complexity(run_checks) <= 401
+    functions = {n.name: n for n in module.body if isinstance(n, ast.FunctionDef)}
+    run_checks = functions['run_checks']
+    assert decision_complexity(run_checks) <= 373
     helpers = [n for n in module.body if isinstance(n, ast.FunctionDef) and n.name.startswith('_homonym_')]
-    accumulator = next(n for n in module.body if isinstance(n, ast.ClassDef) and n.name == '_HomonymBirthGaps')
+    classes = {n.name: n for n in module.body if isinstance(n, ast.ClassDef)}
+    accumulator = classes['_HomonymBirthGaps']
     helpers += [n for n in accumulator.body if isinstance(n, ast.FunctionDef)]
     assert helpers
     assert all(decision_complexity(n) <= 12 for n in helpers)

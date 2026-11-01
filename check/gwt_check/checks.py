@@ -359,6 +359,44 @@ class _HomonymBirthGaps:
                              "group summary, not a complete pair listing")
 
 
+def _check_same_name_groups(P, E, out, in_scope, births, kin, compatible, parent_and_child):
+    """Keep scoped duplicate and homonym decisions outside the whole-tree checker."""
+    names: dict[str, list] = defaultdict(list)
+    for p in P.values():
+        n = person_name(p)
+        if len(n.split()) >= 2:  # a lone first name matches half the tree
+            names[n].append(p)
+    for n, group in names.items():
+        if len(group) < 2 or not any(in_scope("people", p["handle"]) for p in group):
+            continue
+        group = sorted(group, key=lambda p: id_order(p["gramps_id"]))
+        homonyms = _HomonymBirthGaps(group, E, out)
+        facts = {p["handle"]: (births(p), *kin(p)) for p in group}
+        scoped = {p["handle"] for p in group if in_scope("people", p["handle"])}
+        for i, p in enumerate(group):
+            ph = p["handle"]
+            bp, pp, sp, cp = facts[ph]
+            for q in group[i + 1:]:
+                qh = q["handle"]
+                if not (ph in scoped or qh in scoped):
+                    continue
+                if homonyms.record_gap(p, q):
+                    continue  # homonym guard: do not emit same-name duplicate hints
+                bq, pq, sq, cq = facts[qh]
+                pair = ",".join(sorted((p["gramps_id"], q["gramps_id"])))
+                if bp and bq and compatible(bp, bq):
+                    out.add("dup-person-birth", pair, n)
+                years_differ = bp and bq and not ({x[0] for x in bp} & {x[0] for x in bq})
+                # a shared relative proves nothing when one is the other's parent; a shared birth date still does
+                if (pp & pq or sp & sq or cp & cq) and not years_differ \
+                        and not parent_and_child(p["handle"], q["handle"]):
+                    why = "same parent" if pp & pq else "same spouse" if sp & sq else "same child"
+                    out.add("dup-person-relative", pair, f"{n}, {why}")
+
+        homonyms.report(n)
+
+
+
 def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
                root: str | None = None) -> tuple[list[dict], dict]:
     """Structural checks over the whole tree; duplicate checks need one object of each pair in scope.
@@ -586,39 +624,7 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
         """A person is never their own parent: a father and a son with one name are two people."""
         return a in parent_handles(P[b]) or b in parent_handles(P[a])
 
-    names: dict[str, list] = defaultdict(list)
-    for p in P.values():
-        n = person_name(p)
-        if len(n.split()) >= 2:  # a lone first name matches half the tree
-            names[n].append(p)
-    for n, group in names.items():
-        if len(group) < 2 or not any(in_scope("people", p["handle"]) for p in group):
-            continue
-        group = sorted(group, key=lambda p: id_order(p["gramps_id"]))
-        homonyms = _HomonymBirthGaps(group, E, out)
-        facts = {p["handle"]: (births(p), *kin(p)) for p in group}
-        scoped = {p["handle"] for p in group if in_scope("people", p["handle"])}
-        for i, p in enumerate(group):
-            ph = p["handle"]
-            bp, pp, sp, cp = facts[ph]
-            for q in group[i + 1:]:
-                qh = q["handle"]
-                if not (ph in scoped or qh in scoped):
-                    continue
-                if homonyms.record_gap(p, q):
-                    continue  # homonym guard: do not emit same-name duplicate hints
-                bq, pq, sq, cq = facts[qh]
-                pair = ",".join(sorted((p["gramps_id"], q["gramps_id"])))
-                if bp and bq and compatible(bp, bq):
-                    out.add("dup-person-birth", pair, n)
-                years_differ = bp and bq and not ({x[0] for x in bp} & {x[0] for x in bq})
-                # a shared relative proves nothing when one is the other's parent; a shared birth date still does
-                if (pp & pq or sp & sq or cp & cq) and not years_differ \
-                        and not parent_and_child(p["handle"], q["handle"]):
-                    why = "same parent" if pp & pq else "same spouse" if sp & sq else "same child"
-                    out.add("dup-person-relative", pair, f"{n}, {why}")
-
-        homonyms.report(n)
+    _check_same_name_groups(P, E, out, in_scope, births, kin, compatible, parent_and_child)
 
     # the same person written with an extra given name or surname: «Vicente» and «Miguel Vicente»
     def tokens(s: str) -> frozenset:
