@@ -232,6 +232,265 @@ def _ask_server(server, client: Client, args):
     return server.living_diff(client, list(tree.objs["people"].values()), tree.objs["events"])
 
 
+def _command_server(args):
+    from . import server
+    client = _client(args)
+    try:
+        res = _ask_server(server, client, args)
+    except ApiError as exc:  # a 404 for a handle that is not in the tree, a 403 for a login without the role
+        raise BadInput(str(exc)) from exc
+    print(json.dumps(res, ensure_ascii=False, indent=1))
+    return 1 if args.what == "living" and res["server_only"] else 0
+
+def _command_timeline(args):
+    from .timeline import timeline
+    print(json.dumps(timeline(_client(args), args.handles, args.limit), ensure_ascii=False, indent=1))
+    return 0
+
+def _command_selftest(_args):
+    from .selftest import selftest
+    return selftest(verbose=True)
+
+def _command_mark_known(args):
+    return mark_known(args.report, args.check, args.key, args.reason, args.out)
+
+def _command_dump(args):
+    save(live_dump(args), args.out)
+    return 0
+
+def _command_links(args):
+    from .links import link_report, print_links
+    tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
+    if tree.partial:
+        raise BadInput(f"{tree.source}: a .gramps backup has no citation text; use a dump")
+    rep = link_report(tree)
+    if args.json:
+        print(json.dumps(rep, ensure_ascii=False, indent=1))
+    else:
+        print_links(rep, args.limit, args.level)
+    return 0
+
+def _command_act(args):
+    from .act import compare_act, load_act, print_act
+    act = load_act(args.actfile)
+    tree = load(args.tree)
+    if tree.partial:
+        raise BadInput(f"{tree.source}: a .gramps backup has no citation text; use a dump")
+    rep = compare_act(tree, act, args.person)
+    if args.json:
+        print(json.dumps(rep, ensure_ascii=False, indent=1))
+    else:
+        print_act(rep, args.limit)
+    return 0
+
+def _command_act_media(args):
+    from .actmedia import media_report, print_media
+    rep = media_report(load(args.tree), args.person, args.event)
+    if args.json:
+        print(json.dumps(rep, ensure_ascii=False, indent=1))
+    else:
+        print_media(rep, args.limit)
+    return 0
+
+def _command_republican(args):
+    from .republican import print_republican, republican_report
+    tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
+    if tree.partial:
+        raise BadInput(f"{tree.source}: a .gramps backup has no note text; use a dump")
+    rep = republican_report(tree)
+    if args.json:
+        print(json.dumps(rep, ensure_ascii=False, indent=1))
+    else:
+        print_republican(rep)
+    return 1 if rep["differs"] or rep["unreadable"] else 0
+
+def _command_public(args):
+    from .public import print_public, public_report
+    owner, guest = load(args.owner), load(args.guest)
+    if owner.partial or guest.partial:
+        raise BadInput("a .gramps backup has no private marks or texts; use dumps")
+    rep = public_report(owner, guest)
+    if args.json:
+        print(json.dumps(rep, ensure_ascii=False, indent=1))
+    else:
+        print_public(rep, args.limit or len(rep["rows"]))
+    return 1 if rep["leaks"] else 0
+
+def _command_cites(args):
+    from .cites import cites_report, print_cites
+    tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
+    if tree.partial:
+        raise BadInput(f"{tree.source}: a .gramps backup has no citation pages; use a dump")
+    rep = cites_report(tree)
+    if args.json:
+        print(json.dumps(rep, ensure_ascii=False, indent=1))
+    else:
+        print_cites(rep)
+    return 0
+
+def _command_cite_gaps(args):
+    from .citegaps import print_gaps, propose_citations, write_ops
+    tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
+    if tree.partial:
+        raise BadInput(f"{tree.source}: a .gramps backup has no citation text; use a dump")
+    rep = propose_citations(tree)
+    if args.ops:
+        try:
+            n = write_ops(rep, args.ops)
+        except OSError as exc:
+            raise BadInput(f"{args.ops}: {exc} (an existing file is never replaced)") from exc
+        print(f"{n} ops written to {args.ops} with an empty ruling; nothing was applied", file=sys.stderr)
+    if args.json:
+        print(json.dumps(rep, ensure_ascii=False, indent=1))
+    else:
+        print_gaps(rep, args.limit)
+    return 0
+
+def _command_fill_places(args):
+    from .fill import print_places, propose_places, write_ops
+    tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
+    if tree.partial:
+        raise BadInput(f"{tree.source}: a .gramps backup has no citation text; use a dump")
+    rep = propose_places(tree)
+    if args.ops:
+        try:
+            n = write_ops(rep, args.ops)
+        except OSError as exc:
+            raise BadInput(f"{args.ops}: {exc} (an existing file is never replaced)") from exc
+        print(f"{n} ops written to {args.ops} with an empty ruling; nothing was applied", file=sys.stderr)
+    if args.json:
+        print(json.dumps(rep, ensure_ascii=False, indent=1))
+    else:
+        print_places(rep, args.limit)
+    return 0
+
+def _command_insight(args):
+    from .insight import SECTIONS, dumps, insight, print_insight
+    only = set(args.only.split(",")) if args.only else None
+    if only and only - set(SECTIONS):
+        raise BadInput(f"unknown section: {', '.join(sorted(only - set(SECTIONS)))}")
+    tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
+    if tree.partial:
+        raise BadInput(f"{tree.source}: a .gramps backup has no details; use a dump")
+    rep = insight(tree, only)
+    if args.json:
+        print(dumps(rep))
+    else:
+        print_insight(rep, args.limit)
+    return 0
+
+def _repository_suggestions(args, tree):
+    from .repos import print_suggestions, suggest_links, write_link_ops
+    rep = suggest_links(tree)
+    if args.ops:
+        try:
+            n = write_link_ops(rep, args.ops)
+        except OSError as exc:
+            raise BadInput(f"{args.ops}: {exc} (an existing file is never replaced)") from exc
+        print(f"{n} ops written to {args.ops} with an empty ruling; nothing was applied", file=sys.stderr)
+    if args.json:
+        json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)
+        print()
+    else:
+        print_suggestions(rep, args.limit)
+    return 0
+
+
+def _command_repos(args):
+    from .repos import print_repository_report, repository_report
+    if args.classify and (args.name or args.rtype or args.unlinked):
+        raise BadInput("--classify stands alone; it takes no --name, --type or --unlinked")
+    tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
+    if tree.partial:
+        raise BadInput(f"{tree.source}: a .gramps backup has no repository details; use a dump")
+    if args.classify and args.suggest:
+        raise BadInput("--classify and --suggest are two different reports; pick one")
+    if args.classify:
+        from .repos import classify_repositories, print_classification
+        rep = classify_repositories(tree)
+        if args.json:
+            json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)
+            print()
+        else:
+            print_classification(rep, args.limit)
+        return 0
+    if args.suggest:
+        return _repository_suggestions(args, tree)
+    if args.ops:
+        raise BadInput("--ops goes with --suggest")
+    rep = repository_report(tree, name=args.name, rtype=args.rtype)
+    if args.json:
+        json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)
+        print()
+    else:
+        print_repository_report(rep, unlinked=args.unlinked, limit=args.limit)
+    return 0
+
+COMMAND_HANDLERS = {
+    'server': _command_server,
+    'timeline': _command_timeline,
+    'selftest': _command_selftest,
+    'mark-known': _command_mark_known,
+    'dump': _command_dump,
+    'links': _command_links,
+    'act': _command_act,
+    'act-media': _command_act_media,
+    'republican': _command_republican,
+    'public': _command_public,
+    'cites': _command_cites,
+    'cite-gaps': _command_cite_gaps,
+    'fill-places': _command_fill_places,
+    'insight': _command_insight,
+    'repos': _command_repos,
+}
+
+
+def _known_and_seed(args):
+    known = load_known(args.known) if args.known else None
+    seed = None
+    if args.from_tree:
+        if args.tree or args.live:
+            raise BadInput("--from refreshes a saved tree from the live one; it takes no TREE and no --live")
+        seed = load(args.from_tree)
+        if seed.partial:
+            raise BadInput(f"--from {args.from_tree}: a .gramps backup has no objects to start from; use a dump")
+    base = load(args.baseline) if args.baseline else seed if seed is not None and not args.known else None
+    if base is not None:
+        if base.partial:
+            raise BadInput(f"{args.baseline or args.from_tree}: a .gramps backup has no objects to check; "
+                           "--baseline needs a dump")
+        old = check(base)["findings"]
+        known = {**{(f["check"], f["key"]): "" for f in old}, **(known or {})}
+    return known, seed
+
+
+def _filter_settled_report(args, data, report, seen, persistent):
+    if not args.tree and "passes" in data:
+        report["passes"] = data["passes"]
+        if data.get("settled"):
+            unconfirmed = (seen[-1] & seen[-2]) - seen[-3]
+            keep = lambda fs: [f for f in fs if f["info"]  # noqa: E731
+                               or (f["check"], f["key"]) in persistent[-1] | unconfirmed]
+            report["in_flight"] = len(report["findings"]) - len(keep(report["findings"]))
+            report["findings"], report["new"] = keep(report["findings"]), keep(report["new"])
+            for f in report["findings"]:
+                if (f["check"], f["key"]) in unconfirmed:
+                    f["unconfirmed"] = True
+
+
+def _print_check_report(args, report):
+    if args.json == "-":
+        json.dump(report, sys.stdout, ensure_ascii=False, indent=1)
+        print()
+    else:
+        print_report(report, args.limit)
+        print(f"read {report['seconds']['read']} s, checks {report['seconds']['check']} s")
+        if args.json:
+            with open(args.json, "w", encoding="utf-8") as fh:
+                json.dump(report, fh, ensure_ascii=False, indent=1)
+    return 1 if report["new"] else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="gwt-check", description="Read-only checks of a whole Gramps Web tree.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -307,6 +566,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="print the result as JSON")
     p.add_argument("--limit", type=int, default=30, help="people printed (default 30)")
 
+    p = sub.add_parser("act-media", help="media on a person's events (event, citation, person, source kept apart), transcription notes and a file name proposal; a report that changes nothing, renames nothing")
+    p.add_argument("tree", help="dump file or gwt-apply snapshot (local, read only; the live tree is never read)")
+    p.add_argument("--person", action="append", required=True, metavar="GRAMPS_ID", help="a cited person (repeatable); nothing is searched by name")
+    p.add_argument("--event", action="append", metavar="GRAMPS_ID", help="only this own event of the named persons (repeatable); default: all their own events")
+    p.add_argument("--json", action="store_true", help="print the result as JSON, with the exact object references")
+    p.add_argument("--limit", type=int, default=30, help="person/event rows printed (default 30)")
+
     p = sub.add_parser("cites", help="events cited by another kind of act or a marginal mention; a report, never fails")
     p.add_argument("tree", nargs="?", help="dump file; without it the live tree is read")
     p.add_argument("--json", action="store_true", help="print the result as JSON")
@@ -365,192 +631,12 @@ def main(argv: list[str] | None = None) -> int:
 
     args = ap.parse_args(argv)
     try:
-        if args.cmd == "server":
-            from . import server
-            client = _client(args)
-            try:
-                res = _ask_server(server, client, args)
-            except ApiError as exc:  # a 404 for a handle that is not in the tree, a 403 for a login without the role
-                raise BadInput(str(exc)) from exc
-            print(json.dumps(res, ensure_ascii=False, indent=1))
-            return 1 if args.what == "living" and res["server_only"] else 0
-        if args.cmd == "timeline":
-            from .timeline import timeline
-            print(json.dumps(timeline(_client(args), args.handles, args.limit), ensure_ascii=False, indent=1))
-            return 0
-        if args.cmd == "selftest":
-            from .selftest import selftest
-            return selftest(verbose=True)
-        if args.cmd == "mark-known":
-            return mark_known(args.report, args.check, args.key, args.reason, args.out)
-        if args.cmd == "dump":
-            save(live_dump(args), args.out)
-            return 0
-        if args.cmd == "links":
-            from .links import link_report, print_links
-            tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
-            if tree.partial:
-                raise BadInput(f"{tree.source}: a .gramps backup has no citation text; use a dump")
-            rep = link_report(tree)
-            if args.json:
-                print(json.dumps(rep, ensure_ascii=False, indent=1))
-            else:
-                print_links(rep, args.limit, args.level)
-            return 0
-        if args.cmd == "act":
-            from .act import compare_act, load_act, print_act
-            act = load_act(args.actfile)
-            tree = load(args.tree)
-            if tree.partial:
-                raise BadInput(f"{tree.source}: a .gramps backup has no citation text; use a dump")
-            rep = compare_act(tree, act, args.person)
-            if args.json:
-                print(json.dumps(rep, ensure_ascii=False, indent=1))
-            else:
-                print_act(rep, args.limit)
-            return 0
-        if args.cmd == "republican":
-            from .republican import print_republican, republican_report
-            tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
-            if tree.partial:
-                raise BadInput(f"{tree.source}: a .gramps backup has no note text; use a dump")
-            rep = republican_report(tree)
-            if args.json:
-                print(json.dumps(rep, ensure_ascii=False, indent=1))
-            else:
-                print_republican(rep)
-            return 1 if rep["differs"] or rep["unreadable"] else 0
-
-
-        if args.cmd == "public":
-            from .public import print_public, public_report
-            owner, guest = load(args.owner), load(args.guest)
-            if owner.partial or guest.partial:
-                raise BadInput("a .gramps backup has no private marks or texts; use dumps")
-            rep = public_report(owner, guest)
-            if args.json:
-                print(json.dumps(rep, ensure_ascii=False, indent=1))
-            else:
-                print_public(rep, args.limit or len(rep["rows"]))
-            return 1 if rep["leaks"] else 0
-        if args.cmd == "cites":
-            from .cites import cites_report, print_cites
-            tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
-            if tree.partial:
-                raise BadInput(f"{tree.source}: a .gramps backup has no citation pages; use a dump")
-            rep = cites_report(tree)
-            if args.json:
-                print(json.dumps(rep, ensure_ascii=False, indent=1))
-            else:
-                print_cites(rep)
-            return 0
-        if args.cmd == "cite-gaps":
-            from .citegaps import print_gaps, propose_citations, write_ops
-            tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
-            if tree.partial:
-                raise BadInput(f"{tree.source}: a .gramps backup has no citation text; use a dump")
-            rep = propose_citations(tree)
-            if args.ops:
-                try:
-                    n = write_ops(rep, args.ops)
-                except OSError as exc:
-                    raise BadInput(f"{args.ops}: {exc} (an existing file is never replaced)") from exc
-                print(f"{n} ops written to {args.ops} with an empty ruling; nothing was applied", file=sys.stderr)
-            if args.json:
-                print(json.dumps(rep, ensure_ascii=False, indent=1))
-            else:
-                print_gaps(rep, args.limit)
-            return 0
-        if args.cmd == "fill-places":
-            from .fill import print_places, propose_places, write_ops
-            tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
-            if tree.partial:
-                raise BadInput(f"{tree.source}: a .gramps backup has no citation text; use a dump")
-            rep = propose_places(tree)
-            if args.ops:
-                try:
-                    n = write_ops(rep, args.ops)
-                except OSError as exc:
-                    raise BadInput(f"{args.ops}: {exc} (an existing file is never replaced)") from exc
-                print(f"{n} ops written to {args.ops} with an empty ruling; nothing was applied", file=sys.stderr)
-            if args.json:
-                print(json.dumps(rep, ensure_ascii=False, indent=1))
-            else:
-                print_places(rep, args.limit)
-            return 0
-        if args.cmd == "insight":
-            from .insight import SECTIONS, dumps, insight, print_insight
-            only = set(args.only.split(",")) if args.only else None
-            if only and only - set(SECTIONS):
-                raise BadInput(f"unknown section: {', '.join(sorted(only - set(SECTIONS)))}")
-            tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
-            if tree.partial:
-                raise BadInput(f"{tree.source}: a .gramps backup has no details; use a dump")
-            rep = insight(tree, only)
-            if args.json:
-                print(dumps(rep))
-            else:
-                print_insight(rep, args.limit)
-            return 0
-        if args.cmd == "repos":
-            from .repos import print_repository_report, repository_report
-            if args.classify and (args.name or args.rtype or args.unlinked):
-                raise BadInput("--classify stands alone; it takes no --name, --type or --unlinked")
-            tree = load(args.tree) if args.tree else Tree(live_dump(args)["objects"], source="live tree")
-            if tree.partial:
-                raise BadInput(f"{tree.source}: a .gramps backup has no repository details; use a dump")
-            if args.classify and args.suggest:
-                raise BadInput("--classify and --suggest are two different reports; pick one")
-            if args.classify:
-                from .repos import classify_repositories, print_classification
-                rep = classify_repositories(tree)
-                if args.json:
-                    json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)
-                    print()
-                else:
-                    print_classification(rep, args.limit)
-                return 0
-            if args.suggest:
-                from .repos import print_suggestions, suggest_links, write_link_ops
-                rep = suggest_links(tree)
-                if args.ops:
-                    try:
-                        n = write_link_ops(rep, args.ops)
-                    except OSError as exc:
-                        raise BadInput(f"{args.ops}: {exc} (an existing file is never replaced)") from exc
-                    print(f"{n} ops written to {args.ops} with an empty ruling; nothing was applied", file=sys.stderr)
-                if args.json:
-                    json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)
-                    print()
-                else:
-                    print_suggestions(rep, args.limit)
-                return 0
-            if args.ops:
-                raise BadInput("--ops goes with --suggest")
-            rep = repository_report(tree, name=args.name, rtype=args.rtype)
-            if args.json:
-                json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)
-                print()
-            else:
-                print_repository_report(rep, unlinked=args.unlinked, limit=args.limit)
-            return 0
+        handler = COMMAND_HANDLERS.get(args.cmd)
+        if handler is not None:
+            return handler(args)
         check_names(set(args.ignore_check))  # before a dump that can take minutes
         t0 = time.monotonic()
-        known = load_known(args.known) if args.known else None
-        seed = None
-        if args.from_tree:
-            if args.tree or args.live:
-                raise BadInput("--from refreshes a saved tree from the live one; it takes no TREE and no --live")
-            seed = load(args.from_tree)
-            if seed.partial:
-                raise BadInput(f"--from {args.from_tree}: a .gramps backup has no objects to start from; use a dump")
-        base = load(args.baseline) if args.baseline else seed if seed is not None and not args.known else None
-        if base is not None:
-            if base.partial:
-                raise BadInput(f"{args.baseline or args.from_tree}: a .gramps backup has no objects to check; "
-                               "--baseline needs a dump")
-            old = check(base)["findings"]
-            known = {**{(f["check"], f["key"]): "" for f in old}, **(known or {})}
+        known, seed = _known_and_seed(args)
         since = load(args.since) if args.since else None
         run = lambda tree: check(tree, since=since, tag=args.tag, root=args.root, known=known,  # noqa: E731
                                  ignore=set(args.ignore_check))
@@ -578,31 +664,13 @@ def main(argv: list[str] | None = None) -> int:
             tree = Tree(data["objects"], source="live tree")
         t1 = time.monotonic()
         report = run(tree)
-        if not args.tree and "passes" in data:
-            report["passes"] = data["passes"]
-            if data.get("settled"):
-                unconfirmed = (seen[-1] & seen[-2]) - seen[-3]
-                keep = lambda fs: [f for f in fs if f["info"]  # noqa: E731
-                                   or (f["check"], f["key"]) in persistent[-1] | unconfirmed]
-                report["in_flight"] = len(report["findings"]) - len(keep(report["findings"]))
-                report["findings"], report["new"] = keep(report["findings"]), keep(report["new"])
-                for f in report["findings"]:
-                    if (f["check"], f["key"]) in unconfirmed:
-                        f["unconfirmed"] = True
+        if not args.tree:
+            _filter_settled_report(args, data, report, seen, persistent)
         report["seconds"] = {"read": round(t1 - t0, 1), "check": round(time.monotonic() - t1, 1)}
     except BadInput as exc:
         print(f"gwt-check: {exc}", file=sys.stderr)
         return 2
-    if args.json == "-":
-        json.dump(report, sys.stdout, ensure_ascii=False, indent=1)
-        print()
-    else:
-        print_report(report, args.limit)
-        print(f"read {report['seconds']['read']} s, checks {report['seconds']['check']} s")
-        if args.json:
-            with open(args.json, "w", encoding="utf-8") as fh:
-                json.dump(report, fh, ensure_ascii=False, indent=1)
-    return 1 if report["new"] else 0
+    return _print_check_report(args, report)
 
 
 if __name__ == "__main__":
