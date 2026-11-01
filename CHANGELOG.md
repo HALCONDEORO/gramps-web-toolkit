@@ -8,6 +8,8 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
+- `gwt-fetch notarial-plan`: offline candidate research chains for a locality and inclusive year period from user-supplied public catalogue JSON. Preserves office identities and references, reports catalogue gaps, overlaps and unknown dates, and never infers a found contract or kinship. Offline fetch commands bypass the network client.
+
 - `gwt-apply` `merge_source`: merges two sources that are one register entered twice, with Gramps' own merge. The dry run names every citation that moves; a loser whose title, author, publication info or abbreviation differs is a conflict, so no text is lost. It answers `dup-source-ark` findings.
 - `gwt-fetch touraine search --table`: lists the registers of a place in the site's table mode sorted by cote, with the ark and the cote in the same row (20, 40 or 80 rows a page).
 - `gwt-fetch boe search` and `boe fetch` search and download the BOE from 1960 onwards, which `gazeta` does not cover. `gazeta fetch` also reads the PDF link of modern documents. A date with non-ASCII digits or a blank `--text`/`--title` is refused with exit 2, and the form's error box exits 2 instead of printing 0 results.
@@ -252,3 +254,5 @@ Lists written for the first public commit of `gwt-apply` behave differently in t
 - `gwt-ledger`: a shared catalogue prefix no longer hides a different search, an unreadable ledger exits 2, and non-Latin and blocked queries are found again.
 - `gwt-gate`: a dead session or a permission refusal is no longer reported as a rate limit.
 - `gwt-leads`, `gwt-rank`, `gwt-import-excel` and `gwt-queue`: fixes to living-person detection, surname-first rows and lease handling.
+
+- Notarial planner rejects duplicate JSON keys and non-JSON constants before planning.

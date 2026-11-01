@@ -2,7 +2,7 @@
 
 A research agent that opens a browser to save a register page is slow and leaves no trace of where the file came from. `gwt-fetch` downloads the file straight from the portal and writes one `manifest.tsv` row per file, so every image in your tree can be traced back to its source URL and checksum.
 
-Python 3.11 or newer with `requests`. Run it as [`fetch/gwt-fetch`](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/fetch/gwt-fetch), symlinked onto your `PATH` if you like, or install the package (`pipx install gramps-web-toolkit`, see [Getting started](getting-started.md)) for `gwt fetch` and `gwt-fetch`. The code is in [`fetch/gwt_fetch/`](https://github.com/HALCONDEORO/gramps-web-toolkit/tree/main/fetch/gwt_fetch). Tests: `cd fetch && python3 -m pytest`.
+Python 3.11 or newer with `requests` for downloads. The offline `coverage` and `notarial-plan` commands use only the standard library. Run it as [`fetch/gwt-fetch`](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/fetch/gwt-fetch), symlinked onto your `PATH` if you like, or install the package (`pipx install gramps-web-toolkit`, see [Getting started](getting-started.md)) for `gwt fetch` and `gwt-fetch`. The code is in [`fetch/gwt_fetch/`](https://github.com/HALCONDEORO/gramps-web-toolkit/tree/main/fetch/gwt_fetch). Tests: `cd fetch && python3 -m pytest`.
 
 `iiif` works with any IIIF archive in any country. `digibib`, `gazeta`, `boe` and `geo` cover Spanish sources only. `europeana` searches every provider in any country; `--provider Hispana` narrows it to Spain.
 
@@ -17,6 +17,7 @@ gwt-fetch boe search (--text WORDS | --title WORDS) [--from YYYY-MM-DD] [--to YY
 gwt-fetch boe fetch BOE-A-YYYY-N [...] [--out DIR]
 gwt-fetch names Given/Surname1\ Surname2 [...] [--spell OTHER] [--source gazeta|boe] [--from Y-M-D] [--to Y-M-D] [--out DIR]
 gwt-fetch europeana QUERY [--provider any|NAME] [--data-provider NAME] [--country NAME] [--year-from Y] [--year-to Y] [--iiif-only] [--rows N]
+gwt-fetch notarial-plan CATALOGUE.json --locality PLACE --from YEAR --to YEAR
 gwt-fetch geo PLACE [...] [--types Municipio,poblacion] [--province NAME] [--limit N]
 gwt-fetch --delay 2 ...   # seconds between requests to one host, default 1
 ```
@@ -88,6 +89,57 @@ gwt-fetch coverage 240 --dir /tmp/reg              # files named NNNN_label.jpg 
 - It prints how many views were read, which ranges are missing, and a warning when every missing view is even (or odd) and every other one was read.
 - Exit 0 when every view was read, 1 when some are missing, 2 for a bad number, a view outside `1-total`, a backwards range or no `--read`/`--dir`.
 - `--dir` counts only non-empty files whose name starts with four or more digits and an underscore, leaving out the downloader's `.part` files. It does not check that a file is a complete image.
+
+## `notarial-plan`: local catalogue research chain
+
+Plan which supplied catalogue entries to consult for a locality and an inclusive year period. This command reads one local JSON file and prints one JSON object to stdout. It never constructs a network client, follows an archive reference, fetches an image, writes a file, or touches a tree. It works for any country; the input must be user-supplied public catalogue metadata, without family, customer or secret data.
+
+From a checkout, the invented fixture can be used directly:
+
+```bash
+fetch/gwt-fetch notarial-plan fetch/tests/data/notarial_catalogue.json \
+  --locality Villaejemplo --from 1800 --to 1806
+```
+
+The file has this shape (all names and references here are invented):
+
+```json
+{
+  "format": "gwt-notarial-catalogue/1",
+  "entries": [
+    {
+      "id": "CAT-A",
+      "locality": "Villaejemplo",
+      "notary": "NotarioEjemplo",
+      "office": "OfficeAlfa",
+      "archive_ref": "ArchivoEjemplo/REF-A",
+      "cote": "COTE-A",
+      "start": 1798,
+      "end": 1802,
+      "certainty": "exact"
+    }
+  ]
+}
+```
+
+Every entry requires a unique nonblank `id`, nonblank `locality`, `notary`, `office`, `archive_ref` and `cote`, both date keys, and `certainty` (`exact` or `uncertain`). Years are integers from 1 to 9999, inclusive; an unknown endpoint is `null`. Optional `date_text` preserves a literal catalogue date such as `about 1803-1805`. Mark approximate, estimated or disputed dates `uncertain`; text is never parsed into exact coverage. Reversed ranges, duplicate IDs, missing references and malformed values exit 2 without a partial plan. An empty entries list is valid.
+
+Only whole locality names match, ignoring case, accents and outer whitespace through the existing place helper, with the shared Unicode-preserving normalizer guarding letters the Spanish helper drops. There is no fuzzy, nearby-place or jurisdiction inference. For places sharing a name, supply distinct qualified locality labels and query the intended one. Office identity comes only from the supplied `office` value: no succession, transfer, continuity or same-name identity is inferred. Each row stays separate with its original metadata; two entries naming the same notary in OfficeAlfa and OfficeBeta remain two candidates.
+
+The complete fixture supplies these entries:
+
+| ID | Office | Inclusive dates | Certainty | Archive reference | Cote |
+|---|---|---|---|---|---|
+| CAT-A | OfficeAlfa | 1798–1802 | exact | ArchivoEjemplo/REF-A | COTE-A |
+| CAT-B | OfficeBeta | 1802–1803 | exact | ArchivoEjemplo/REF-B | COTE-B |
+| CAT-C | OfficeAlfa | 1805–1810 | exact | ArchivoEjemplo/REF-C | COTE-C |
+| CAT-U | OfficeBeta | about 1803–1805 | uncertain | ArchivoEjemplo/REF-U | COTE-U |
+
+For 1800–1806, `chain` orders CAT-A (1800–1802), CAT-B (1802–1803), CAT-C (1805–1806), then CAT-U (unknown search period). Exact rows entirely outside the requested period are omitted. Uncertain or partly undated rows for the locality remain candidates requiring date verification, even when their tentative bounds are outside the period; those bounds cannot safely exclude them.
+
+`catalogue_coverage` is `1800-1803,1805-1806`; `catalogue_gaps` is `1804`. Both reuse the existing inclusive-range helpers. `overlaps` identifies 1802 with CAT-A and CAT-B; adjacent overlap segments combine only when their catalogue IDs agree. `unknown_coverage` lists CAT-U, whose tentative dates never fill 1804. Gaps are years without exact coverage in the supplied metadata, not evidence that records were lost or never existed. With no matching entries, the entire period is a catalogue gap.
+
+Every chain entry has `status: "candidate"`, its clipped `search_period` (or `null`), the original `metadata`, supplied references and a `next_step`. Ordering is chronological, then office and ID, with unknown dates last; it is a search itinerary, not a claim that one office succeeded another. Consult the supplied references and record literal evidence yourself. Catalogue coverage never establishes that a contract was found, or supports marriage or parentage. There is no person matching, inferred relationship or queue/tree write. Exit 0 means a valid plan, including gaps or no candidates; input errors exit 2.
 
 ## `digibib`: DIGIBIB viewers without IIIF
 
@@ -194,3 +246,5 @@ From the awesome-spain list (https://github.com/GeiserX/awesome-spain):
 - **spanish-names-surnames** (INE name and surname frequencies): not a fetch source. It may help a name-normalising step later.
 - **boe-mcp, MCP-BOE, rOpenSpain/BOE, Datania BOE**: they wrap the modern BOE open data API, which does not cover the Gazeta collection. `gazeta` is the part that does.
 - **API-CNIG, mapSpain, es-atlas**: map display and boundaries, outside what fetch does.
+
+Notarial catalogue JSON rejects duplicate keys at every nesting level and NaN/Infinity constants before output (exit2).
