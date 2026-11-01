@@ -8,6 +8,7 @@ for both, so `boe fetch` is `gazeta fetch`.
 from __future__ import annotations
 
 import datetime
+import html
 import re
 import sys
 from urllib.parse import urljoin
@@ -19,7 +20,7 @@ SEARCH = BASE + "/buscar/boe.php"
 COLUMNS = ["ref", "date", "number", "department", "title", "doc_url"]
 MAX_LIMIT = HITS[-1]
 ISO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")  # ASCII digits only: \d also reads Arabic-Indic digits, which the form refuses
-REFUSED = re.compile(r"valores de b[uú]squeda enviados son incorrectos", re.I)
+REFUSED = re.compile(r"valores\s+de\s+b\S{1,12}squeda\s+enviados\s+son\s+incorrectos", re.I)
 
 
 class SearchRefused(RuntimeError):
@@ -95,7 +96,7 @@ def parse_results(page: str) -> list[dict]:
 def search(client, **kw) -> list[dict]:
     page = client.get(SEARCH, params=search_params(**kw))
     page.raise_for_status()
-    if REFUSED.search(page.text):
+    if REFUSED.search(html.unescape(html.unescape(page.text))):  # the page writes b&amp;uacute;squeda: twice escaped
         raise SearchRefused("boe.es refused the search values (its error box), so this is not a result of 0")
     return parse_results(page.text)[: kw.get("limit") or None]
 

@@ -32,3 +32,5 @@ gwt_fetch/boe.py | ISO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}") | ISO = re.co
 gwt_fetch/boe.py |     if REFUSED.search(page.text): |     if False: | the error box of the search form is read as 0 results
 gwt_fetch/boe.py |         except SearchRefused as e: |         except KeyError as e: | a refused search is not caught and exits with a traceback path instead of 2
 gwt_fetch/boe.py |         if value is not None and not value.strip(): |         if False: | a blank --text or --title starts a broad search
+gwt_fetch/boe.py | REFUSED.search(html.unescape(html.unescape(page.text))) | REFUSED.search(page.text) | the box is looked for in the escaped HTML, where b&amp;uacute;squeda never matches
+gwt_fetch/boe.py | REFUSED.search(html.unescape(html.unescape(page.text))) | REFUSED.search(html.unescape(page.text)) | the box is unescaped once, and the page escapes the entity twice

@@ -603,3 +603,13 @@ def test_boe_search_page_without_results_and_without_the_box_is_still_zero(capsy
     assert boe.run(_boe_args(), FakeClient({boe.SEARCH: Resp("<html>nada</html>")})) == 0
     assert "0 result(s)" in capsys.readouterr().err
 
+
+
+ERROR_BOX_REAL = ('<div class="mensajeError"><p>Los valores de b&amp;uacute;squeda enviados son incorrectos.</p></div>'
+                  '<div>Los valores de b&uacute;squeda enviados son incorrectos</div>')
+
+
+@pytest.mark.parametrize("page", [ERROR_BOX_REAL, ERROR_BOX_REAL.split("</div>")[0], "<p>Los valores de b&uacute;squeda enviados son incorrectos</p>"])
+def test_boe_search_error_box_as_the_site_writes_it_with_html_entities(page, capsys):
+    assert boe.run(_boe_args(), FakeClient({boe.SEARCH: Resp(page)})) == 2
+    assert "result(s)" not in capsys.readouterr().err
