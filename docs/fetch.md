@@ -347,3 +347,7 @@ The caller must verify the original full image, citation and identity context.
 This module validates structure, not actual URL contents, access or source truth.
 Duplicate JSON fields and malformed metadata are refused before output (exit 2).
 Notarial catalogue JSON rejects duplicate keys at every nesting level and NaN/Infinity constants before output (exit2).
+
+Synthetic CLI result, rendered as a Spanish review card (not a browser or archive screenshot):
+
+![Synthetic index-locator review card](assets/index-locator-terminal-es.png)
