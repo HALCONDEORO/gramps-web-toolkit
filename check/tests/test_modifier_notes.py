@@ -144,3 +144,22 @@ def test_baseline_and_ignore_keep_finding_visible(tmp_path):
     assert main(["check", str(tree), "--known", str(known), "--ignore-check",
                  "date-modifier-note", "--json", str(report)]) == 0
     assert any(f["check"] == "date-modifier-note" for f in json.loads(report.read_text())["findings"])
+
+
+def test_multiple_citations_keep_stable_complete_evidence():
+    data = fixture(text="before1700")
+    event = selftest._get(data, "events", "E0001")
+    for index in (1, 2):
+        note = selftest._base(f"N080{index}", text="after1700")
+        citation = selftest._base(f"C080{index}", note_list=[note["handle"], "missing-note"])
+        data["notes"].append(note)
+        data["citations"].append(citation)
+        event.setdefault("citation_list", []).append(citation["handle"])
+    event["citation_list"].append("missing-citation")
+    original = copy.deepcopy(data)
+    [row] = findings(data, {("notes", "hN0802")})
+    assert row["detail"] == ("event E0001 date: before 1700; event E0001 note N0800: before 1700; "
+                             "citation C0801 note N0801: after 1700; citation C0802 note N0802: after 1700")
+    assert data == original
+    event["citation_list"].reverse()
+    assert findings(data, {("notes", "hN0802")}) == [row]

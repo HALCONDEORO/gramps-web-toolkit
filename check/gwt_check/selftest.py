@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 
 from . import compare
+from .report import check
 from .tree import Tree
 
 
@@ -594,8 +595,6 @@ TOGETHER_SKIP = (p_family_backlink, p_citation_no_source, p_ahnentafel_changed)
 
 
 def _run(data: dict, clean: dict):
-    from .cli import check  # late import: cli imports this module for the selftest command
-
     base = Tree(copy.deepcopy(clean), source="clean synthetic tree")
     report = check(Tree(data, source="planted synthetic tree"), since=base, root="I0001")
     got = {(f["check"], f["key"]) for f in report["findings"]}

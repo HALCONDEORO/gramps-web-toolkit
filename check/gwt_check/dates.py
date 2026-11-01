@@ -72,7 +72,8 @@ def _french(y: int, m: int, d: int) -> tuple[int, int] | None:
     return o, o
 
 
-def _label(y: int, m: int, d: int) -> str:
+def label(y: int, m: int, d: int) -> str:
+    """Format validated year/month/day parts, preserving missing month or day as precision."""
     return f"{y:04d}" + (f"-{m:02d}" if m else "") + (f"-{d:02d}" if m and d else "")
 
 
@@ -98,7 +99,7 @@ def span(date: dict | None) -> Span | None:
     if not first:
         return None
     lo, hi = first
-    text = ("fr " if french else "") + _label(y, mo, d)
+    text = ("fr " if french else "") + label(y, mo, d)
     slack = 366 * max(ABOUT_YEARS if mod == 3 or qual == 1 else 0, CALCULATED_YEARS if qual == 2 else 0)
     prefix = {1: "est. ", 2: "calc. "}.get(qual, "")
     if mod in (4, 5):
@@ -107,7 +108,7 @@ def span(date: dict | None) -> Span | None:
         second = _part(dv[6], dv[5], dv[4])
         if not second or second[1] < lo:
             return None
-        return Span(lo - slack, second[1] + slack, False, prefix + text + ".." + _label(dv[6], dv[5], dv[4]))
+        return Span(lo - slack, second[1] + slack, False, prefix + text + ".." + label(dv[6], dv[5], dv[4]))
     if mod == 1:
         return Span(-FAR, hi + slack, False, prefix + "before " + text)
     if mod == 2:
