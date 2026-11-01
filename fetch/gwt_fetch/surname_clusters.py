@@ -107,7 +107,7 @@ def main(argv=None):
         doc = json.loads(args.config.read_text(encoding="utf-8"),
                          object_pairs_hook=_unique_fields, parse_constant=_bad_constant)
         result = suggest(doc, args.alias)
-    except (OSError, UnicodeError, ValueError) as exc:
+    except (OSError, ValueError) as exc:
         print(f"gwt-surname-clusters: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=False))
