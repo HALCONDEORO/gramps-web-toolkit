@@ -440,17 +440,21 @@ def run_check(p, args, rows):
     return 0 if (scored if args.any_result else done) else 1
 
 
-def main(argv=None):
-    p = build_parser()
-    args = p.parse_args(argv)
-    if args.cmd in ('mark', 'query'):
-        return run_reading(p, args)
+def validate_lookup_args(p, args):
     # A query or person that normalizes to nothing (only punctuation, say) would match every row.
     for name in ('query', 'person'):
         value = getattr(args, name, None)
         if value is not None and not normalize(value):
             p.error(f'--{name} {value!r}: nothing left to match after normalising')
 
+
+
+def main(argv=None):
+    p = build_parser()
+    args = p.parse_args(argv)
+    if args.cmd in ('mark', 'query'):
+        return run_reading(p, args)
+    validate_lookup_args(p, args)
     if args.cmd == 'add':
         return run_add(p, args)
     try:
