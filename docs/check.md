@@ -76,7 +76,7 @@ It trusts the stamps for everything else. A change that reaches the database wit
 | `--pagesize`, `--workers` | Objects per request (default 1000) and requests in flight (default 4) |
 | `--live` | The old strict read of the live tree, which stops when the tree changes during it |
 
-**Scope.** The structural and dated checks always run on the whole tree. The scoped duplicate checks (`dup-couple-names`, `dup-person-birth`, `dup-person-relative`, `dup-person-fuzzy`, `dup-vital-event`, `dup-citation`, `dup-source-ark`, `dup-media`) report a group only when at least one member is in scope, so a run is not blamed for duplicates that were already there. `place-vs-description` reports only events in scope. Without `--since` or `--tag`, everything is in scope.
+**Scope.** `homonym-birth-gap` counts a pair only when at least one person is in scope. The structural and dated checks always run on the whole tree. The scoped duplicate checks (`dup-couple-names`, `dup-person-birth`, `dup-person-relative`, `dup-person-fuzzy`, `dup-vital-event`, `dup-citation`, `dup-source-ark`, `dup-media`) report a group only when at least one member is in scope, so a run is not blamed for duplicates that were already there. `place-vs-description` reports only events in scope. Without `--since` or `--tag`, everything is in scope.
 
 **Reasons.** Rows of a known file may carry a `reason`, and the report prints it (`known N0099: kept on purpose`). `gwt-check mark-known REPORT.json --check NAME --key KEY [--key KEY ...] --reason "..." --out known.json` adds findings of a report to a known file with the reason; it refuses a key the report does not have and a blank reason, and adding one twice changes nothing.
 
@@ -173,6 +173,21 @@ gwt-check act act.json dump.json.gz --json
 - The text output lists 30 people (`--limit`); `--json` has all of them.
 - The report quotes the tree, so it is as private as the tree.
 
+## Media, transcription and file names for an act (`act-media`)
+
+`gwt-check act-media DUMP --person GRAMPS_ID [--person ...] [--event GRAMPS_ID ...] [--json] [--limit N]` reports, for each own event (role Primary) of the persons you name, three separate answers. It reads a local dump or a `gwt-apply` snapshot only (never the live tree), writes nothing, renames nothing, and has no option that does. Gramps is the source of truth; an Excel workbook is an archived backup and is never read or overwritten here. It never sets the exit code for a gap; bad input (unknown person, an event that is not the person's own, a `.gramps` backup) exits `2`.
+
+- **`media`**: every media reference found, with the exact object that holds it (type, Gramps ID, handle, field), the media's ID, handle, path, mime type and description, and a linkage level. Only `event` (the event itself) and `event-citation` (a citation of the event) are candidates for that event's act, and even then the report says "unverified": no image is read. `person`, `person-citation`, `event-source` and `person-source` are listed apart and never counted as the act's capture; a register's media does not show that this act is attached. Several different media at the candidate levels are reported as ambiguous and none is chosen. "None in this dump" means the dump has no reference, not that no capture exists.
+- **`transcription`**: notes of type Transcript, or whose text says "transcripción literal", "transcription littérale" or "literal transcription", found at the same levels (also on the media found there). A Transcript note is reported as available but not checked for being literal; an untyped note that only claims it is "unverified"; an empty Transcript note does not count; a note only on the person, a person citation or a source is "indirect". The note text is never copied into the report, only its ID, handle and type.
+- **`filename`**: a proposed stem `person_event_date_ref_vue`, for example `lucia-ortega-sanz_birth_1900-03-01_cote-4e123_vue12`. The cote is read from `cote ...` in the page, title, publication info or attributes of a citation of the event and its source, or from the call number of the source's repository; the ark from `ark:/NNNNN/id` in the same places; the view from `vue N`, `view N` or `image N` in the page. Each part lists where it was read. The ark is used only when no cote is written. A part that is missing, contradictory (two cotes, two views), or a date that is about, before, estimated, not Gregorian, or without a year, is `unknown`: it is never invented and a conflict is never resolved. Only letters, digits and dashes are kept, the parts are capped and joined with `_`, so the stem is valid on Windows, macOS and Linux. It carries no extension. No file is looked for, so a stem may collide with an existing file; renaming is not implemented, and no backed-up execution exists.
+
+A private person, event, citation, source, media object or note is held back (its ID is listed under `held_back`, nothing else), and a handle the dump does not contain is listed as "not in the dump". The report quotes the tree, so it is as private as the tree.
+
+```sh
+gwt-check act-media dump.json.gz --person I0001
+gwt-check act-media dump.json.gz --person I0001 --person I0002 --event E0001 --json
+```
+
 ## Checking Republican conversions
 
 `gwt-check republican` reads the notes, citation pages and event descriptions of a dump or the live tree, finds every "`14 germinal an 13 = 04/04/1805`" (day in digits, month name, year in digits or Roman numerals, then an equals sign and a Gregorian day), recomputes the day with the count Gramps uses (years 1 to 14) and lists the ones that differ. It never writes. It exits `1` when a conversion differs or is not a Republican day, `0` otherwise.
@@ -216,6 +231,7 @@ gwt-check repos dump.json.gz --json                   # repositories with their 
 | `empty-family` | A family with no father, mother or child |
 | `dup-couple` | Two families with the same father and mother |
 | `dup-couple-names` | Two families whose couples are different people with the same two names |
+| `homonym-birth-gap` | For information only. Two people with the same normalized name whose possible Primary Birth dates are more than ten years apart; not a safe merge candidate |
 | `dup-person-birth` | Two people with the same name and a birth or baptism in the same year (day and month must not contradict) |
 | `dup-person-relative` | Two people with the same name and a parent, spouse or child of the same name, unless their birth years differ |
 | `dup-person-fuzzy` | Two people whose names differ only by an extra given name or surname (every word of the shorter given name is in the longer one, and the same for the surnames), born within 2 years of each other, or with a spouse or child of the same name, or a parent of the same name who is a different person. Siblings share their parents, so the same parent does not count. A pair is left out when each side is the birth child of a family with both a father and a mother, and the two fathers have different names and the two mothers have different names: those are namesakes, two people. Only the first family a person is a birth child of counts, and adoptive, step or foster parents never do. If a parent is missing in that family on either side, or one parent's name matches, the pair is still reported. The pairs left out are counted in the report (below) |
@@ -227,6 +243,7 @@ gwt-check repos dump.json.gz --json                   # repositories with their 
 | `dup-media` | Two media objects with the same checksum: the same file entered twice, often under another name. A media object whose file was never read has no checksum and is left out. A page scanned twice is two different files and is not found |
 | `dup-citation` | For information only. Two or more citations of one source with the same page text, ignoring case and repeated spaces (`folio 12v` and `folio 12` are different pages). Usually one record entered twice; merge them, or keep both with `--known` when they cite different entries on one page |
 | `dup-source-ark` | For information only. Two or more sources that name the same archive ark, in the title, abbreviation, publication info, an attribute or a note, written `ark:/NAAN/id` or `ark NAAN/id` (the id is at least 8 letters or digits; case is ignored). Usually one register entered twice. Check before you create a source for an ark, and merge the copies with an act and a backup; sources made one per act can share a register on purpose, so it is not a failure |
+| `date-modifier-note` | Contradictory explicit `before` / `after` bounds at the same boundary in an event date, an event note or a note of an attached citation. Modifier 1 is before; modifier 2 is after. Every conflicting origin and note ID is shown; neither event nor citation notes take precedence. Matching bounds stay quiet. No corrections or exact dates are proposed |
 | `date-false-precision` | For information only. An event date with the modifier `about` and the quality `estimated` together (it hedges twice), or with the quality `estimated` and a day (an estimate that claims a day nobody read). Both come from a date copied from a table or computed from an age. Say it once: `about` for a round figure, or `estimated` for a guess, and drop the day. `calculated` is a different statement and is left alone. Reports only events in scope |
 | `place-no-coords` | A place that an event uses, without latitude or longitude |
 | `place-vs-description` | For information only. An event whose description names another place of the tree (whole words, accents and case ignored, names under 4 letters skipped) and does not name its own place or one enclosing it. Typical cause: an import that attached the wrong place to a described event. Naming both is fine. A name is not counted when it is a given name or surname of someone on the event (a person who points at it, or either spouse of a family that does), or when it follows words that say where someone is from or lives: «natural de», «vecino del lugar de», «residente en», «domicilié à», «de la commune de», or a clause that opens with «de» after a comma, semicolon, colon, bracket or quote mark («Juan, de Otropueblo»), never after a dot, which may end «parr.» or «Sra.». On a residence those words name the event's own place, so they count there. «Parroquia de Otropueblo», «en la parr. de Otropueblo», «en la casa de Otropueblo» and «murió en su domicilio de Otropueblo» still count. It still reports a place that is only part of the name of someone who is not on the event, such as a parent, grandparent, godparent or priest («hijo de Juan de Otropueblo», a grandmother «María Otropueblo»), a place after «nacido en» or «né à» (on a birth that is where it happened), an origin phrase with other words before the place («residente en San Pedro de Otropueblo»), and one broken by a comma («natural, y también su mujer, de Otropueblo»). It no longer reports a surname or given name of someone on the event that is also where the event happened, and one word of a compound surname is enough («de la Torre» hides a town «Torre»); nor, on a birth, a «natural de» that gives another birthplace for the subject. It reads the description only, never citations or notes. With `--since` or `--tag` it reports only events in scope (new since `OLD`, or carrying the tag), so an old event the run edited is not checked. A description is often a transcription that names relatives, godparents and where they came from, and many surnames are also town names, so most findings on a real tree are not wrong places |
@@ -248,6 +265,14 @@ gwt-check repos dump.json.gz --json                   # repositories with their 
 
 Names are compared lowercased, without accents, with b/v and i/y folded and the particle "de" dropped. `dup-person-fuzzy` also drops "del", "la", "las", "los" and "y", and matches "Pedro Lasa" with "Pedro José Lasa Ibarra". For a pair to count, at least one side must be in scope, or belong to a family that is. That covers an old person the run gave a new spouse or new parents. A different spelling of the same word ("Lasa" against "Lassa") is still not matched. A run that allowed namesakes still needs its homonyms read one by one.
 
+`homonym-birth-gap` uses the same normalized primary name (at least two words) and the shared date intervals, not the year printed in a date. It suppresses each incompatible pair's `dup-person-birth` and `dup-person-relative` hints even if a shared baptism or relative would otherwise match. It is a finding for review, never an automatic merge or proof of separate identities. Absence of this finding never means a merge is safe. Fuzzy-name and couple checks keep their existing rules.
+
+Output is bounded to one informational row per normalized-name group. A two-person group retains its numeric Gramps ID pair key (for example `I9,I10`) and date labels. Groups of three or more use `name:<normalized name>` as the key, with the exact number of incompatible pairs having at least one person in scope, the whole group size, and a witness with both birth labels. The witness is the first qualifying pair in numeric Gramps ID order. This is explicitly a group summary, not a complete pair listing or a claim that every member is incompatible with every other member. The guard still checks every scoped pair; compatible or unknown members keep the existing duplicate-hint rules. Report finding totals count summary rows, not the pairs counted inside them.
+
+Only Primary Birth events count, including the birth type names recognized by the shared date helper. Baptism alone does not establish a birth gap: adult baptisms exist. A year or month covers its whole interval; `about` and estimated dates widen by two years on each side and calculated dates by one, using the shared helper's 366-day slack. Before/after dates keep their open ends. A finding needs the closest possible dates to be more than ten years apart, using a strict civil-anniversary comparison from the earlier interval's latest endpoint to the later interval's earliest endpoint. Exactly ten civil years stays quiet, including 2000-01-01 to 2010-01-01 and 1996-01-01 to 2006-01-01; one more day fires. For February 29, March 1 is the conservative anniversary in a non-leap year: 2000-02-29 to 2010-03-01 stays quiet, and 2010-03-02 fires. Open or unknown endpoints are never converted to invented civil dates; an anniversary outside the supported civil calendar cannot prove a gap. Thus 1800 versus 1810 as years stays quiet, 1800 versus 1820 fires, about 1812 versus 1800 stays quiet, and before 1820 versus 1800 stays quiet. An open bound can still prove a gap, such as after 1820 versus 1800; it is never read as exactly 1820. Overlapping before 1720 and after 1700 intervals stay quiet.
+
+All Primary Birth alternatives widen the possible interval; none is selected just because it makes a gap. If any such date is unknown or unreadable by the shared helper (including unsupported calendars, dual years and unparsed text), this check stays quiet. Those cases need manual review; this check does not change how older duplicate hints handle uncertain dates.
+
 The report also gives, without failing: events without a place (in the whole tree and in scope), the `dup-person-fuzzy` pairs left out because their fathers and mothers differ by name (a count in the text report, the pair keys under `info` in `--json`, so a namesake entered with the wrong parents can still be read), sources without a repository (in a tree that has repositories: a source is linked only when its repository is certain, so some stay unlinked), the objects changed and new since `--since`, the last changed object (it should be the last item applied), and the Ahnentafel counts.
 
 ## Dated checks
@@ -262,7 +287,7 @@ A year worked out from an age (a marriage index that gives the bride's age) shou
 
 ## Self-test
 
-`gwt-check selftest` builds an invented three-generation tree, checks that it comes out clean (the positive control), then plants 54 errors, one at a time and then all together, and checks that each comes out as its finding. One plant must stay quiet instead: two namesakes whose fathers and mothers have other names must not come out as `dup-person-fuzzy`, and must be listed among the pairs left out. Its counterparts must still fire: the same pair with same-named parents, with only the mother's name or only the father's name in common, and with other-named parents where one side is an adopted child. The test suite also silences each check in turn and requires the self-test to fail, so a check without a planted error cannot slip in.
+`gwt-check selftest` builds an invented three-generation tree, checks that it comes out clean (the positive control), then plants each registered error, one at a time and then all together, and checks that each comes out as its finding. The homonym plant must emit `homonym-birth-gap`. One plant must stay quiet instead: two namesakes whose fathers and mothers have other names must not come out as `dup-person-fuzzy`, and must be listed among the pairs left out. Its counterparts must still fire: the same pair with same-named parents, with only the mother's name or only the father's name in common, and with other-named parents where one side is an adopted child. The test suite also silences each check in turn and requires the self-test to fail, so a check without a planted error cannot slip in.
 
 ## Speed
 
@@ -372,3 +397,41 @@ gwt-check timeline HANDLE [HANDLE ...] [--limit 200]
 ```
 
 `timeline` asks the server for the events of one or more people (`/api/timelines/people/`) and prints a row for each: the person's Gramps ID, the event's Gramps ID, type, role and date, in the order the server gives them. It never prints a description, a place or a citation, and it never writes to the tree. An event with no date comes back with an empty date.
+
+
+### Before/after note contradictions
+
+`date-modifier-note` is a read-only finding that counts as new (exit 1) unless
+accepted by the normal baseline/known/ignore options. For example, an event with
+modifier 1 and year 1700 (`before 1700`) and an attached note `after1700` disagree;
+modifier 2 with `before1700` also disagrees. A note that agrees stays quiet.
+Contradictory event and citation notes are also reported when the event has no
+readable date. The detail names all conflicting event, citation and note IDs,
+without choosing one reading. A changed event, attached citation or attached note
+puts the comparison in scope.
+
+The parser intentionally accepts only a whole note consisting of `before` or
+`after` and a Gregorian ISO boundary (`YYYY`, `YYYY-MM`, `YYYY-MM-DD`), with
+optional whitespace and a final period. It also accepts Spanish `antes de` /
+`después de` and French `avant` / `après`, using the shared accent/case folding
+and note-text helpers. The shared date reader validates boundaries. Dates must
+have identical boundary precision and value; different boundaries are outside
+this focused rule. Qualified, dual-dated, non-Gregorian or unsupported event
+dates are skipped. This does not change the interval semantics of other checks.
+
+Prose, quotations, uncertain statements and negation such as `not after1700`,
+`possibly after1700` or `after1700?` are left for human reading. A note with
+multiple statements is also skipped, rather than selecting its first date.
+This conservative grammar misses narrative assertions by design. No exact date
+is inferred and no tree writes, correction operations or proposals are made.
+
+Birth/death pointer proposals are a separate follow-up; this check leaves them
+unchanged. That follow-up needs these exact controls: `[Baptism, Birth, Death]`
+with birth pointer 0 and death pointer 2 must propose birth index 1 with empty
+`ruling` and preserve death index 2; two Primary Birth references must list both
+actual indexes and propose neither; a non-Primary Birth must not be selected;
+missing, out-of-range and already-correct pointers need separate controls; the
+same controls must run for Death with the Birth pointer preserved. No first
+candidate may be chosen on ambiguity.
+Act-media also respects privacy on MediaRef and EventRef, and does not build a person filename component from a private primary name or surname. Private attributes and repository references do not feed filename reference proposals. Dual-year and non-January newyear dates remain unknown through the shared date reader. This command covers only a person's own Primary events, not family events.
+The homonym rule registers through the existing hygiene hook; the inherited whole-tree checker is unchanged. Findings checks duplicate evidence with the same full-interval guard, without retaining a quadratic pair set.

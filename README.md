@@ -16,6 +16,8 @@ The toolkit works for genealogy in any country. One module, `spanish-poller`, is
 
 ## Features
 
+- `gwt surname-clusters` / `gwt-surname-clusters`: offline literal alias suggestions from human-maintained surname clusters, retaining provenance and ambiguity; never identity or merge evidence ([guide](docs/surname-clusters.md))
+
 - `gwt-apply`: applies a JSON Lines change list to a tree, reads before every write, skips what is already there, and stays dry-run until you pass `--apply`
 - `gwt-check`: reads the whole tree after an apply and reports orphans, dangling links, broken birth and death pointers, likely duplicates, dates that contradict each other and what changed since the last copy, with a self-test that plants every error kind
 - `gwt-import-excel`: turns a research workbook into a gwt-apply change list for review
