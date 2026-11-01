@@ -7,7 +7,11 @@ class Resp:
     def __init__(self,text,status=200):self.text=text;self.status_code=status
 class Client:
     def __init__(self,pages):self.pages=iter(pages)
-    def get(self,*a,**k):return next(self.pages)
+    def get(self,*a,**k):
+        try:
+            return next(self.pages)
+        except StopIteration as exc:
+            raise AssertionError("unexpected extra request") from exc
 def row(ark='invent001',date='1700',place='Exampleville'):
     return f'<tr class="result record"><td><a href="/ark:/37621/{ark}"></a><h2><span>Invented register</span></h2></td>'+''.join(f'<td><span class="label">{label}</span>{text}</td>' for label,text in [('Cote','6NUM/'+ark),('Date',date),('Lieu',place),('Type de document','etat civil')])+'</tr>'
 def table(*rows):return '<table class="results-table">'+''.join(rows)+'</table>'

@@ -125,6 +125,9 @@ def main(argv=None) -> int:
     if args.cmd == "names" and not args.source:
         args.source = ["gazeta", "boe"]
     mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "names": names, "europeana": europeana, "geo": geo, "touraine": touraine, "coverage": coverage}[args.cmd]
+    if args.cmd == "touraine" and args.action == "catalogue":
+        from . import touraine_catalogue
+        mod = touraine_catalogue
     try:
         return mod.run(args, client)
     except KeyboardInterrupt:

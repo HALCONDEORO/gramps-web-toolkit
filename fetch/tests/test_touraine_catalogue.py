@@ -6,7 +6,7 @@ import io
 import pytest
 import requests
 
-from gwt_fetch import touraine
+from gwt_fetch import touraine, touraine_catalogue
 from gwt_fetch.cli import parser
 from gwt_fetch.net import Client
 from test_fetch import FakeClient, Resp, _table_row
@@ -107,7 +107,7 @@ def test_full_page_then_refusal_keeps_rows_and_never_certifies_gaps(status, caps
     full = table(*(row(f"invent{n:03}", f"6NUM/{n:03}", "1700" if n < 19 else "1704")
                    for n in range(20)))
     c = client_for(Resp(full), Resp("refused", status=status))
-    assert touraine.run(args(), c) == 1
+    assert touraine_catalogue.run(args(), c) == 1
     output = capsys.readouterr()
     assert "pagination=incomplete" in output.err and "coverage=incomplete" in output.err
     assert "refused" in output.err and "uncovered=" not in output.err
@@ -167,7 +167,7 @@ def test_missing_cote_withholds_gaps(catalogue):
 
 def test_numeric_year_order_and_inclusive_endpoints(capsys):
     c = client_for(Resp(table(row(date="0009-0011"))), Resp(table()))
-    assert touraine.run(args(), c) == 1
+    assert touraine_catalogue.run(args(), c) == 1
     records = list(csv.DictReader(io.StringIO(capsys.readouterr().out), delimiter="\t"))
     assert [r["year"] for r in records] == ["9", "10", "11"]
 
@@ -209,7 +209,7 @@ def test_query_is_value_and_all_tsv_cells_are_formula_safe(capsys):
     c = client_for(Resp(table(row(cote="=2+3", place="@place", kind="+kind",
                                 title="&#9;=1+1\nnext"))), Resp(table()))
     parsed = parser().parse_args(["touraine", "catalogue", "=Exampleville"])
-    assert touraine.run(parsed, c) == 1
+    assert touraine_catalogue.run(parsed, c) == 1
     assert c.calls[0][2]["q"] == "=Exampleville"
     records = list(csv.DictReader(io.StringIO(capsys.readouterr().out), delimiter="\t"))
     assert len(records) == 3
@@ -221,7 +221,7 @@ def test_query_is_value_and_all_tsv_cells_are_formula_safe(capsys):
 def test_output_orders_year_then_cote_and_prints_summary(capsys):
     c = client_for(Resp(table(row(cote="6NUM/B", date="1700-1702"),
                               row("invent002", "6NUM/A", "1702-1704"))), Resp(table()))
-    assert touraine.run(args(), c) == 1
+    assert touraine_catalogue.run(args(), c) == 1
     output = capsys.readouterr()
     records = list(csv.DictReader(io.StringIO(output.out), delimiter="\t"))
     assert [(r["year"], r["cote"]) for r in records] == [
@@ -233,7 +233,7 @@ def test_output_orders_year_then_cote_and_prints_summary(capsys):
 
 def test_unknown_cli_row_and_incomplete_exit(capsys):
     c = client_for(Resp(table(row(date="1700? / unknown"))), Resp(table()))
-    assert touraine.run(args(), c) == 1
+    assert touraine_catalogue.run(args(), c) == 1
     output = capsys.readouterr()
     records = list(csv.DictReader(io.StringIO(output.out), delimiter="\t"))
     assert records[0]["year"] == "unknown" and records[0]["date"] == "1700? / unknown"
@@ -248,7 +248,7 @@ def test_bad_arguments_make_no_requests(extra, capsys):
     except SystemExit as exc:
         assert exc.code == 2
     else:
-        assert touraine.run(parsed, c) == 2
+        assert touraine_catalogue.run(parsed, c) == 2
     assert not c.calls
 
 
@@ -256,13 +256,14 @@ def test_real_client_pacing_no_redirects_no_retries(monkeypatch, capsys):
     calls, sleeps = [], []
     class Session:
         headers = {}
-        def get(self, url, **kw):
+        @staticmethod
+        def get(url, **kw):
             calls.append((url, kw))
             return Resp(table(row())) if len(calls) == 1 else Resp("refused", status=429)
     monkeypatch.setattr("gwt_fetch.net.time.monotonic", lambda: 100.0)
     monkeypatch.setattr("gwt_fetch.net.time.sleep", sleeps.append)
     c = Client(delay=0, retries=4, session=Session())
-    assert touraine.run(args(), c) == 1
+    assert touraine_catalogue.run(args(), c) == 1
     assert len(calls) == 2 and sleeps == [1.0]
     assert all(kw["allow_redirects"] is False for _, kw in calls)
     assert c._last == {"archives.touraine.fr": 100.0}
@@ -301,7 +302,7 @@ def test_rel_next_is_a_case_insensitive_token(catalogue, rel):
 def test_http200_human_challenge_with_empty_table_is_refused(prefix, capsys):
     c = client_for(Resp(table(row(date="1700"), row("invent002", "6NUM/002", "1704"))),
                    Resp(prefix + table()))
-    assert touraine.run(args(), c) == 1
+    assert touraine_catalogue.run(args(), c) == 1
     output = capsys.readouterr()
     assert "pagination=incomplete" in output.err and "refused" in output.err
     assert "uncovered=" not in output.err
@@ -328,7 +329,7 @@ def test_query_and_title_cannot_supply_missing_place_scope(catalogue):
 def test_scope_ambiguity_is_not_a_successful_commune_catalogue(capsys):
     c = client_for(Resp(table(row(date="1700"), row("invent002", "6NUM/002", "1704", place="Elsewhere"))),
                    Resp(table()))
-    assert touraine.run(args(), c) == 1
+    assert touraine_catalogue.run(args(), c) == 1
     output = capsys.readouterr()
     assert "coverage=incomplete" in output.err and "uncovered=" not in output.err
 
@@ -365,11 +366,12 @@ def test_http200_challenge_never_retries_real_client(monkeypatch, capsys):
     calls = []
     class Session:
         headers = {}
-        def get(self, url, **kw):
+        @staticmethod
+        def get(url, **kw):
             calls.append(kw)
             return Resp('<h1>Verify you are human</h1>' + table())
     c = Client(delay=0, retries=4, session=Session())
-    assert touraine.run(args(), c) == 1
+    assert touraine_catalogue.run(args(), c) == 1
     assert len(calls) == 1 and calls[0]["allow_redirects"] is False and c.retries == 0
     assert "uncovered=" not in capsys.readouterr().err
 
@@ -383,7 +385,7 @@ def test_http200_challenge_never_retries_real_client(monkeypatch, capsys):
 def test_unverified_terminal_cli_keeps_rows_and_reports_unknown(prefix, capsys):
     c = client_for(Resp(table(row(date="1700"), row("invent002", "6NUM/002", "1704"))),
                    Resp(prefix + table()))
-    assert touraine.run(args(), c) == 1
+    assert touraine_catalogue.run(args(), c) == 1
     output = capsys.readouterr()
     assert "completeness=UNKNOWN" in output.err
     assert "no captured positive terminal" in output.err

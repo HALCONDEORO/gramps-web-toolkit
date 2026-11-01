@@ -97,10 +97,10 @@ def parse_table(page: str) -> list[dict]:
 
 def search_table(client, query: str, page: int = 1, per_page: int = 20) -> list[dict]:
     """One results page in table mode, sorted by cote, so the registers of a place come in order."""
-    return parse_table(_table_page(client, query, page, per_page))
+    return parse_table(table_page(client, query, page, per_page))
 
 
-def _table_page(client, query: str, page: int, per_page: int) -> str:
+def table_page(client, query: str, page: int, per_page: int) -> str:
     """Shared request path; catalogue also checks the table's pagination evidence."""
     params = {"q": query, "scope": "archival", "mode": "table", "sort": "referencecode_asc",
               "resultsPerPage": per_page, "page": page}
@@ -226,9 +226,6 @@ def run(args, client) -> int:
         print(f"gwt-fetch: {bad}", file=sys.stderr)
         return 2
     try:
-        if args.action == "catalogue":
-            from . import touraine_catalogue
-            return touraine_catalogue.run(args, client)
         if args.action == "search":
             return _run_search(args, client)
         return _run_pages(args, client)

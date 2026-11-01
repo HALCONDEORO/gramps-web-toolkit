@@ -63,7 +63,7 @@ gwt_fetch/touraine_catalogue.py | sorted(set(range(first, last + 1)) - covered) 
 gwt_fetch/touraine_catalogue.py | for year in years(row["date"])} | for year in [years(row["date"]).start]} | the interior and end of each range disappear and overlaps become gaps
 gwt_fetch/touraine_catalogue.py | row["conflict"] == "yes" | False | conflicts no longer withhold coverage claims
 gwt_fetch/touraine_catalogue.py | or not row["cote"] | or False | rows missing cotes certify uncovered years
-gwt_fetch/touraine_catalogue.py | text = touraine._table_page(client, query, page, per_page) | text = touraine._table_page(client, touraine.clean_cell(query), page, per_page) | a leading equals query is modified as though it were a spreadsheet cell
+gwt_fetch/touraine_catalogue.py | text = touraine.table_page(client, query, page, per_page) | text = touraine.table_page(client, touraine.clean_cell(query), page, per_page) | a leading equals query is modified as though it were a spreadsheet cell
 gwt_fetch/touraine_catalogue.py | range(first, last + 1) if | range(first, last) if | inclusive range endpoints are lost
 gwt_fetch/touraine_catalogue.py | touraine.clean_cell(str(row[key])) | str(row[key]) | the query is output as a spreadsheet formula
 gwt_fetch/touraine_catalogue.py | not 1 <= max_pages <= MAX_PAGES | False | a zero page ceiling is accepted rather than refused before requesting

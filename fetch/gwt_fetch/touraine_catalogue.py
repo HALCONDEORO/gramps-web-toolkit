@@ -62,20 +62,8 @@ def years(date: str) -> range | None:
     return range(first, last + 1) if 1 <= first <= last <= 9999 else None
 
 
-def _checked_rows(page: str, per_page: int) -> list[dict]:
-    """A missing/unreadable table is not a zero-result page."""
-    signals = _PageEvidence()
-    signals.feed(page)
-    signals.close()
-    if any("verify you are human" in heading for heading in signals.headings):
-        raise touraine.Blocked("human verification challenge")
-    tables = re.findall(r'<table\b[^>]*class=[\'"][^\'"]*\bresults-table\b[^\'"]*[\'"][^>]*>(.*?)</table>',
-                        page, re.S)
-    if len(tables) != 1:
-        raise ValueError("unrecognised results table")
-    blocks = re.findall(r'<tr\b([^>]*)>(.*?)</tr\s*>', tables[0], re.S | re.I)
-    if len(blocks) != len(re.findall(r'<tr\b', tables[0], re.I)):
-        raise ValueError("unclosed results row")
+def _record_blocks(blocks):
+    """Account for every header, record and optional context row."""
     records = []
     previous_record = False
     for attrs, block in blocks:
@@ -93,18 +81,40 @@ def _checked_rows(page: str, per_page: int) -> list[dict]:
             previous_record = False
         else:
             raise ValueError("unaccounted non-header results row")
+    return records
+
+
+def _checked_rows(page: str, per_page: int) -> list[dict]:
+    """A missing/unreadable table is not a zero-result page."""
+    signals = _PageEvidence()
+    signals.feed(page)
+    signals.close()
+    if any("verify you are human" in heading for heading in signals.headings):
+        raise touraine.Blocked("human verification challenge")
+    tables = re.findall(r'<table\b[^>]*class=[\'"][^\'"]*\bresults-table\b[^\'"]*[\'"][^>]*>(.*?)</table>',
+                        page, re.S)
+    if len(tables) != 1:
+        raise ValueError("unrecognised results table")
+    blocks = re.findall(r'<tr\b([^>]*)>(.*?)</tr\s*>', tables[0], re.S | re.I)
+    if len(blocks) != len(re.findall(r'<tr\b', tables[0], re.I)):
+        raise ValueError("unclosed results row")
+    records = _record_blocks(blocks)
     expected = len(records)
     rows = touraine.parse_table(tables[0])
     if len(rows) != expected or len(rows) > per_page:
         raise ValueError("unparsed or oversized results table")
     if not rows and signals.next_page:
         raise ValueError("empty table still advertises a next page")
+    _mark_place_scope(rows, records)
+    return rows
+
+
+def _mark_place_scope(rows, records):
     for row, block in zip(rows, records):
         places = re.findall(r'<span class="label">Lieu</span>(.*?)</td>', block, re.S)
         row["place_scope"] = (len(places) == 1 and block.count('<span class="label">Lieu</span>') == 1
                               and not re.search(r'<(?:br|li)\b', places[0], re.I)
                               and len(re.findall(r'<a\b', places[0], re.I)) <= 1)
-    return rows
 
 
 class _RowAttributes(HTMLParser):
@@ -142,7 +152,7 @@ def collect(client, query: str, per_page: int = 20, max_pages: int = MAX_PAGES) 
     seen = set()
     for page in range(1, max_pages + 1):
         try:
-            text = touraine._table_page(client, query, page, per_page)
+            text = touraine.table_page(client, query, page, per_page)
             rows = _checked_rows(text, per_page)
         except (touraine.Blocked, requests.RequestException, ValueError) as exc:
             result["reason"] = f"refused or unreadable page {page}: {exc}"
@@ -193,6 +203,8 @@ def _print_rows(rows: list[dict]) -> None:
 
 
 def run(args, client) -> int:
+    client.delay = max(getattr(client, "delay", 0.0), 1.0)
+    client.retries = 0
     try:
         result = collect(client, args.query, args.per_page, args.max_pages)
     except ValueError as exc:
