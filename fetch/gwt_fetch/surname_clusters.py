@@ -18,6 +18,8 @@ def _fields(value, expected, label):
 def _text(value, label):
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{label}: expected a nonblank string")
+    if any("\ud800" <= char <= "\udfff" for char in value):
+        raise ValueError(f"{label}: lone Unicode surrogate is not allowed")
 
 
 def validate_config(doc):

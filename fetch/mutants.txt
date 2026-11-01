@@ -66,6 +66,7 @@ gwt_fetch/surname_clusters.py | **a} for a in cluster["aliases"] | "spelling": f
 gwt_fetch/surname_clusters.py | **a} for a in cluster["aliases"] | "spelling": a["spelling"]} for a in cluster["aliases"] | provenance must survive in each search suggestion
 gwt_fetch/surname_clusters.py | raise ValueError(f"duplicate JSON field: {key!r}") | pass | duplicate JSON fields must not become last wins
 gwt_fetch/surname_clusters.py | return 1 if result["status"] == "ambiguous" else 0 | return 0 | CLI must signal ambiguous input
+gwt_fetch/surname_clusters.py | if any("\ud800" <= char <= "\udfff" for char in value): | if False: | lone surrogates must be rejected before UTF-8 JSON output
 gwt_fetch/touraine_catalogue.py | if not rows: | if len(rows) < per_page: | a short populated page is discarded as terminal without retaining row provenance
 gwt_fetch/touraine_catalogue.py | if not result["complete"] or not rows: | if not rows: | partial pagination certifies uncovered years
 gwt_fetch/touraine_catalogue.py | re.fullmatch(r"([0-9]{4})(?:\s*[-–]\s*([0-9]{4}))?", date.strip()) | re.search(r"([0-9]{4})(?:\s*[-–]\s*([0-9]{4}))?", date.strip()) | uncertain dates silently become exact years

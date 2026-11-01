@@ -160,3 +160,37 @@ def test_help_states_scope_and_review_requirement():
     assert code == 0 and not err
     for phrase in ("human review", "offline", "identity", "ambiguous", "provenance"):
         assert phrase in out.lower()
+
+
+@pytest.mark.parametrize("field", ["cluster_id", "spelling", "provenance", "input alias"])
+@pytest.mark.parametrize("surrogate", ["\ud800", "\udfff"])
+def test_cli_rejects_lone_surrogates_before_utf8_output(tmp_path, field, surrogate):
+    doc = config()
+    alias = "Alpha"
+    if field == "input alias":
+        alias += surrogate
+    elif field == "cluster_id":
+        doc["clusters"][0][field] += surrogate
+    else:
+        doc["clusters"][0]["aliases"][0][field] += surrogate
+    path = tmp_path / "invented.json"
+    # ASCII JSON escapes can carry lone surrogates even in a UTF-8 file.
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    raw = io.BytesIO()
+    with io.TextIOWrapper(raw, encoding="utf-8") as out:
+        err = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = sc.main([str(path), alias])
+        out.flush()
+        assert code == 2
+        assert raw.getvalue() == b""
+        assert f"{field}:" in err.getvalue()
+
+
+def test_supplementary_unicode_remains_literal():
+    doc = config()
+    doc["clusters"][0]["aliases"][0].update(spelling="Alfa\U00010428", provenance="invented note \U0001f4d6")
+    result = sc.suggest(doc, "Alfa\U00010428")
+    assert result["status"] == "matched"
+    assert result["suggestions"][0]["spelling"] == "Alfa\U00010428"
+    assert result["suggestions"][0]["provenance"] == "invented note \U0001f4d6"
