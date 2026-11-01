@@ -10,6 +10,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 - `gwt-check` `date-modifier-note`: read-only contradictions between explicit before/after bounds at the same boundary in event dates and event/citation notes. All conflicting origins remain visible; negated or ambiguous prose is skipped. No exact date, correction or write is inferred.
 
+- `gwt-fetch touraine catalogue "<place>"`: TSV by year and cote with row-level search and ARK provenance, preserving conflicts. Completeness is UNKNOWN and all gap claims are withheld: the repository has no captured positive terminal layout and site-owned no-results marker contract. Empty tables cannot certify completion. Rows, provenance and incomplete reasons remain available; explicit row-place checks remain required. Uses Touraine's pacing, no redirects and no retries; tested with invented mocked pages only.
 - `gwt-fetch variants --surname` suggests sorted, unique surname spellings offline, preserving the original. Optional local JSON mappings and bounded, opt-in single-edit rules add suggestions; `--regex` escapes literal spellings for case-insensitive matching on accent-folded text. Suggestions are never identity or merge evidence; no catalogue or ledger integration.
 - `gwt-apply` `merge_source`: merges two sources that are one register entered twice, with Gramps' own merge. The dry run names every citation that moves; a loser whose title, author, publication info or abbreviation differs is a conflict, so no text is lost. It answers `dup-source-ark` findings.
 - `gwt-fetch touraine search --table`: lists the registers of a place in the site's table mode sorted by cote, with the ark and the cote in the same row (20, 40 or 80 rows a page).
@@ -34,6 +35,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Changed
 
+- Catalogue offline tests now reject denial-title, non-English human-challenge, reCAPTCHA-widget and unmarked empty terminal candidates. Previous synthetic-empty-table positive assertions used an unsafe completion oracle; coverage guard unit tests now explicitly assume completeness without claiming archive compatibility. No live archive validation or invented terminal marker.
 - A person with no death born more than 100 years ago is presumed dead (`LIVING_YEARS` 110 to 100 in `gwt-check`), so `living-media-sensitive` and `living-visible` are less strict for people born 100 to 110 years ago. No change list is affected.
 
 ### Fixed
