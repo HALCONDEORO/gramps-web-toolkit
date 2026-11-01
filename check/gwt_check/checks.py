@@ -219,10 +219,12 @@ def id_order(gid: str) -> tuple:
     return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", gid)], gid
 
 
-# `ark:/12345/abc123` or the written-out `ark 12345/abc123`. The id starts with at least 8 letters or digits (so a
-# stray "ark 5/2" is not one) and runs on through `-`, `.`, `_` and similar marks that sit between letters or
-# digits, so `abcdefgh-one` and `abcdefgh-two` are two arks. A `/` ends it: what follows is a view or a path.
-_ARK = re.compile(r"\bark(?::/?|\s+)(\d{4,9})/([A-Za-z0-9]{8,}(?:[-._=~*+@$][A-Za-z0-9]+)*)", re.I)
+# `ark:/12345/abc123` or the written-out `ark 12345/abc123`. The id is the whole run of characters up to a space or a
+# `/` (a view or a path follows a `/`), less a closing stop or bracket. It is taken only when it is at least 8 letters
+# or digits, joined by single `-`, `.`, `_`, `=`, `~`, `*`, `+`, `@` or `$`. Anything else (`--`, `%2D`, a stray mark)
+# is not read as an ark at all, and is never cut down to a prefix that could match another ark.
+_ARK = re.compile(r"\bark(?::/?|\s+)(\d{4,9})/([^\s/]+)", re.I)
+_ARK_ID = re.compile(r"[A-Za-z0-9]{8,}(?:[-._=~*+@$][A-Za-z0-9]+)*")
 
 
 def source_arks(src: dict, notes: dict) -> set[tuple[str, str]]:
@@ -232,7 +234,12 @@ def source_arks(src: dict, notes: dict) -> set[tuple[str, str]]:
     for h in src.get("note_list", []):
         t = (notes.get(h) or {}).get("text")
         texts.append(t.get("string", "") if isinstance(t, dict) else str(t or ""))
-    return {(m[1], m[2].lower()) for m in _ARK.finditer("\n".join(texts))}
+    out = set()
+    for m in _ARK.finditer("\n".join(texts)):
+        name = m[2].rstrip(".,;:!?)]}'\"")
+        if _ARK_ID.fullmatch(name):
+            out.add((m[1], name.lower()))
+    return out
 
 
 def source_ark_checks(T: dict, out: Findings, in_scope) -> None:

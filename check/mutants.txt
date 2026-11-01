@@ -106,9 +106,11 @@ gwt_check/citegaps.py | if key not in found: | if False: | only a citation that 
 gwt_check/citegaps.py | if any(w in _fold(text) for w in NEGATIVE): | if False: | a citation that records a negative search is never proposed
 gwt_check/checks.py |         if len(ss) > 1 and any(in_scope("sources", x["handle"]) for x in ss): |         if len(ss) > 1: | a duplicate source ark is reported with no source in scope
 gwt_check/checks.py |         if len(ss) > 1 and any(in_scope("sources", x["handle"]) for x in ss): |         if len(ss) > 0 and any(in_scope("sources", x["handle"]) for x in ss): | one source alone is called a duplicate of its ark
-gwt_check/checks.py | {4,9})/([A-Za-z0-9]{8,}(?:[-._=~*+@$][A-Za-z0-9]+)*) | {4,9})/([A-Za-z0-9]{2,}(?:[-._=~*+@$][A-Za-z0-9]+)*) | an ark id of 2 characters counts as an ark
-gwt_check/checks.py |     return {(m[1], m[2].lower()) for m in _ARK.finditer("\n".join(texts))} |     return {(m[1], m[2]) for m in _ARK.finditer("\n".join(texts))} | an ark in capitals differs from the same ark in lower case
-gwt_check/checks.py |     return {(m[1], m[2].lower()) for m in _ARK.finditer("\n".join(texts))} |     return {("", m[2].lower()) for m in _ARK.finditer("\n".join(texts))} | the archive number of an ark is ignored
 gwt_check/checks.py |     texts += [str(a.get("value") or "") for a in src.get("attribute_list", [])] |     texts += [] | a source attribute is not searched for an ark
-gwt_check/checks.py | (?:[-._=~*+@$][A-Za-z0-9]+)*)" | (?:[-._=~*+@$][A-Za-z0-9]+)?)" | an id with two marks in it is cut at the second one
-gwt_check/checks.py | {8,}(?:[-._=~*+@$][A-Za-z0-9]+)*) | {8,}) | an id is cut at its first mark
+gwt_check/checks.py | _ARK_ID = re.compile(r"[A-Za-z0-9]{8,}(?:[-._=~*+@$][A-Za-z0-9]+)*") | _ARK_ID = re.compile(r"[A-Za-z0-9]{2,}(?:[-._=~*+@$][A-Za-z0-9]+)*") | an ark id of 2 characters counts as an ark
+gwt_check/checks.py | _ARK_ID = re.compile(r"[A-Za-z0-9]{8,}(?:[-._=~*+@$][A-Za-z0-9]+)*") | _ARK_ID = re.compile(r"[A-Za-z0-9]{8,}(?:[-._=~*+@$][A-Za-z0-9]+)?") | an id with two marks in it is refused
+gwt_check/checks.py | _ARK_ID = re.compile(r"[A-Za-z0-9]{8,}(?:[-._=~*+@$][A-Za-z0-9]+)*") | _ARK_ID = re.compile(r"[A-Za-z0-9]{8,}") | an id with a mark in it is refused
+gwt_check/checks.py |             out.add((m[1], name.lower())) |             out.add((m[1], name)) | an ark in capitals differs from the same ark in lower case
+gwt_check/checks.py |             out.add((m[1], name.lower())) |             out.add(("", name.lower())) | the archive number of an ark is ignored
+gwt_check/checks.py |         if _ARK_ID.fullmatch(name): |         if _ARK_ID.match(name): | an id is cut to the prefix that fits the format, so a double dash or a percent code gives a false duplicate
+gwt_check/checks.py |         name = m[2].rstrip(".,;:!?)]}'\"") |         name = m[2] | a closing stop or bracket is kept in the id

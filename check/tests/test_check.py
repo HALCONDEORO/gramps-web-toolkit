@@ -1944,6 +1944,22 @@ def test_dup_source_ark_keeps_the_whole_id_and_does_not_cut_it_at_a_mark():
     _src(d, "S0093", title="ark:/12345/abcdefgh-one, see also ark 12345/abcdefgh.")  # the final stop is not part of it
     _src(d, "S0095", title="ark 12345/abcdefgh-one-more")  # a longer id is another ark
     _src(d, "S0096", title="ark 12345/abcdefgh-one-less")
+    _src(d, "S0097", title="ark 12345/abcdefgh-one-more")  # the same long id twice is the same ark
     _src(d, "S0094", title="ark:/12345/ABCDEFGH-ONE/view/3")  # a view path is not part of it
     assert _ark_findings(d) == [("S0090,S0093,S0094", "ark 12345/abcdefgh-one"),
-                                ("S0092,S0093", "ark 12345/abcdefgh")]
+                                ("S0092,S0093", "ark 12345/abcdefgh"),
+                                ("S0095,S0097", "ark 12345/abcdefgh-one-more")]
+
+
+def test_dup_source_ark_rejects_an_id_it_cannot_read_whole_and_never_cuts_it_to_a_prefix():
+    d = selftest.clean_tree()
+    _src(d, "S0090", title="ark 12345/abcdefgh--one")
+    _src(d, "S0091", title="ark 12345/abcdefgh--two")
+    _src(d, "S0092", title="ark 12345/abcdefgh%2Done")
+    _src(d, "S0093", title="ark 12345/abcdefgh%2Dtwo")
+    _src(d, "S0094", title="ark 12345/abcdefgh-")  # a dash at the end is not a closing stop: not read
+    _src(d, "S0095", title="(ark 12345/abcdefgh)")  # a closing bracket is not part of the id
+    _src(d, "S0096", title="ark 12345/abcdefgh_")
+    _src(d, "S0097", title="ark 12345/abcdefgh.")  # nor is a full stop
+    assert _ark_findings(d) == [("S0095,S0097", "ark 12345/abcdefgh")]
+    assert checks.source_arks({"title": "ark 12345/abcdefgh--one"}, {}) == set()
