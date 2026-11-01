@@ -96,6 +96,14 @@ def parser() -> argparse.ArgumentParser:
                     help="table mode sorted by cote: ark, cote, date, place, kind, media count, title")
     ts.add_argument("--page", type=int, default=None, help="with --table: the results page, from 1 (default 1)")
     ts.add_argument("--per-page", type=int, default=None, choices=touraine.TABLE_SIZES, help="with --table: rows per page (default 20)")
+    tc = t.add_parser("catalogue", help="catalogue a place by year and cote; completeness UNKNOWN, gaps withheld",
+                      description="Print TSV by year and cote with row provenance. Completeness is UNKNOWN: no captured "
+                      "positive terminal layout and site-owned marker contract. All gaps withheld; exit 1.")
+    tc.add_argument("query", metavar="place", help="place search value, sent unchanged (including a leading '=')")
+    tc.add_argument("--per-page", type=int, default=20, choices=touraine.TABLE_SIZES,
+                    help="rows requested per page (default 20)")
+    tc.add_argument("--max-pages", type=int, default=100,
+                    help="request ceiling, 1 to 100 including the terminal-page candidate (default 100); reaching it is incomplete")
     tp = t.add_parser("pages", help="list the pages of one register, or download a few")
     tp.add_argument("ark", help="the ark name from `search`")
     tp.add_argument("--pages", help="1-based page numbers, e.g. 1-5,9,12-")

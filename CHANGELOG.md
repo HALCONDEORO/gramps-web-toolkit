@@ -8,6 +8,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
+- `gwt-fetch touraine catalogue "<place>"`: TSV by year and cote with row-level search and ARK provenance, preserving conflicts. Completeness is UNKNOWN and all gap claims are withheld: the repository has no captured positive terminal layout and site-owned no-results marker contract. Empty tables cannot certify completion. Rows, provenance and incomplete reasons remain available; explicit row-place checks remain required. Uses Touraine's pacing, no redirects and no retries; tested with invented mocked pages only.
 - `gwt-apply` `merge_source`: merges two sources that are one register entered twice, with Gramps' own merge. The dry run names every citation that moves; a loser whose title, author, publication info or abbreviation differs is a conflict, so no text is lost. It answers `dup-source-ark` findings.
 - `gwt-fetch touraine search --table`: lists the registers of a place in the site's table mode sorted by cote, with the ark and the cote in the same row (20, 40 or 80 rows a page).
 - `gwt-fetch boe search` and `boe fetch` search and download the BOE from 1960 onwards, which `gazeta` does not cover. `gazeta fetch` also reads the PDF link of modern documents. A date with non-ASCII digits or a blank `--text`/`--title` is refused with exit 2, and the form's error box exits 2 instead of printing 0 results.
@@ -31,6 +32,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Changed
 
+- Catalogue offline tests now reject denial-title, non-English human-challenge, reCAPTCHA-widget and unmarked empty terminal candidates. Previous synthetic-empty-table positive assertions used an unsafe completion oracle; coverage guard unit tests now explicitly assume completeness without claiming archive compatibility. No live archive validation or invented terminal marker.
 - A person with no death born more than 100 years ago is presumed dead (`LIVING_YEARS` 110 to 100 in `gwt-check`), so `living-media-sensitive` and `living-visible` are less strict for people born 100 to 110 years ago. No change list is affected.
 
 ### Fixed
