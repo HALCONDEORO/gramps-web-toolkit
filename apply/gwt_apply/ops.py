@@ -2095,6 +2095,24 @@ class Applier:
         self.c.merge("Event", winner["handle"], loser["handle"])
         self.wrote = True
 
+    def _check_source_text(self, winner, loser):
+        for attr in ("title", "author", "pubinfo", "abbrev"):
+            w, l_ = (winner.get(attr) or "").strip(), (loser.get(attr) or "").strip()
+            if l_ and w != l_:
+                raise Conflict(
+                    f"Source {self.label(winner)} and {self.label(loser)} differ in {attr}"
+                    + ("" if w else f" ({self.label(winner)} has none, the merge would lose it)")
+                    + "; correct one with update_source first"
+                )
+
+    def _citations_moving(self, winner, loser):
+        holders = []
+        for row in self.c.list_all("Citation", ["source_handle", "gramps_id", "page"]):
+            if row.get("source_handle") == loser["handle"]:
+                page = f" ({row['page']})" if row.get("page") else ""
+                holders.append(f"  Citation {self.label(row)}{page}: cites {self.label(winner)} instead of {self.label(loser)}")
+        return holders
+
     def merge_source(self, op):
         """Two sources that are one register entered twice: the loser's citations cite the winner, then the loser goes.
 
@@ -2110,19 +2128,8 @@ class Applier:
             o.setdefault("_class", "Source")
         if winner["handle"] == loser["handle"]:
             raise Conflict("winner and loser are the same source")
-        for attr in ("title", "author", "pubinfo", "abbrev"):
-            w, l_ = (winner.get(attr) or "").strip(), (loser.get(attr) or "").strip()
-            if l_ and w != l_:
-                raise Conflict(
-                    f"Source {self.label(winner)} and {self.label(loser)} differ in {attr}"
-                    + ("" if w else f" ({self.label(winner)} has none, the merge would lose it)")
-                    + "; correct one with update_source first"
-                )
-        holders = []
-        for row in self.c.list_all("Citation", ["source_handle", "gramps_id", "page"]):
-            if row.get("source_handle") == loser["handle"]:
-                page = f" ({row['page']})" if row.get("page") else ""
-                holders.append(f"  Citation {self.label(row)}{page}: cites {self.label(winner)} instead of {self.label(loser)}")
+        self._check_source_text(winner, loser)
+        holders = self._citations_moving(winner, loser)
         self._merge_note(op, "Source", f"Source {self.label(loser)}")
         winner = self.obj("Source", op["winner"])
         winner.setdefault("_class", "Source")
