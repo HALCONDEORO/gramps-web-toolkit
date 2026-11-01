@@ -219,9 +219,10 @@ def id_order(gid: str) -> tuple:
     return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", gid)], gid
 
 
-# `ark:/37621/abc123` or the written-out `ark 37621/abc123`; the id is at least 8 letters or digits so a stray
-# "ark 5/2" is not read as one
-_ARK = re.compile(r"\bark(?::/?|\s+)(\d{4,9})/([A-Za-z0-9]{8,})", re.I)
+# `ark:/12345/abc123` or the written-out `ark 12345/abc123`. The id starts with at least 8 letters or digits (so a
+# stray "ark 5/2" is not one) and runs on through `-`, `.`, `_` and similar marks that sit between letters or
+# digits, so `abcdefgh-one` and `abcdefgh-two` are two arks. A `/` ends it: what follows is a view or a path.
+_ARK = re.compile(r"\bark(?::/?|\s+)(\d{4,9})/([A-Za-z0-9]{8,}(?:[-._=~*+@$][A-Za-z0-9]+)*)", re.I)
 
 
 def source_arks(src: dict, notes: dict) -> set[tuple[str, str]]:

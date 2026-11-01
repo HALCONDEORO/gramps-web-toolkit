@@ -1934,3 +1934,16 @@ def test_dup_source_ark_is_info_and_needs_one_side_in_scope(tmp_path, capsys):
     dump.write_text(json.dumps(d), encoding="utf-8")
     assert main(["check", str(dump)]) == 0
     assert "info dup-source-ark" in capsys.readouterr().out
+
+
+def test_dup_source_ark_keeps_the_whole_id_and_does_not_cut_it_at_a_mark():
+    d = selftest.clean_tree()
+    _src(d, "S0090", title="ark 12345/abcdefgh-one")
+    _src(d, "S0091", title="ark 12345/abcdefgh-two")  # not the same ark as the first
+    _src(d, "S0092", title="ark 12345/abcdefgh")  # nor this
+    _src(d, "S0093", title="ark:/12345/abcdefgh-one, see also ark 12345/abcdefgh.")  # the final stop is not part of it
+    _src(d, "S0095", title="ark 12345/abcdefgh-one-more")  # a longer id is another ark
+    _src(d, "S0096", title="ark 12345/abcdefgh-one-less")
+    _src(d, "S0094", title="ark:/12345/ABCDEFGH-ONE/view/3")  # a view path is not part of it
+    assert _ark_findings(d) == [("S0090,S0093,S0094", "ark 12345/abcdefgh-one"),
+                                ("S0092,S0093", "ark 12345/abcdefgh")]
