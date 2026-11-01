@@ -136,7 +136,7 @@ $ gwt-fetch gazeta fetch BOE-A-1890-676 --out research/raw/fuentes/gaceta
 `gazeta` stops at 1959. From 1960 the BOE has its own search form, `GET https://www.boe.es/buscar/boe.php`, with a different result layout. `boe search` drives it and prints one TSV row per hit: `ref`, `date`, `number`, `department`, `title`, `doc_url`. `--text` takes words, or a phrase in double quotes; `--from` and `--to` take `YYYY-MM-DD`; `--limit` is rounded up to 50, 200, 500, 1000 or 2000 hits per request.
 
 - The form rejects a request that leaves out fields ("los valores de búsqueda enviados son incorrectos"). `boe search` sends all of them, empty ones included, and the origin boxes `dato[0][1..5]` and `dato[0][T]`. A URL built by hand with only the text field fails.
-- The full-text field is `campo[3]=DOC`, the title is `campo[1]=TITULOS`, the date range is `campo[6]=FPU` with `dato[6][0]` and `dato[6][1]` in `YYYY-MM-DD`. A `DD/MM/YYYY` range returns nothing.
+- The full-text field is `campo[3]=DOC`, the title is `campo[1]=TITULOS`, the date range is `campo[6]=FPU` with `dato[6][0]` and `dato[6][1]` in `YYYY-MM-DD`. A `DD/MM/YYYY` range returns nothing, so `boe search` refuses any other form (and a date that does not exist, a range that ends before it starts, a `--limit` outside 1-2000) with exit 2 before it asks the site.
 - The search ignores accents: `Garcia` and `García` return the same hits.
 - Some items (section B notices) come back with an empty `department` and `title`. The reference and date are still right.
 - `boe fetch REF` is `gazeta fetch REF`. A modern document page marks its PDF `puntoPDF2`, and `gazeta fetch` now reads both markings. Many items say «Texto no disponible» and carry only the PDF; the text then comes from `pdftotext`.

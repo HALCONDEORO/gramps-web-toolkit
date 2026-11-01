@@ -311,6 +311,38 @@ def test_boe_search_params_send_every_field_and_iso_dates():
     assert {"campo[1]", "campo[2]", "campo[4]", "campo[5]"} <= set(p)
 
 
+def _boe_args(**kw):
+    base = dict(action="search", text="x", title=None, date_from=None, date_to=None, limit=50)
+    return argparse.Namespace(**{**base, **kw})
+
+
+@pytest.mark.parametrize("kw", [dict(text=None), dict(date_from="1979-13-01"), dict(date_to="01/02/1980"),
+                                dict(date_from="19790101"), dict(date_from="1979-W01-1"), dict(date_from="1980-01-02", date_to="1980-01-01"),
+                                dict(limit=0), dict(limit=2001)])
+def test_boe_search_refuses_bad_arguments_with_exit_2_and_asks_nothing(kw, capsys):
+    assert boe.run(_boe_args(**kw), FakeClient({})) == 2
+    assert "gwt-fetch:" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("value", ["19790101", "1979-W01-1", "1979-1-05", "01/02/1980", "1979-01-05T10:00"])
+def test_boe_search_names_the_format_when_a_date_is_not_written_yyyy_mm_dd(value):
+    assert "written YYYY-MM-DD" in boe.problem(_boe_args(date_from=value))
+
+
+def test_boe_search_says_when_a_date_is_well_written_but_does_not_exist():
+    assert "that exists" in boe.problem(_boe_args(date_from="1979-02-30"))
+
+
+def test_boe_search_accepts_a_one_day_range_and_the_largest_limit():
+    assert boe.problem(_boe_args(date_from="1980-01-01", date_to="1980-01-01", limit=2000)) == ""
+
+
+def test_boe_search_keeps_a_title_with_a_line_break_in_one_cell(capsys):
+    row = {"ref": "BOE-A-1978-9001", "date": "1978-01-10", "number": "8", "department": "D",
+           "title": "uno\r\ndos\ttres", "doc_url": "u"}
+    assert boe.cell(row["title"]) == "uno dos tres"
+
+
 def test_gazeta_fetch_reads_the_pdf_link_of_a_modern_document(tmp_path):
     c = FakeClient({gazeta.DOC + "BOE-A-1978-9001": Resp(MODERN_DOC),
                     "https://www.boe.es/boe/dias/1978/01/10/pdfs/A00461-00470.pdf": Resp(b"%PDF", "application/pdf")})

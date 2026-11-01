@@ -21,3 +21,10 @@ gwt_fetch/coverage.py |     if not 1 <= args.total <= MAX_VIEWS: |     if args.t
 gwt_fetch/coverage.py |         elif n == prev + 1: |         elif n == prev + 2: | views two apart are joined into one range
 gwt_fetch/coverage.py | (total if dash else lo) | lo | an open range such as 8- reads only its first view
 gwt_fetch/coverage.py |         if m and f.is_file() and f.suffix not in TEMPORARY and f.stat().st_size > 0: |         if m and f.is_file() and f.stat().st_size > 0: | a partial download counts as a view that was read
+gwt_fetch/boe.py |     if not (args.text or args.title): |     if False: | a search with no text and no title is sent
+gwt_fetch/boe.py |             if not ISO.fullmatch(value):  # Python 3.11 also reads 19790101 and 1979-W01-1 |             if False:  # Python 3.11 also reads 19790101 and 1979-W01-1 | a date written 19790101 or 1979-W01-1 is accepted
+gwt_fetch/boe.py |                 datetime.date(int(value[:4]), int(value[5:7]), int(value[8:])) |                 value | a date that does not exist is accepted
+gwt_fetch/boe.py |     if args.date_from and args.date_to and args.date_from > args.date_to: |     if False: | a range that ends before it starts is sent
+gwt_fetch/boe.py |     if not 1 <= args.limit <= MAX_LIMIT: |     if not 1 <= args.limit: | a limit above the largest page is accepted
+gwt_fetch/boe.py |     if not 1 <= args.limit <= MAX_LIMIT: |     if not args.limit <= MAX_LIMIT: | a limit of zero or less is accepted
+gwt_fetch/boe.py |     return " ".join(value.split()) |     return value.replace("\t", " ") | a line break in a title starts a new row of the TSV

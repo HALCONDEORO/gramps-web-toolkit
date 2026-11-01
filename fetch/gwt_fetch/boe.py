@@ -7,6 +7,7 @@ for both, so `boe fetch` is `gazeta fetch`.
 """
 from __future__ import annotations
 
+import datetime
 import re
 import sys
 from urllib.parse import urljoin
@@ -16,6 +17,33 @@ from .gazeta import BASE, HITS, REF, _text
 
 SEARCH = BASE + "/buscar/boe.php"
 COLUMNS = ["ref", "date", "number", "department", "title", "doc_url"]
+MAX_LIMIT = HITS[-1]
+ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def problem(args) -> str:
+    """What is wrong with the arguments of a search, or an empty string. The form rejects a date that is not
+    YYYY-MM-DD and quietly returns nothing, so a bad date is refused here instead of read as no result."""
+    if not (args.text or args.title):
+        return "boe search needs --text or --title"
+    for flag, value in (("--from", args.date_from), ("--to", args.date_to)):
+        if value:
+            if not ISO.fullmatch(value):  # Python 3.11 also reads 19790101 and 1979-W01-1
+                return f"{flag} {value!r} is not a date written YYYY-MM-DD"
+            try:
+                datetime.date(int(value[:4]), int(value[5:7]), int(value[8:]))
+            except ValueError:
+                return f"{flag} {value!r} is not a date that exists"
+    if args.date_from and args.date_to and args.date_from > args.date_to:
+        return "--from is after --to"
+    if not 1 <= args.limit <= MAX_LIMIT:
+        return f"--limit must be between 1 and {MAX_LIMIT}"
+    return ""
+
+
+def cell(value: str) -> str:
+    """A TSV cell: no tab, line break or carriage return from the page can start a new column or row."""
+    return " ".join(value.split())
 
 
 def search_params(text=None, title=None, date_from=None, date_to=None, limit=50) -> list:
@@ -64,13 +92,15 @@ def search(client, **kw) -> list[dict]:
 
 def run(args, client) -> int:
     if args.action == "search":
-        if not (args.text or args.title):
-            raise SystemExit("gwt-fetch: boe search needs --text or --title")
+        bad = problem(args)
+        if bad:
+            print(f"gwt-fetch: {bad}", file=sys.stderr)
+            return 2
         rows = search(client, text=args.text, title=args.title, date_from=args.date_from,
                       date_to=args.date_to, limit=args.limit)
         print("\t".join(COLUMNS))
         for r in rows:
-            print("\t".join(r[c].replace("\t", " ") for c in COLUMNS))
+            print("\t".join(cell(r[c]) for c in COLUMNS))
         print(f"gwt-fetch: {len(rows)} result(s)", file=sys.stderr)
         return 0
     return gazeta.run(args, client)
