@@ -27,7 +27,7 @@ def test_selftest_passes():
 @pytest.mark.parametrize("name", sorted(checks.CHECKS))
 def test_selftest_goes_red_when_any_check_is_silenced(monkeypatch, name):
     """Every check has a plant: silence one and the selftest must fail."""
-    import gwt_check.cli as cli
+    import gwt_check.report as cli
 
     for attr in ("run_checks", "diff", "compare_ahnentafel"):
         real = getattr(cli, attr)
