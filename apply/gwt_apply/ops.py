@@ -67,12 +67,13 @@ SPECS: dict[str, tuple[set[str], set[str]]] = {
     "merge_person": ({"winner", "loser"}, {"use_loser", "reason"}),
     "merge_family": ({"winner", "loser"}, {"reason"}),
     "merge_event": ({"winner", "loser"}, {"reason"}),
+    "merge_source": ({"winner", "loser"}, {"reason"}),
     "add_association": ({"person", "target", "relation"}, set()),
 }
 MERGE_LISTS = [  # what Gramps' merge carries from the loser to the winner, list by list
     "alternate_names", "event_ref_list", "citation_list", "note_list", "media_list", "attribute_list",
     "address_list", "urls", "person_ref_list", "lds_ord_list", "tag_list", "parent_family_list", "family_list",
-    "child_ref_list",
+    "child_ref_list", "reporef_list", "srcattribute_list",
 ]
 USE_LOSER = {"birth": "birth_ref_index", "death": "death_ref_index"}
 ATTACHABLE = {"citation": ("Citation", "citation_list"), "media": ("Media", "media_list"),  # attach_existing
@@ -2092,6 +2093,43 @@ class Applier:
         delete = self.actions.pop()
         self.actions += holders + [delete]
         self.c.merge("Event", winner["handle"], loser["handle"])
+        self.wrote = True
+
+    def merge_source(self, op):
+        """Two sources that are one register entered twice: the loser's citations cite the winner, then the loser goes.
+
+        Gramps' own source merge keeps the winner's title, author, publication info and abbreviation, so a
+        loser whose text differs would lose it silently: that is a conflict (correct one with update_source
+        first). What moves is the loser's notes, media, attributes and repository entries; every citation that
+        cited the loser cites the winner, and the dry run names each one.
+        """
+        if self._merge_done("Source", op):
+            return
+        winner, loser = self.obj("Source", op["winner"]), self.obj("Source", op["loser"])
+        for o in (winner, loser):
+            o.setdefault("_class", "Source")
+        if winner["handle"] == loser["handle"]:
+            raise Conflict("winner and loser are the same source")
+        for field in ("title", "author", "pubinfo", "abbrev"):
+            w, l_ = (winner.get(field) or "").strip(), (loser.get(field) or "").strip()
+            if l_ and w != l_:
+                raise Conflict(
+                    f"Source {self.label(winner)} and {self.label(loser)} differ in {field}"
+                    + ("" if w else f" ({self.label(winner)} has none, the merge would lose it)")
+                    + "; correct one with update_source first"
+                )
+        holders = []
+        for row in self.c.list_all("Citation", ["source_handle", "gramps_id", "page"]):
+            if row.get("source_handle") == loser["handle"]:
+                page = f" ({row['page']})" if row.get("page") else ""
+                holders.append(f"  Citation {self.label(row)}{page}: cites {self.label(winner)} instead of {self.label(loser)}")
+        self._merge_note(op, "Source", f"Source {self.label(loser)}")
+        winner = self.obj("Source", op["winner"])
+        winner.setdefault("_class", "Source")
+        self._show_merge(winner, loser)
+        delete = self.actions.pop()
+        self.actions += holders + [delete]
+        self.c.merge("Source", winner["handle"], loser["handle"])
         self.wrote = True
 
     def merge_family(self, op):

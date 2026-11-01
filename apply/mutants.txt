@@ -112,3 +112,7 @@ gwt_apply/ops.py | if (row["handle"] != source["handle"] and (row.get("title") o
 gwt_apply/ops.py | res.noop = res.status == "skip" and self._noop | res.noop = res.status == "skip" | a skip of what this list made by key is never called a no-op
 gwt_apply/ops.py | self._noop = True | pass | an update or tag that found the tree as it asks is a no-op skip
 gwt_apply/cli.py | if r.status_code != 201: | if False: | a server backup the server did not store stops the run before it writes
+gwt_apply/ops.py |             if l_ and w != l_: |             if False: | merge_source picks the winner's text and drops a different one of the loser
+gwt_apply/ops.py |             if row.get("source_handle") == loser["handle"]: |             if False: | merge_source does not name the citations that move
+gwt_apply/client.py | ({"Citation"} if cls == "Source" else set()) | set() | a snapshot is still trusted for citations after a source merge
+gwt_apply/ops.py |     "merge_source": ({"winner", "loser"}, {"reason"}), |     "merge_source_x": ({"winner", "loser"}, {"reason"}), | merge_source is not a known op

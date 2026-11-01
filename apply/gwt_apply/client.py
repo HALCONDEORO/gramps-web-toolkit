@@ -481,7 +481,7 @@ class Client:
             self.log(method="POST", path=path, body=body or {}, planned=True)
             return
         # a merge rewrites people, families and notes that pointed at the loser: stop trusting the snapshot for them
-        self.unsnapped |= {"Person", "Family", "Note"}
+        self.unsnapped |= {"Person", "Family", "Note"} | ({"Citation"} if cls == "Source" else set())
         self.stale |= {(cls, winner), (cls, loser)}
         try:
             r = self._request("POST", path, write=True, json=body or {})
