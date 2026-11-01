@@ -15,6 +15,12 @@ def D(y=0, m=0, d=0, mod=0, q=0, text="", **kw):
             "text": text, **kw}
 
 
+@pytest.mark.parametrize("parts,expected", [((7, 0, 0), "0007"),
+    ((1700, 2, 0), "1700-02"), ((1700, 2, 3), "1700-02-03")])
+def test_public_date_label_preserves_precision(parts, expected):
+    assert dates.label(*parts) == expected
+
+
 class Build:
     """An invented tree: people with dated events, families with children."""
 

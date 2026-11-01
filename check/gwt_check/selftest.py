@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 
 from . import compare
+from .report import check
 from .tree import Tree
 
 
@@ -519,8 +520,16 @@ def p_lifespan(d):
     _event(d, p, "E0726", "Death", (1820,))
 
 
+def p_date_modifier_note(d):
+    event = _get(d, "events", "E0001")
+    event["date"] = _date(1700, modifier=1)
+    d["notes"].append(_base("N0800", text={"string": "after1700"}))
+    event["note_list"] = ["hN0800"]
+
+
 # (plant, check that must fire, key it must carry, needs the clean tree as --since and I0001 as root)
 PLANTS = [
+    (p_date_modifier_note, "date-modifier-note", "E0001", False),
     (p_unconnected, "unconnected", "I9001", False),
     (p_orphan_event, "orphan-event", "E0102", False),
     (p_orphan_citation, "orphan-citation", "C0099", False),
@@ -592,8 +601,6 @@ TOGETHER_SKIP = (p_family_backlink, p_citation_no_source, p_ahnentafel_changed)
 
 
 def _run(data: dict, clean: dict):
-    from .cli import check  # late import: cli imports this module for the selftest command
-
     base = Tree(copy.deepcopy(clean), source="clean synthetic tree")
     report = check(Tree(data, source="planted synthetic tree"), since=base, root="I0001")
     got = {(f["check"], f["key"]) for f in report["findings"]}
