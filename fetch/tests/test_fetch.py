@@ -1,12 +1,14 @@
 """Offline tests: a fake client answers from fixtures, so nothing touches the network."""
+import hashlib
 import argparse
 import csv
 import io
 import json
+from pathlib import Path
 
 import pytest
 
-from gwt_fetch import digibib, europeana, gazeta, geo, iiif
+from gwt_fetch import boe, digibib, europeana, gazeta, geo, iiif
 from gwt_fetch.store import Store, slug
 
 
@@ -268,6 +270,89 @@ def test_gazeta_fetch_writes_pdf_and_html_text(tmp_path):
     assert gazeta.fetch(c, "not-a-ref", Store(tmp_path)) == 1
 
 
+# ---------------------------------------------------------------- boe (modern collection)
+
+BOE_RESULTS = """
+<ul><li class="resultado-busqueda">
+  <p class="linea-dem">Ministerio de Ejemplo</p>
+  <p class="linea-pub">BOE 8 de 10/01/1978
+   - II. Autoridades y personal</p>
+  <p>Orden de 29 de diciembre de 1977 por la que se aprueba un expediente de ejemplo.</p>
+  <a href="../buscar/doc.php?id=BOE-A-1978-9001" class="resultado-busqueda-link-defecto" title="Ref. BOE-A-1978-9001"></a>
+  <ul><li class="puntoHTML"><a href="../buscar/doc.php?id=BOE-A-1978-9001">Más...</a></li></ul>
+</li></ul></li></ul>
+<ul><li class="resultado-busqueda">
+  <p class="linea-pub">BOE 246 de 13/10/1979
+   - V-B. Anuncios</p>
+  <a href="../buscar/doc.php?id=BOE-B-1979-9002" class="resultado-busqueda-link-defecto" title="Ref. BOE-B-1979-9002"></a>
+  <ul><li class="puntoHTML"><a href="../buscar/doc.php?id=BOE-B-1979-9002">Más...</a></li></ul>
+</li></ul>"""
+
+MODERN_DOC = """<h3 class="documento-tit">Orden de ejemplo.</h3>
+<dl><dt>Publicado en:</dt><dd>« BOE » núm. 8, de 10 de enero de 1978, páginas 461 a 470</dd></dl>
+<ul class="enlaces-doc"><li class="puntoPDF2">
+  <a title="Documento PDF de la publicación original" href="/boe/dias/1978/01/10/pdfs/A00461-00470.pdf">PDF</a></li></ul>
+<div id="textoxslt"> Texto no disponible. Consulte el documento PDF de esta disposición. </div>
+<!-- #textoxslt -->"""
+
+
+def test_boe_parse_results_with_and_without_department_and_title():
+    r = boe.parse_results(BOE_RESULTS)
+    assert r[0] == {"ref": "BOE-A-1978-9001", "date": "1978-01-10", "number": "8",
+                    "department": "Ministerio de Ejemplo",
+                    "title": "Orden de 29 de diciembre de 1977 por la que se aprueba un expediente de ejemplo.",
+                    "doc_url": "https://www.boe.es/buscar/doc.php?id=BOE-A-1978-9001"}
+    assert r[1]["ref"] == "BOE-B-1979-9002" and r[1]["department"] == "" and r[1]["title"] == ""
+
+
+def test_boe_search_params_send_every_field_and_iso_dates():
+    p = dict(boe.search_params(text='"Apellido Uno, Nombre"', date_from="1979-10-01", date_to="1979-12-31", limit=120))
+    assert p["dato[3]"] == '"Apellido Uno, Nombre"' and p["campo[3]"] == "DOC"
+    assert p["dato[6][0]"] == "1979-10-01" and p["dato[6][1]"] == "1979-12-31" and p["page_hits"] == "200"
+    assert [p[f"dato[0][{k}]"] for k in "12345T"] == list("12345T")
+    assert {"campo[1]", "campo[2]", "campo[4]", "campo[5]"} <= set(p)
+
+
+def _boe_args(**kw):
+    base = dict(action="search", text="x", title=None, date_from=None, date_to=None, limit=50)
+    return argparse.Namespace(**{**base, **kw})
+
+
+@pytest.mark.parametrize("kw", [dict(text=None), dict(date_from="1979-13-01"), dict(date_to="01/02/1980"),
+                                dict(date_from="19790101"), dict(date_from="1979-W01-1"), dict(date_from="1980-01-02", date_to="1980-01-01"),
+                                dict(limit=0), dict(limit=2001), dict(date_from="١٩٧٩-١٠-٠١"),
+                                dict(text="   "), dict(text="x", title=" "), dict(text=None, title="\t")])
+def test_boe_search_refuses_bad_arguments_with_exit_2_and_asks_nothing(kw, capsys):
+    assert boe.run(_boe_args(**kw), FakeClient({})) == 2
+    assert "gwt-fetch:" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("value", ["19790101", "1979-W01-1", "1979-1-05", "01/02/1980", "1979-01-05T10:00"])
+def test_boe_search_names_the_format_when_a_date_is_not_written_yyyy_mm_dd(value):
+    assert "written YYYY-MM-DD" in boe.problem(_boe_args(date_from=value))
+
+
+def test_boe_search_says_when_a_date_is_well_written_but_does_not_exist():
+    assert "that exists" in boe.problem(_boe_args(date_from="1979-02-30"))
+
+
+def test_boe_search_accepts_a_one_day_range_and_the_largest_limit():
+    assert boe.problem(_boe_args(date_from="1980-01-01", date_to="1980-01-01", limit=2000)) == ""
+
+
+def test_boe_search_keeps_a_title_with_a_line_break_in_one_cell(capsys):
+    row = {"ref": "BOE-A-1978-9001", "date": "1978-01-10", "number": "8", "department": "D",
+           "title": "uno\r\ndos\ttres", "doc_url": "u"}
+    assert boe.cell(row["title"]) == "uno dos tres"
+
+
+def test_gazeta_fetch_reads_the_pdf_link_of_a_modern_document(tmp_path):
+    c = FakeClient({gazeta.DOC + "BOE-A-1978-9001": Resp(MODERN_DOC),
+                    "https://www.boe.es/boe/dias/1978/01/10/pdfs/A00461-00470.pdf": Resp(b"%PDF", "application/pdf")})
+    assert boe.run(argparse.Namespace(action="fetch", refs=["BOE-A-1978-9001"], out=str(tmp_path)), c) == 0
+    assert (tmp_path / "BOE-A-1978-9001.pdf").read_bytes() == b"%PDF"
+
+
 # ---------------------------------------------------------------- europeana
 
 def test_europeana_skips_without_key(monkeypatch, capsys):
@@ -504,3 +589,39 @@ def test_touraine_the_end_message_counts_only_with_status_400(tmp_path, status, 
     c = FakeClient({touraine.BASE + "/visualizer/api": end})
     assert touraine.run(_targs(tmp_path, list=True), c) == 1
     assert "stopped" in capsys.readouterr().err
+
+
+ERROR_BOX = "<html><div class='mensabox'>Los valores de b\u00fasqueda enviados son incorrectos</div></html>"
+
+
+def test_boe_search_error_box_is_an_error_and_not_zero_results(capsys):
+    c = FakeClient({boe.SEARCH: Resp(ERROR_BOX)})
+    assert boe.run(_boe_args(), c) == 2
+    cap = capsys.readouterr()
+    assert "refused" in cap.err and "result(s)" not in cap.err and cap.out == ""
+
+
+def test_boe_search_page_without_results_and_without_the_box_is_still_zero(capsys):
+    assert boe.run(_boe_args(), FakeClient({boe.SEARCH: Resp("<html>nada</html>")})) == 0
+    assert "0 result(s)" in capsys.readouterr().err
+
+
+
+ERROR_BOX_REAL = ('<div class="mensajeError"><p>Los valores de b&amp;uacute;squeda enviados son incorrectos.</p></div>'
+                  '<div>Los valores de b&uacute;squeda enviados son incorrectos</div>')
+
+
+@pytest.mark.parametrize("page", [ERROR_BOX_REAL, ERROR_BOX_REAL.split("</div>")[0], "<p>Los valores de b&uacute;squeda enviados son incorrectos</p>"])
+def test_boe_search_error_box_as_the_site_writes_it_with_html_entities(page, capsys):
+    assert boe.run(_boe_args(), FakeClient({boe.SEARCH: Resp(page)})) == 2
+    assert "result(s)" not in capsys.readouterr().err
+
+
+REAL_ERROR_PAGE = Path(__file__).parent / "data" / "boe_error_unicode_date.html"
+
+
+def test_boe_search_real_error_page_is_exit_2_and_not_zero_results(capsys):
+    raw = REAL_ERROR_PAGE.read_bytes()  # captured from boe.es for a date written with Arabic-Indic digits
+    assert hashlib.sha256(raw).hexdigest() == "d677a09471c26621d2ef6f9f0c2570d6390a3412541ad741a8d7fb36a92a60a7"
+    assert boe.run(_boe_args(), FakeClient({boe.SEARCH: Resp(raw)})) == 2
+    assert "result(s)" not in capsys.readouterr().err

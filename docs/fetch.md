@@ -4,7 +4,7 @@ A research agent that opens a browser to save a register page is slow and leaves
 
 Python 3.11 or newer with `requests`. Run it as [`fetch/gwt-fetch`](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/fetch/gwt-fetch), symlinked onto your `PATH` if you like, or install the package (`pipx install gramps-web-toolkit`, see [Getting started](getting-started.md)) for `gwt fetch` and `gwt-fetch`. The code is in [`fetch/gwt_fetch/`](https://github.com/HALCONDEORO/gramps-web-toolkit/tree/main/fetch/gwt_fetch). Tests: `cd fetch && python3 -m pytest`.
 
-`iiif` works with any IIIF archive in any country. `digibib`, `gazeta` and `geo` cover Spanish sources only. `europeana` searches every provider in any country; `--provider Hispana` narrows it to Spain.
+`iiif` works with any IIIF archive in any country. `digibib`, `gazeta`, `boe` and `geo` cover Spanish sources only. `europeana` searches every provider in any country; `--provider Hispana` narrows it to Spain.
 
 ```
 gwt-fetch iiif URL [--pages 1-5,9] [--labels REGEX] [--out DIR] [--list]
@@ -13,6 +13,8 @@ gwt-fetch touraine search QUERY [--start N] [--limit N]
 gwt-fetch touraine pages ARK [--pages 1-5,9] [--max N] [--out DIR] [--list]
 gwt-fetch gazeta search (--text WORDS | --title WORDS) [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N]
 gwt-fetch gazeta fetch BOE-A-YYYY-N [...] [--out DIR]
+gwt-fetch boe search (--text WORDS | --title WORDS) [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N]
+gwt-fetch boe fetch BOE-A-YYYY-N [...] [--out DIR]
 gwt-fetch europeana QUERY [--provider any|NAME] [--data-provider NAME] [--country NAME] [--year-from Y] [--year-to Y] [--iiif-only] [--rows N]
 gwt-fetch geo PLACE [...] [--types Municipio,poblacion] [--province NAME] [--limit N]
 gwt-fetch --delay 2 ...   # seconds between requests to one host, default 1
@@ -127,6 +129,21 @@ $ gwt-fetch gazeta search --text Betanzos --from 1890-01-01 --to 1890-03-31 --li
 ref	date	gazette	number	page	department	title	pdf_url
 BOE-A-1890-676	1890-02-02	Gaceta de Madrid	33	325	Ministerio de la Gobernación	Estación Central de Telégrafos.- Telegramas recibidos ...	https://www.boe.es/datos/pdfs/BOE//1890/033/A00325-00325.pdf
 $ gwt-fetch gazeta fetch BOE-A-1890-676 --out research/raw/fuentes/gaceta
+```
+
+## `boe`: the modern BOE, 1960 onwards
+
+`gazeta` stops at 1959. From 1960 the BOE has its own search form, `GET https://www.boe.es/buscar/boe.php`, with a different result layout. `boe search` drives it and prints one TSV row per hit: `ref`, `date`, `number`, `department`, `title`, `doc_url`. `--text` takes words, or a phrase in double quotes; `--from` and `--to` take `YYYY-MM-DD`; `--limit` is rounded up to 50, 200, 500, 1000 or 2000 hits per request.
+
+- The form rejects a request that leaves out fields ("los valores de búsqueda enviados son incorrectos"). `boe search` sends all of them, empty ones included, and the origin boxes `dato[0][1..5]` and `dato[0][T]`. A URL built by hand with only the text field fails.
+- The full-text field is `campo[3]=DOC`, the title is `campo[1]=TITULOS`, the date range is `campo[6]=FPU` with `dato[6][0]` and `dato[6][1]` in `YYYY-MM-DD`. A `DD/MM/YYYY` range returns nothing, so `boe search` refuses any other form (and a date that does not exist, a range that ends before it starts, a `--limit` outside 1-2000, a blank `--text` or `--title`, digits that are not ASCII) with exit 2 before it asks the site. When the form answers 200 with its error box ("Los valores de búsqueda enviados son incorrectos"), `boe search` exits 2 with a message; it never reports that as 0 results.
+- The search ignores accents: `Garcia` and `García` return the same hits.
+- Some items (section B notices) come back with an empty `department` and `title`. The reference and date are still right.
+- `boe fetch REF` is `gazeta fetch REF`. A modern document page marks its PDF `puntoPDF2`, and `gazeta fetch` now reads both markings. Many items say «Texto no disponible» and carry only the PDF; the text then comes from `pdftotext`.
+
+```
+$ gwt-fetch boe search --text '"Surname1 Surname2, Name"' --from 1975-01-01
+$ gwt-fetch boe fetch BOE-A-1978-478 --out research/raw/fuentes/boe
 ```
 
 ## `europeana`: Spanish records with a manifest

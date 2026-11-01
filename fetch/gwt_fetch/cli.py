@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import coverage, digibib, europeana, gazeta, geo, iiif, touraine
+from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, touraine
 from .net import Client
 
 
@@ -48,6 +48,18 @@ def parser() -> argparse.ArgumentParser:
     gf.add_argument("refs", nargs="+", metavar="BOE-A-YYYY-N")
     gf.add_argument("--out", default=".")
 
+    s = sub.add_parser("boe", help="search or fetch the modern BOE (1960 onwards)")
+    b = s.add_subparsers(dest="action", required=True)
+    bs = b.add_parser("search", help="search; prints TSV")
+    bs.add_argument("--text", help="words in the full text")
+    bs.add_argument("--title", help="words in the title")
+    bs.add_argument("--from", dest="date_from", help="YYYY-MM-DD")
+    bs.add_argument("--to", dest="date_to", help="YYYY-MM-DD")
+    bs.add_argument("--limit", type=int, default=50)
+    bf = b.add_parser("fetch", help="download the PDF and text of one or more references")
+    bf.add_argument("refs", nargs="+", metavar="BOE-A-YYYY-N")
+    bf.add_argument("--out", default=".")
+
     s = sub.add_parser("europeana", help="search Europeana (needs EUROPEANA_KEY); prints TSV with manifests")
     s.add_argument("query")
     s.add_argument("--provider", default="any", help='aggregator, e.g. Hispana for Spain; default any (no filter)')
@@ -89,7 +101,7 @@ def parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
     client = Client(delay=args.delay)
-    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "europeana": europeana, "geo": geo, "touraine": touraine, "coverage": coverage}[args.cmd]
+    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "europeana": europeana, "geo": geo, "touraine": touraine, "coverage": coverage}[args.cmd]
     try:
         return mod.run(args, client)
     except KeyboardInterrupt:

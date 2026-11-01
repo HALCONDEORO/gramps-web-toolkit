@@ -76,7 +76,7 @@ def search(client, **kw) -> list[dict]:
 def parse_doc(page: str) -> dict:
     title = re.search(r'<h3 class="documento-tit">(.*?)</h3>', page, re.S)
     pub = re.search(r"<dt>Publicado en:</dt>\s*<dd>(.*?)</dd>", page, re.S)
-    pdf = re.search(r'<li class="puntoPDF">\s*<a[^>]*href="([^"]+\.pdf)"', page)
+    pdf = re.search(r'<li class="puntoPDF2?">\s*<a[^>]*href="([^"]+\.pdf)"', page)
     body = re.search(r'<div id="textoxslt">(.*?)</div>\s*<!-- #textoxslt -->', page, re.S)
     text = ""
     if body and "Texto no disponible" not in body.group(1):
