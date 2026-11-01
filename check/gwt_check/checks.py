@@ -73,6 +73,8 @@ CHECKS = {
     "dup-citation": "two citations of one source with the same page text, ignoring case and spacing",
     "dup-source-ark": "two sources that name the same archive ark (in the title, abbreviation, publication "
                       "info, a note or an attribute), written as `ark:/NAAN/id` or `ark NAAN/id`",
+    "date-false-precision": "an event date that hedges twice (`about` and `estimated`) or marks a date with a day "
+                            "as `estimated`, so it reads as more exact than the source made it",
     "private": "object or sub-reference marked private",
     "place-no-coords": "place used by an event without coordinates",
     "place-vs-description": "an event whose description names another place of the tree and not its own place "
@@ -100,8 +102,8 @@ CHECKS = {
 }
 
 # Checks reported without failing: a finding of these is never new, so it never sets the exit code.
-INFO_CHECKS = {"unconnected", "parent-age", "marriage-age", "sibling-spacing", "lifespan", "dup-citation", "dup-source-ark",
-               "place-vs-description", "note-marker-no-tag"}
+INFO_CHECKS = {"unconnected", "parent-age", "marriage-age", "sibling-spacing", "lifespan", "dup-citation",
+               "dup-source-ark", "date-false-precision", "place-vs-description", "note-marker-no-tag"}
 
 # words in a note that a tag of the same stem is meant to mark; matched without accents, whole word
 NOTE_MARKERS = ("hipotesis", "homonimo")
@@ -255,6 +257,20 @@ def source_ark_checks(T: dict, out: Findings, in_scope) -> None:
                     f"ark {naan}/{name}")
 
 
+def date_precision_checks(T: dict, out: Findings, in_scope) -> None:
+    """A date copied from a table or computed from an age: "about" and "estimated" together hedge twice, and an
+    "estimated" date that still has a day claims a precision nobody read. For information only."""
+    for e in T["events"].values():
+        dt = e.get("date") or {}
+        if dt.get("quality") != 1 or not in_scope("events", e["handle"]):
+            continue
+        v = dt.get("dateval") or [0, 0, 0, False]
+        if dt.get("modifier") == 3:
+            out.add("date-false-precision", e.get("gramps_id") or e["handle"], "about and estimated together")
+        elif v[0]:
+            out.add("date-false-precision", e.get("gramps_id") or e["handle"], "estimated, yet it names a day")
+
+
 def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
                root: str | None = None) -> tuple[list[dict], dict]:
     """Structural checks over the whole tree; duplicate checks need one object of each pair in scope.
@@ -377,6 +393,8 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
             out.add("dup-citation", ",".join(sorted((c.get("gramps_id") or c["handle"] for c in cs), key=id_order)))
 
     source_ark_checks(T, out, in_scope)
+
+    date_precision_checks(T, out, in_scope)
 
     # birth and death pointers
     E = T["events"]

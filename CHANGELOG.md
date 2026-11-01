@@ -10,6 +10,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 - `gwt-fetch boe search` and `boe fetch` search and download the BOE from 1960 onwards, which `gazeta` does not cover. `gazeta fetch` also reads the PDF link of modern documents. A date with non-ASCII digits or a blank `--text`/`--title` is refused with exit 2, and the form's error box exits 2 instead of printing 0 results.
 - `gwt-fetch names` looks a person up in the Gaceta and the BOE under every spelling and both name orders, saves each item and prints the words around the match. Bad arguments (person, dates, limit, spelling) exit 2 before any request; for people confirmed dead.
+- `gwt-check` `date-false-precision` (for information only): an event date that is `about` and `estimated` together, or `estimated` with a day.
 - `gwt-check` `dup-source-ark` (for information only): two sources that name the same archive ark, so a register entered twice is found before a third copy is made.
 - `gwt-fetch coverage`: offline report of which views of a register a sweep read and which it missed, with a warning for a sweep of alternate views (a double-page viewer read at every second view reads half of the register). Exit 1 when views are missing.
 - `gwt-acts check`: checks act cards offline (source, literal filiation, zoom mark, Republican date by calculation, "bef" for an issue date) and, with a tree dump, says whether the person is already in the tree, with spelling notes and conflicts reported, never replaced.

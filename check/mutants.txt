@@ -114,3 +114,8 @@ gwt_check/checks.py |             out.add((m[1], name.lower())) |             ou
 gwt_check/checks.py |             out.add((m[1], name.lower())) |             out.add(("", name.lower())) | the archive number of an ark is ignored
 gwt_check/checks.py |         if _ARK_ID.fullmatch(name): |         if _ARK_ID.match(name): | an id is cut to the prefix that fits the format, so a double dash or a percent code gives a false duplicate
 gwt_check/checks.py |         name = m[2].rstrip(".,;:!?)]}'\"") |         name = m[2] | a closing stop or bracket is kept in the id
+gwt_check/checks.py |         if dt.get("quality") != 1 or not in_scope("events", e["handle"]): |         if dt.get("quality") != 1: | a false-precision date is reported with the event out of scope
+gwt_check/checks.py |         if dt.get("quality") != 1 or not in_scope("events", e["handle"]): |         if dt.get("quality") != 2 or not in_scope("events", e["handle"]): | a calculated date is taken for an estimated one
+gwt_check/checks.py |         if dt.get("modifier") == 3: |         if dt.get("modifier") in (1, 3): | before and estimated are called about and estimated
+gwt_check/checks.py |         elif v[0]: |         elif v[0] or v[1]: | an estimated date with a month and no day is said to name a day
+gwt_check/checks.py |         elif v[0]: |         elif False: | an estimated date with a day is not reported

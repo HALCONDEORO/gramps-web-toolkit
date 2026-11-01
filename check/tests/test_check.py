@@ -1963,3 +1963,40 @@ def test_dup_source_ark_rejects_an_id_it_cannot_read_whole_and_never_cuts_it_to_
     _src(d, "S0097", title="ark 12345/abcdefgh.")  # nor is a full stop
     assert _ark_findings(d) == [("S0095,S0097", "ark 12345/abcdefgh")]
     assert checks.source_arks({"title": "ark 12345/abcdefgh--one"}, {}) == set()
+# -- date-false-precision --------------------------------------------------------------------------
+
+def _dated(d, gid, modifier=0, quality=0, ymd=(1750, 3, 2)):
+    p = selftest._new_person(d, "I9" + gid[-3:], "Prueba", "Inventado", birth=(1700,))
+    selftest._event(d, p, gid, "Residence", ymd)
+    dt = selftest._get(d, "events", gid)["date"]
+    dt["modifier"], dt["quality"] = modifier, quality
+
+
+def _fp(d, scope=None):
+    findings, _ = checks.run_checks(Tree(copy.deepcopy(d)), scope)
+    return sorted((f["key"], f["detail"]) for f in findings if f["check"] == "date-false-precision")
+
+
+def test_false_precision_about_and_estimated_together_or_estimated_with_a_day():
+    d = selftest.clean_tree()
+    _dated(d, "E0801", modifier=3, quality=1, ymd=(1750, 0, 0))
+    _dated(d, "E0802", modifier=3, quality=1)  # still twice, whatever the precision
+    _dated(d, "E0803", quality=1)  # estimated with a day
+    _dated(d, "E0804", quality=1, ymd=(1750, 5, 0))  # a month only: not a day
+    _dated(d, "E0805", modifier=3)  # about alone is fine
+    _dated(d, "E0806", quality=2)  # calculated is a different statement
+    _dated(d, "E0807", modifier=3, quality=2)
+    _dated(d, "E0808", modifier=1, quality=1)  # before + estimated, with a day
+    assert _fp(d) == [("E0801", "about and estimated together"), ("E0802", "about and estimated together"),
+                      ("E0803", "estimated, yet it names a day"), ("E0808", "estimated, yet it names a day")]
+
+
+def test_false_precision_is_info_and_needs_the_event_in_scope(tmp_path, capsys):
+    d = selftest.clean_tree()
+    _dated(d, "E0801", quality=1)
+    assert _fp(d, {("events", "hE0801")}) == [("E0801", "estimated, yet it names a day")]
+    assert _fp(d, {("people", "hI0001")}) == []
+    dump = tmp_path / "t.json"
+    dump.write_text(json.dumps(d), encoding="utf-8")
+    assert main(["check", str(dump)]) == 0
+    assert "info date-false-precision" in capsys.readouterr().out
