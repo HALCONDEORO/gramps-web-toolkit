@@ -32,9 +32,10 @@ class Edepot(Exception):
     """The register is on the E-depot viewer, which the visualizer API does not serve."""
 
 
-def clean_cell(text: str) -> str:
-    """One TSV cell: no tab, newline or leading spreadsheet-formula character."""
-    out = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", text or ""))).strip()
+def clean_cell(text: str, *, markup: bool = True, preserve_whitespace: bool = False) -> str:
+    """Formula-safe cell; quoted CSV may opt into verbatim plain-text whitespace."""
+    plain = html.unescape(re.sub(r"<[^>]+>", " ", text or "")) if markup else (text or "")
+    out = plain if preserve_whitespace else re.sub(r"\s+", " ", plain).strip()
     return "'" + out if out[:1] in ("=", "+", "-", "@") else out
 
 

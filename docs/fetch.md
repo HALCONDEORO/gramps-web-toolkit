@@ -264,3 +264,104 @@ From the awesome-spain list (https://github.com/GeiserX/awesome-spain):
 - **spanish-names-surnames** (INE name and surname frequencies): not a fetch source. It may help a name-normalising step later.
 - **boe-mcp, MCP-BOE, rOpenSpain/BOE, Datania BOE**: they wrap the modern BOE open data API, which does not cover the Gazeta collection. `gazeta` is the part that does.
 - **API-CNIG, mapSpain, es-atlas**: map display and boundaries, outside what fetch does.
+
+## `leads`: collateral people in local transcriptions
+
+This offline command extracts clues for a human to check. It never creates a person,
+relationship or change list, reads a tree, or contacts an archive. It uses fixed French
+patterns, not a general language parser. `gwt-fetch leads` is separate from `gwt-leads`,
+which ranks gaps in a tree.
+
+```text
+gwt-fetch leads extract --in transcription.txt --format tsv
+gwt-fetch leads extract --in transcription.txt --subject "Jean Alfa" --format json
+gwt-fetch leads extract --in transcription.txt --group-by name --format json
+gwt-fetch leads match --leads leads.tsv --catalogue-names names.txt
+```
+
+`gwt fetch leads ...` is the equivalent unified command. In a source checkout,
+`python fetch/gwt-fetch leads ...` also works. `gwt_fetch` is the Python package;
+the installed executable uses a hyphen: `gwt-fetch`.
+
+Input is local UTF-8 text. Each act starts with exactly one `ref: <cote>/<image>`
+and one `date: YYYY-MM-DD` header (either order); separate acts with a line `---`.
+Dates must be valid calendar dates. All examples below are invented, including the
+references; they do not describe archive images.
+
+```text
+ref: SYN-A/001
+date: 1719-05-09
+mariage de Jean Alfa fils de feu Jean Alfa; presence de Paul Beta et Luc Gamma amis de l'epoux
+---
+ref: SYN-B/002
+date: 1720-06-10
+parrain Paul Beta, marraine Anne Delta
+frere de l'epouse Marc Epsilon
+```
+
+The default TSV has `ref`, `date`, `name`, `role`, `declared_relation`, `confidence`,
+and `literal` columns. JSON is an array of objects with the same fields.
+`declared_relation` retains the matched French wording, including a recognised
+trailing `amis de l'epoux` or `amis de l'epouse`. `literal` is an exact contiguous
+fragment of the transcription containing the name and its recognised evidence.
+Shared evidence may include another named witness. TSV uses CSV quoting for embedded
+tabs and newlines; read it with a TSV/CSV reader. Every cell starting with `=`, `+`,
+`-` or `@` gets an apostrophe to prevent spreadsheet formulas; JSON preserves the raw
+text. TSV matching preserves that protective apostrophe.
+
+| Wording before a name | Role |
+| --- | --- |
+| `parrain`, `marraine` | `godparent` |
+| `temoin(s)`, `present(s)`, `presence de`, `amis` | `witness` |
+| `frere`, optionally `de l'epouse` or `de l'epoux` | `sibling` |
+| `fils de`, `fille de` | `parent` |
+| `grand-pere`, `grand-mere` | `grandparent` |
+| `veuf de`, `veuve de` | `spouse` (the named spouse) |
+| `fils de feu`, `fille de feue` | `deceased_parent` |
+| `oncle`, `cousin`, isolated `feu`/`feue`, other named mentions | `other`, `low` |
+
+Accented forms such as `témoin`, `présents`, `frère` and `grand-mère` work too.
+The `(s)` in this table means an optional plural letter, not literal parentheses.
+An isolated `feu X` says X is deceased, not whose parent X is, so it stays `other`.
+Recognised patterns receive `high` unless the mention contains `(?)`; unknown roles
+and uncertain mentions receive `low`. Confidence describes pattern recognition,
+never the truth of the transcription or a genealogical identification.
+
+Conservative limit: if the clause (text between `.`/`;` marks) holding a name
+contains negation (`ne`, `n'`, `pas`, `sans`, `non`, `jamais`, `ni`, `aucun`),
+uncertainty (`probable`, `peut-être`, `possible`, `semble`, `douteux`, `?`) or an
+alternative (`ou`, `soit`), every name in it becomes `other`/`low` and `literal` is
+the whole clause. For example `ne fut pas parrain Paul Beta`, `parrain probable Paul
+Beta` and `parrain Paul Beta ou Luc Gamma` never yield `godparent`/`high`. This is a
+fixed word list, not a parser: it over-withdraws (any `ou`, `pas`…) and can miss
+other phrasings, so check every literal.
+
+Names must contain at least two capitalised words, with optional particles,
+hyphens, apostrophes and `(?)`. Lists joined by `et` or commas share the preceding
+role within their clause. Event subjects introduced by `mariage de`, `baptême de`
+or `inhumation de` are skipped. `--subject` also excludes exact names after
+case/accent folding, and explicitly declared parents in that subject's immediate
+clause, including `et de` continuations. It does not remove an unrelated parent in
+another clause/act or a separate witness with the same name as a declared parent.
+Negated, doubtful or alternative parent mentions stay as `other`/`low` clues with
+their whole clause as evidence, even when `--subject` is supplied.
+No ancestry is inferred from a surname, an uncle, or a repeated appearance.
+Unusual order, lowercase names, one-word names and complex narrative syntax may
+be missed or assigned `other`; human validation against every literal is required.
+
+Separate acts retain separate rows even for the same witness. `--group-by name`
+replaces evidence rows with `name`, `count`, counting exact transcribed spellings
+across all acts (mentions, not distinct people or distinct acts). Keep the original
+ungrouped output to inspect evidence; grouped output is not accepted by `match`.
+
+`match` reads the ungrouped TSV and adds a `match` column. The optional UTF-8 catalogue
+contains one surname per line; explicit variants share a line separated by `|`, for
+example `Beta|Betta`. Case and accents are folded using the existing name helper.
+A complete surname suffix after the first given name must agree; no fuzzy or
+substring matching is used. Compound given names and surnames remain ambiguous.
+The only nonempty mark is **`posible coincidencia`**, never an identity claim.
+With no catalogue, or an empty catalogue, all marks are empty.
+
+Exit status is 0 for valid input, including zero people (JSON `[]`, TSV header only).
+Empty input, a missing/duplicate header, an invalid date, an unreadable file or malformed
+TSV exits 2 with no partial result. All input blocks are validated before output.

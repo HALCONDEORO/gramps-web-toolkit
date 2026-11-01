@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, names, touraine, variants
+from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, leads, names, touraine, variants
 
 
 def _max_images(text: str) -> int:
@@ -127,6 +127,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("total", type=int, help="number of views in the register")
     s.add_argument("--read", action="append", help="views read, e.g. 1-5,9,12-; may be repeated")
     s.add_argument("--dir", help="a download folder: files named NNNN_label count as that view")
+    leads.add_parser(sub)
     return p
 
 
@@ -134,12 +135,18 @@ def main(argv=None) -> int:
     args = parser().parse_args(argv)
     if args.cmd == "variants":
         return variants.run(args)
+    if args.cmd == "leads":
+        try:
+            return leads.run(args, None)
+        except (OSError, ValueError) as exc:
+            print(f"gwt-fetch: {exc}", file=sys.stderr)
+            return 2
     from .net import Client
 
     client = Client(delay=args.delay)
     if args.cmd == "names" and not args.source:
         args.source = ["gazeta", "boe"]
-    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "names": names, "europeana": europeana, "geo": geo, "touraine": touraine, "coverage": coverage}[args.cmd]
+    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "names": names, "europeana": europeana, "geo": geo, "touraine": touraine, "coverage": coverage, "leads": leads}[args.cmd]
     if args.cmd == "touraine" and args.action == "catalogue":
         from . import touraine_catalogue
         mod = touraine_catalogue
