@@ -173,6 +173,21 @@ gwt-check act act.json dump.json.gz --json
 - The text output lists 30 people (`--limit`); `--json` has all of them.
 - The report quotes the tree, so it is as private as the tree.
 
+## Media, transcription and file names for an act (`act-media`)
+
+`gwt-check act-media DUMP --person GRAMPS_ID [--person ...] [--event GRAMPS_ID ...] [--json] [--limit N]` reports, for each own event (role Primary) of the persons you name, three separate answers. It reads a local dump or a `gwt-apply` snapshot only (never the live tree), writes nothing, renames nothing, and has no option that does. Gramps is the source of truth; an Excel workbook is an archived backup and is never read or overwritten here. It never sets the exit code for a gap; bad input (unknown person, an event that is not the person's own, a `.gramps` backup) exits `2`.
+
+- **`media`**: every media reference found, with the exact object that holds it (type, Gramps ID, handle, field), the media's ID, handle, path, mime type and description, and a linkage level. Only `event` (the event itself) and `event-citation` (a citation of the event) are candidates for that event's act, and even then the report says "unverified": no image is read. `person`, `person-citation`, `event-source` and `person-source` are listed apart and never counted as the act's capture; a register's media does not show that this act is attached. Several different media at the candidate levels are reported as ambiguous and none is chosen. "None in this dump" means the dump has no reference, not that no capture exists.
+- **`transcription`**: notes of type Transcript, or whose text says "transcripción literal", "transcription littérale" or "literal transcription", found at the same levels (also on the media found there). A Transcript note is reported as available but not checked for being literal; an untyped note that only claims it is "unverified"; an empty Transcript note does not count; a note only on the person, a person citation or a source is "indirect". The note text is never copied into the report, only its ID, handle and type.
+- **`filename`**: a proposed stem `person_event_date_ref_vue`, for example `lucia-ortega-sanz_birth_1900-03-01_cote-4e123_vue12`. The cote is read from `cote ...` in the page, title, publication info or attributes of a citation of the event and its source, or from the call number of the source's repository; the ark from `ark:/NNNNN/id` in the same places; the view from `vue N`, `view N` or `image N` in the page. Each part lists where it was read. The ark is used only when no cote is written. A part that is missing, contradictory (two cotes, two views), or a date that is about, before, estimated, not Gregorian, or without a year, is `unknown`: it is never invented and a conflict is never resolved. Only letters, digits and dashes are kept, the parts are capped and joined with `_`, so the stem is valid on Windows, macOS and Linux. It carries no extension. No file is looked for, so a stem may collide with an existing file; renaming is not implemented, and no backed-up execution exists.
+
+A private person, event, citation, source, media object or note is held back (its ID is listed under `held_back`, nothing else), and a handle the dump does not contain is listed as "not in the dump". The report quotes the tree, so it is as private as the tree.
+
+```sh
+gwt-check act-media dump.json.gz --person I0001
+gwt-check act-media dump.json.gz --person I0001 --person I0002 --event E0001 --json
+```
+
 ## Checking Republican conversions
 
 `gwt-check republican` reads the notes, citation pages and event descriptions of a dump or the live tree, finds every "`14 germinal an 13 = 04/04/1805`" (day in digits, month name, year in digits or Roman numerals, then an equals sign and a Gregorian day), recomputes the day with the count Gramps uses (years 1 to 14) and lists the ones that differ. It never writes. It exits `1` when a conversion differs or is not a Republican day, `0` otherwise.
@@ -372,3 +387,5 @@ gwt-check timeline HANDLE [HANDLE ...] [--limit 200]
 ```
 
 `timeline` asks the server for the events of one or more people (`/api/timelines/people/`) and prints a row for each: the person's Gramps ID, the event's Gramps ID, type, role and date, in the order the server gives them. It never prints a description, a place or a citation, and it never writes to the tree. An event with no date comes back with an empty date.
+
+Act-media also respects privacy on MediaRef and EventRef, and does not build a person filename component from a private primary name or surname. Private attributes and repository references do not feed filename reference proposals. Dual-year and non-January newyear dates remain unknown through the shared date reader. This command covers only a person's own Primary events, not family events.

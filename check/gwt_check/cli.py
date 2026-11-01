@@ -359,6 +359,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="print the result as JSON")
     p.add_argument("--limit", type=int, default=30, help="people printed (default 30)")
 
+    p = sub.add_parser("act-media", help="media on a person's events (event, citation, person, source kept apart), transcription notes and a file name proposal; a report that changes nothing, renames nothing")
+    p.add_argument("tree", help="dump file or gwt-apply snapshot (local, read only; the live tree is never read)")
+    p.add_argument("--person", action="append", required=True, metavar="GRAMPS_ID", help="a cited person (repeatable); nothing is searched by name")
+    p.add_argument("--event", action="append", metavar="GRAMPS_ID", help="only this own event of the named persons (repeatable); default: all their own events")
+    p.add_argument("--json", action="store_true", help="print the result as JSON, with the exact object references")
+    p.add_argument("--limit", type=int, default=30, help="person/event rows printed (default 30)")
+
     p = sub.add_parser("cites", help="events cited by another kind of act or a marginal mention; a report, never fails")
     p.add_argument("tree", nargs="?", help="dump file; without it the live tree is read")
     p.add_argument("--json", action="store_true", help="print the result as JSON")
@@ -460,6 +467,14 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(rep, ensure_ascii=False, indent=1))
             else:
                 print_act(rep, args.limit)
+            return 0
+        if args.cmd == "act-media":
+            from .actmedia import media_report, print_media
+            rep = media_report(load(args.tree), args.person, args.event)
+            if args.json:
+                print(json.dumps(rep, ensure_ascii=False, indent=1))
+            else:
+                print_media(rep, args.limit)
             return 0
         if args.cmd == "republican":
             from .republican import print_republican, republican_report

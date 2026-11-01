@@ -8,6 +8,8 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
+- `gwt-check act-media`: for the persons (and events) you name in a local dump or snapshot, reports apart the media references found (event, event citation, person, person citation and source kept as separate levels; only the first two are candidates, all unverified), the Transcript notes available, and a proposed file name `person_event_date_cote-or-ark_vue` with unknown parts left unknown. Read only: it never renames, uploads or writes, and never fails for a gap.
+
 - `gwt-fetch touraine catalogue "<place>"`: TSV by year and cote with row-level search and ARK provenance, preserving conflicts. Completeness is UNKNOWN and all gap claims are withheld: the repository has no captured positive terminal layout and site-owned no-results marker contract. Empty tables cannot certify completion. Rows, provenance and incomplete reasons remain available; explicit row-place checks remain required. Uses Touraine's pacing, no redirects and no retries; tested with invented mocked pages only.
 - `gwt-fetch variants --surname` suggests sorted, unique surname spellings offline, preserving the original. Optional local JSON mappings and bounded, opt-in single-edit rules add suggestions; `--regex` escapes literal spellings for case-insensitive matching on accent-folded text. Suggestions are never identity or merge evidence; no catalogue or ledger integration.
 - `gwt-apply` `merge_source`: merges two sources that are one register entered twice, with Gramps' own merge. The dry run names every citation that moves; a loser whose title, author, publication info or abbreviation differs is a conflict, so no text is lost. It answers `dup-source-ark` findings.
