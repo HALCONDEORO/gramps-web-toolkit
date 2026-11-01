@@ -102,14 +102,14 @@ def owners(tree: Tree, person: dict, event: dict, held: list) -> list[tuple]:
 def media_rows(tree: Tree, found: list[tuple], held: list) -> tuple[list[dict], list[tuple]]:
     rows, objs = [], []
     for level, t, o in found:
-        for r in o.get("media_list") or []:
-            if r.get("private"):
-                _held(held, "media", str(r.get("ref") or ""), "private media reference")
+        for media_ref in o.get("media_list") or []:
+            if media_ref.get("private"):
+                _held(held, "media", str(media_ref.get("ref") or ""), "private media reference")
                 continue
-            [m] = _public(tree, "media", [r.get("ref")], held) or [None]
+            [m] = _public(tree, "media", [media_ref.get("ref")], held) or [None]
             if m is None:
                 continue
-            rows.append({"level": level, "via": ref(t, o), "field": "media_list", "rect": r.get("rect") or None,
+            rows.append({"level": level, "via": ref(t, o), "field": "media_list", "rect": media_ref.get("rect") or None,
                          "media": {**ref("media", m), "path": m.get("path") or "", "mime": m.get("mime") or "",
                                    "desc": m.get("desc") or ""},
                          "claim": CLAIMS[level]})
