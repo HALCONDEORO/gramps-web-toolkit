@@ -201,7 +201,7 @@ class StorageTest(unittest.TestCase):
         link = self.path.with_name('hard.tsv')
         os.link(self.path, link)
         for path in (self.path, link):
-            self.assert_refused(lambda: self.add(path))
+            self.assert_refused(lambda path=path: self.add(path))
         self.assertEqual(link.stat().st_ino, self.path.stat().st_ino)
         self.assertFalse(Path(str(link) + '.lock').exists())
 
@@ -266,32 +266,29 @@ class MetadataOwnershipCallTest(unittest.TestCase):
                 patch.object(L.os, 'listxattr', return_value=[]), \
                 patch.object(L, 'extended_attributes', return_value={}):
             L.preserve_metadata(99, original, {})
-            chown.assert_called_once_with(99, 101, 202)
+            self.assertEqual(chown.call_args.args, (99, 101, 202))
+            self.assertEqual(chown.call_count, 1)
 
 
 class SameUidContractTest(unittest.TestCase):
     def test_different_uid_refuses_before_writing_or_lock(self):
-        import tempfile
-        from pathlib import Path
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'ledger.tsv'
             path.write_text('KEEP')
-            with patch.object(L.os, 'geteuid', return_value=os.geteuid() + 1):
-                with self.assertRaisesRegex(OSError, 'same UID'):
-                    L.writable_ledger(path)
+            with patch.object(L.os, 'geteuid', return_value=os.geteuid() + 1), \
+                    self.assertRaisesRegex(OSError, 'same UID'):
+                L.writable_ledger(path)
             self.assertEqual(path.read_text(), 'KEEP')
             self.assertFalse(Path(str(path) + '.lock').exists())
 
     def test_sidecar_foreign_uid_refused_without_replacing_inode(self):
-        import tempfile
-        from pathlib import Path
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'ledger.tsv'
             with L.open_sidecar(str(path)):
                 pass
             lock = Path(str(path) + '.lock')
             inode = lock.stat().st_ino
-            with patch.object(L.os, 'geteuid', return_value=os.geteuid() + 1):
-                with self.assertRaisesRegex(OSError, 'writer UID'):
-                    L.open_sidecar(str(path))
+            with patch.object(L.os, 'geteuid', return_value=os.geteuid() + 1), \
+                    self.assertRaisesRegex(OSError, 'writer UID'):
+                L.open_sidecar(str(path))
             self.assertEqual(lock.stat().st_ino, inode)

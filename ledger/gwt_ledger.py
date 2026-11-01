@@ -430,6 +430,16 @@ def print_stats(rows):
             print(f"{col}\t{value or '-'}\t{n}")
 
 
+def run_check(p, args, rows):
+    if args.exact and not key(args.source or ''):
+        p.error('check --exact needs a non-empty --source')
+    scored = find(rows, args.person, args.source, args.query, args.threshold, args.exact)
+    print_rows(scored, with_score=True)
+    today = datetime.date.today().isoformat()
+    done = [r for _, r in scored if r['result'] in SEARCHED and (not r['next_date'] or r['next_date'] > today)]
+    return 0 if (scored if args.any_result else done) else 1
+
+
 def main(argv=None):
     p = build_parser()
     args = p.parse_args(argv)
@@ -449,13 +459,7 @@ def main(argv=None):
         sys.stderr.write(f'gwt-ledger: cannot read the ledger: {exc}\n')
         return 2
     if args.cmd == 'check':
-        if args.exact and not key(args.source or ''):
-            p.error('check --exact needs a non-empty --source')
-        scored = find(rows, args.person, args.source, args.query, args.threshold, args.exact)
-        print_rows(scored, with_score=True)
-        today = datetime.date.today().isoformat()
-        done = [r for _, r in scored if r['result'] in SEARCHED and (not r['next_date'] or r['next_date'] > today)]
-        return 0 if (scored if args.any_result else done) else 1
+        return run_check(p, args, rows)
     if args.cmd == 'due':
         due = [(1.0, r) for r in rows if r['next_date'] and r['next_date'] <= args.on]
         due.sort(key=lambda x: x[1]['next_date'])
