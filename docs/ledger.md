@@ -140,7 +140,7 @@ gwt-ledger --ledger research/shared.tsv query --ark ark:/fake/register-A --total
 
 With no `--total`, `total` is null and `unknown_tail` is true. Only gaps from image 1 through the highest logged image can be listed: the example then reports image 16 unread, with the tail after 19 unknown. An empty index has no known gaps and an unknown tail. Supply `--total 30` to report 1–30 unread on an empty index. A total below a logged image is an error (exit 2), so it cannot hide coverage. A successful query exits 0 even when gaps remain; usage and read/write errors exit 2.
 
-With `--ledger-dir`, marks write `<dir>/<key(reader)>.tsv` using the existing lane slug helper and query reads the shared ledger plus all lane TSV files. Separate reading rows and overlapping readers are preserved even if their names select the same lane filename. Each file is atomic; querying several lane files is not a single transaction across them. Locks coordinate processes on one host, as for search rows.
+With `--ledger-dir`, marks write `<dir>/<key(reader)>.tsv` using the existing lane slug helper and query reads the shared ledger plus all lane TSV files. Read commands include each resolved path once, even when the shared ledger is inside the lane directory or reached through a directory alias. Identical rows in separate files remain separate records. Separate reading rows and overlapping readers are preserved even if their names select the same lane filename. Each file is atomic; querying several lane files is not a single transaction across them. Locks coordinate processes on one host, as for search rows.
 
 ## Tests
 

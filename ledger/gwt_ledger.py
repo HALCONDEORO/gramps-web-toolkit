@@ -116,8 +116,15 @@ def read_rows(path):
 
 
 def ledger_paths(ledger, ledger_dir=''):
-    """The main ledger first, then every per-lane file of ledger_dir."""
-    return [ledger] + (sorted(glob.glob(os.path.join(ledger_dir, '*.tsv'))) if ledger_dir else [])
+    """The main ledger first, then each distinct resolved lane path once."""
+    paths = [ledger] + (sorted(glob.glob(os.path.join(ledger_dir, '*.tsv'))) if ledger_dir else [])
+    seen, unique = set(), []
+    for path in paths:
+        resolved = os.path.realpath(path)
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(path)
+    return unique
 
 
 def writable_ledger(path):

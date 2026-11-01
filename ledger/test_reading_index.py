@@ -110,6 +110,30 @@ class ReadingIndexTest(unittest.TestCase):
         self.assertEqual(exc.exception.code, 2)
         self.assertEqual(list(self.path.parent.iterdir()), [])
 
+    def test_shared_ledger_inside_lane_directory_is_read_once(self):
+        self.mark(1, 5)
+        self.cli('add', '--person', 'fake', '--source', 'fake', '--query', 'fake', '--result', 'none')
+        self.mark(3, 7, reader='ReaderB', lanes=str(self.path.parent))
+        alias = self.path.parent / 'lane-alias'
+        alias.symlink_to(self.path.parent, target_is_directory=True)
+        for lanes in (self.path.parent, alias):
+            with self.subTest(lanes=lanes):
+                q = self.query(lanes=str(lanes))
+                self.assertEqual([r['reader'] for r in q['rows']], ['ReaderA', 'ReaderB'])
+                self.assertEqual(q['covered'], [[1, 7]])
+                self.assertEqual(q['double_read'], [[3, 5]])
+                self.assertIn('rows\t1\n', self.cli('stats', lanes=str(lanes)))
+
+    def test_identical_rows_in_separate_lane_files_are_preserved(self):
+        self.mark(1, 5)
+        lanes = self.path.parent / 'lanes'
+        lanes.mkdir()
+        (lanes / 'copy.tsv').write_bytes(self.path.read_bytes())
+        q = self.query(lanes=str(lanes))
+        self.assertEqual(len(q['rows']), 2)
+        self.assertEqual(q['rows'][0], q['rows'][1])
+        self.assertEqual(q['double_read'], [])
+
     def test_launcher_help_and_query(self):
         launcher = str(Path(L.__file__).with_name('gwt-ledger'))
         help_run = subprocess.run([sys.executable, launcher, 'query', '--help'],

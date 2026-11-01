@@ -22,3 +22,5 @@ gwt_ledger.py | if (file_version(original) != file_version(current) or | if (Fal
 gwt_ledger.py | if any(r.get(c) for r in rows for c in READING_COLUMNS) else COLUMNS | if any(r.get('ark') for r in rows) else COLUMNS | reading cells without an ark are not dropped on rewrite
 
 gwt_ledger.py | if info.st_uid != os.geteuid(): | if False: | foreign UID ledger writes must be refused
+gwt_ledger.py | if resolved not in seen: | if True: | overlapping main and lane paths must not duplicate recorded rows
+gwt_ledger.py | resolved = os.path.realpath(path) | resolved = os.path.abspath(path) | directory aliases must not duplicate the shared ledger during discovery
