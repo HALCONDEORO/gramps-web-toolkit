@@ -264,3 +264,33 @@ From the awesome-spain list (https://github.com/GeiserX/awesome-spain):
 - **spanish-names-surnames** (INE name and surname frequencies): not a fetch source. It may help a name-normalising step later.
 - **boe-mcp, MCP-BOE, rOpenSpain/BOE, Datania BOE**: they wrap the modern BOE open data API, which does not cover the Gazeta collection. `gazeta` is the part that does.
 - **API-CNIG, mapSpain, es-atlas**: map display and boundaries, outside what fetch does.
+
+
+## `index-locate`: an index clue is not an image number
+
+`gwt-fetch index-locate reference.json [--mapping mapping.json]` reads local JSON
+and prints a manual navigation target. It never opens an archive, downloads an
+image, changes a ledger or establishes that an act was examined.
+
+A reference explicitly names `book_id`, `reference_kind` (`folio` or `page`),
+`number`, `side`, `source_url` and `checked_on`. Folios require `recto` or `verso`;
+pages require `side: null`. Source URLs must be HTTP(S), without credentials or
+whitespace, and consultation dates must be real `YYYY-MM-DD` dates. Identifiers
+are caller-resolved labels, not inferred archive identities.
+
+Synthetic reference, not a real book or record:
+
+```json
+{"book_id":"BookA","reference_kind":"folio","number":12,"side":"recto","source_url":"https://example.invalid/index","checked_on":"2026-01-01"}
+```
+
+Without a mapping the result is `mapping_needed`. A mapping has those exact
+reference fields plus `image_number` and `index_base` (`zero` or `one`), and its
+own source URL and consultation date. Book, kind, number and face must all match.
+There is no guessed arithmetic offset and no equivalence between page 12,
+folio 12 recto and viewer image 12. The declared base is returned unchanged.
+
+A target remains a clue: `act_examined` and `identity_verified` are always false.
+The caller must verify the original full image, citation and identity context.
+This module validates structure, not actual URL contents, access or source truth.
+Duplicate JSON fields and malformed metadata are refused before output (exit 2).

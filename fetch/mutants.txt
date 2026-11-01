@@ -103,3 +103,6 @@ gwt_fetch/variants.py | if not isinstance(value, str) or not value.strip() or le
 gwt_fetch/variants.py | ("ph", "f"), ("f", "ph") | ("ph", "ph"), ("f", "f") | ph and f are not suggested in either direction
 
 gwt_fetch/variants.py | path = os.path.realpath(os.path.abspath(os.path.expanduser(path))) | path = path | local config paths must be normalized before opening
+
+gwt_fetch/index_locator.py | key(reference)!=key(mapping) | False | cross-book and cross-face mappings must be refused
+gwt_fetch/index_locator.py | act_examined=False | act_examined=True | an index locator must never establish an act was examined
