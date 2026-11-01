@@ -203,7 +203,7 @@ def problem(args) -> str:
         return ""
     table = getattr(args, "table", False)
     given = {k: getattr(args, k, None) for k in ("page", "per_page", "start", "limit")}
-    own, other = (("page", "per_page"), ("start", "limit")) if table else (("start", "limit"), ("page", "per_page"))
+    other = ("start", "limit") if table else ("page", "per_page")
     wrong = [f"--{k.replace('_', '-')}" for k in other if given[k] is not None]
     if wrong:
         return f"{' and '.join(wrong)} belong to the {'list' if table else 'table'} mode" + (
