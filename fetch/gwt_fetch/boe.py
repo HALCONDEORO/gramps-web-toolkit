@@ -13,7 +13,7 @@ import sys
 from urllib.parse import urljoin
 
 from . import gazeta
-from .gazeta import BASE, HITS, REF, _text
+from .gazeta import BASE, HITS, _text
 
 SEARCH = BASE + "/buscar/boe.php"
 COLUMNS = ["ref", "date", "number", "department", "title", "doc_url"]
