@@ -1365,24 +1365,34 @@ class MergingFake(FakeGrampsWeb):
             win, lose = store[w], store.pop(l_)
             for lst in ("event_ref_list", "citation_list", "note_list", "child_ref_list", "family_list", "parent_family_list"):
                 win[lst] = win.get(lst, []) + [x for x in lose.get(lst, []) if x not in win.get(lst, [])]
-            if ns == "events":
-                self._merge_event_refs(win, lose, w, l_)
-            elif ns == "people":
-                win["attribute_list"].append({"_class": "Attribute", "type": "Merged Gramps ID", "value": lose["gramps_id"]})
-                for fam in self.store["families"].values():
-                    for role in ("father_handle", "mother_handle"):
-                        if fam.get(role) == l_:
-                            fam[role] = w
-                    for ref in fam.get("child_ref_list", []):
-                        if ref["ref"] == l_:
-                            ref["ref"] = w
-            else:
-                for p in self.store["people"].values():
-                    for lst in ("family_list", "parent_family_list"):
-                        p[lst] = [w if x == l_ else x for x in p.get(lst, [])]
+            self._merge_by_kind(ns, win, lose, w, l_)
             win["change"] = self.tick()
             return Resp(200, {})
         return super()._route(method, path, headers, params, body, data)
+
+    def _merge_by_kind(self, ns, win, lose, w, l_):
+        if ns == "events":
+            self._merge_event_refs(win, lose, w, l_)
+        elif ns == "people":
+            self._merge_person_refs(win, lose, w, l_)
+        elif ns == "sources":
+            for c in self.store["citations"].values():
+                if c.get("source_handle") == l_:
+                    c["source_handle"] = w
+        else:
+            for p in self.store["people"].values():
+                for lst in ("family_list", "parent_family_list"):
+                    p[lst] = [w if x == l_ else x for x in p.get(lst, [])]
+
+    def _merge_person_refs(self, win, lose, w, l_):
+        win["attribute_list"].append({"_class": "Attribute", "type": "Merged Gramps ID", "value": lose["gramps_id"]})
+        for fam in self.store["families"].values():
+            for role in ("father_handle", "mother_handle"):
+                if fam.get(role) == l_:
+                    fam[role] = w
+            for ref in fam.get("child_ref_list", []):
+                if ref["ref"] == l_:
+                    ref["ref"] = w
 
     def _merge_event_refs(self, win, lose, w, l_):
         """Gramps' MergeEventQuery: lists move to the winner; a holder's ref to the loser becomes a ref to the
@@ -4115,3 +4125,124 @@ def test_without_private_new_created_objects_are_not_forced_private(fake, scan):
     client = Client("https://gw.example", "u", "pw", tree="tree-test", dry_run=False, session=fake)
     Applier(client, retries=1, retry_wait=0).run(ops)
     assert not fake.store["notes"][stable_handle("n-john")].get("private")
+
+
+def _source_fixture():
+    fake = MergingFake()
+    fake.add("sources", {"handle": "s1", "title": "Parish register, book 3", "author": "", "pubinfo": "", "abbrev": ""})  # S0001
+    fake.add("sources", {"handle": "s2", "title": "Parish register, book 3", "author": "", "pubinfo": "", "abbrev": "",
+                         "note_list": ["n2"]})  # S0002
+    fake.add("citations", {"handle": "c1", "source_handle": "s1", "page": "f. 1"})  # C0001
+    fake.add("citations", {"handle": "c2", "source_handle": "s2", "page": "f. 2"})  # C0002
+    fake.add("citations", {"handle": "c3", "source_handle": "s2", "page": ""})  # C0003
+    return fake
+
+
+SRC_OP = {"op": "merge_source", "key": "ms", "ruling": R, "winner": "S0001", "loser": "S0002", "reason": "one register twice"}
+
+
+def test_merge_source_is_gramps_own_merge_and_names_every_citation_first():
+    fake = _source_fixture()
+    plan = run(fake, [SRC_OP], dry_run=True)
+    text = "\n".join(plan[0].actions)
+    assert plan[0].status == "done" and fake.writes() == []
+    assert 'merge Source S0002 into S0001: note_list +["n2"]' in text
+    assert "Citation C0002 (f. 2): cites S0001 instead of S0002" in text
+    assert "Citation C0003: cites S0001 instead of S0002" in text and "C0001" not in text.split("delete")[0].split("merge Source")[1]
+    assert plan[0].actions[-1] == "delete Source S0002"
+    res = run(fake, [SRC_OP])
+    assert res[0].status == "done", res[0].actions
+    assert sum(1 for m, p in fake.calls if m == "POST" and p.endswith("/sources/s1/merge/s2")) == 1
+    assert [m for m, p in fake.calls if m == "DELETE"] == []  # the server deletes the loser
+    assert "s2" not in fake.store["sources"]
+    assert {c["source_handle"] for c in fake.store["citations"].values()} == {"s1"}
+    note = fake.store["notes"][stable_handle("ms#merge")]
+    assert "Merged Source S0002" in note["text"]["string"] and note["handle"] in fake.store["sources"]["s1"]["note_list"]
+    assert run(fake, [SRC_OP])[0].status == "skip"  # a rerun finds it done
+
+
+@pytest.mark.parametrize("field, value, why", [
+    ("title", "Parish register, book 4", "differ in title"),
+    ("author", "A. Clerk", "has none, the merge would lose it"),
+    ("pubinfo", "Springfield 1890", "differ in pubinfo"),
+    ("abbrev", "PR3", "differ in abbrev"),
+])
+def test_merge_source_never_picks_a_text(field, value, why):
+    fake = _source_fixture()
+    fake.store["sources"]["s2"][field] = value
+    res = run(fake, [SRC_OP])
+    assert res[0].status == "conflict" and why in res[0].actions[-1], res[0].actions
+    assert "s2" in fake.store["sources"] and fake.writes() == []
+
+
+def test_merge_source_takes_a_loser_without_text_and_refuses_the_same_source():
+    fake = _source_fixture()
+    fake.store["sources"]["s2"]["title"] = ""
+    assert run(fake, [SRC_OP])[0].status == "done"
+    assert "winner and loser are the same" in "\n".join(validate([dict(SRC_OP, loser="S0001")]))
+    assert "reason" not in "\n".join(validate([SRC_OP]))
+
+
+@pytest.mark.parametrize("cls, ns, citations_stale", [("Source", "sources", True), ("Event", "events", False)])
+def test_a_source_merge_makes_the_snapshot_untrusted_for_citations(cls, ns, citations_stale):
+    """A source merge repoints citations all over, so a snapshot may not answer for them any more."""
+    fake = MergingFake()
+    fake.add(ns, {"handle": "w", "title": "x", "type": "Death"})
+    fake.add(ns, {"handle": "l", "title": "x", "type": "Death"})
+    client = Client("https://gw.example", "u", "s3cret-pw", tree="tree-test", dry_run=False, session=fake)
+    client.login()
+    client.snapshot = {}
+    client.merge(cls, "w", "l")
+    assert ("Citation" in client.unsnapped) is citations_stale
+
+
+def _three_sources():
+    fake = _source_fixture()
+    fake.add("sources", {"handle": "s3", "title": "Parish register, book 3", "author": "", "pubinfo": "", "abbrev": ""})  # S0003
+    return fake
+
+
+CHAIN = [dict(SRC_OP, key="m1"), dict(SRC_OP, key="m2", winner="S0003", loser="S0001")]
+
+
+def _run_with_snapshot(fake, ops, dry_run):
+    from gwt_apply.client import NAMESPACE
+    client = Client("https://gw.example", "u", "s3cret-pw", tree="tree-test", dry_run=dry_run, session=fake)
+    client.login()
+    client.snapshot = {cls: {h: dict(o) for h, o in fake.store.get(ns, {}).items()} for cls, ns in NAMESPACE.items()}
+    return Applier(client, retries=3, retry_wait=0).run(ops)
+
+
+@pytest.mark.parametrize("snapshot", [False, True])
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_chained_source_merges_name_the_citations_the_first_merge_moved(snapshot, dry_run):
+    """S2 into S1, then S1 into S3: the second merge touches the citations of all three, whatever the cache held."""
+    fake = _three_sources()
+    res = _run_with_snapshot(fake, CHAIN, dry_run) if snapshot else run(fake, CHAIN, dry_run=dry_run)
+    assert [r.status for r in res] == ["done", "done"], [r.actions for r in res]
+    first, second = "\n".join(res[0].actions), "\n".join(res[1].actions)
+    assert "Citation C0002 (f. 2): cites S0001 instead of S0002" in first and "C0001" not in first
+    for cit in ("C0001 (f. 1)", "C0002 (f. 2)", "C0003"):
+        assert f"Citation {cit}: cites S0003 instead of S0001" in second, second
+    if not dry_run:
+        assert {c["source_handle"] for c in fake.store["citations"].values()} == {"s3"}
+
+
+CHAIN3 = [dict(SRC_OP, key="m1", winner="S0002", loser="S0003"),
+          dict(SRC_OP, key="m2", winner="S0001", loser="S0002"),
+          dict(SRC_OP, key="m3", winner="S0004", loser="S0001")]
+
+
+@pytest.mark.parametrize("snapshot", [False, True])
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_three_chained_source_merges_follow_the_citation_of_the_first_loser_to_the_last_winner(snapshot, dry_run):
+    """S3 into S2, S2 into S1, S1 into S4: a citation of S3 is three hops from its final source, and the lookup follows all."""
+    fake = _three_sources()
+    fake.add("sources", {"handle": "s4", "title": "Parish register, book 3", "author": "", "pubinfo": "", "abbrev": ""})  # S0004
+    fake.add("citations", {"handle": "c4", "source_handle": "s3", "page": "f. 4"})  # C0004
+    res = _run_with_snapshot(fake, CHAIN3, dry_run) if snapshot else run(fake, CHAIN3, dry_run=dry_run)
+    assert [r.status for r in res] == ["done"] * 3, [r.actions for r in res]
+    third = "\n".join(res[2].actions)
+    assert "Citation C0004 (f. 4): cites S0004 instead of S0001" in third, third
+    if not dry_run:
+        assert {c["source_handle"] for c in fake.store["citations"].values()} == {"s4"}

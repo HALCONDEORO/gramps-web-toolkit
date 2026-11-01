@@ -116,6 +116,7 @@ class Client:
         self.snapshot: dict[str, dict[str, dict]] | None = None
         self.offline = False  # a dry run on a snapshot: no server at all
         self.stale: set[tuple[str, str]] = set()
+        self.repointed: dict[str, str] = {}  # loser source -> winner, from this run's source merges (also in a dry run)
         self.reads: set[tuple[str, str]] = set()  # every object the run read, for the snapshot check
         self.listed: set[str] = set()  # every class the run searched as a whole
         self.deleted: set[tuple[str, str]] = set()  # objects a merge removed
@@ -366,25 +367,41 @@ class Client:
             out += r.json()
         return out
 
+    def _read_list(self, cls: str, keys: list[str]) -> list[dict]:
+        """One class's list with only `keys`: from the snapshot when there is one, else from the server."""
+        if self.snapshot is not None:
+            return [{k: o.get(k) for k in ["handle", *keys]} for o in self.snapshot.get(cls, {}).values()]
+        r = self._request("GET", f"/{NAMESPACE[cls]}/", params={"keys": ",".join(["handle", *keys])})
+        if r.status_code != 200:
+            raise ApiError(f"GET {cls} list: HTTP {r.status_code}", r.status_code)
+        return r.json()
+
+    def _with_my_writes(self, cls: str, keys: list[str], listed: list[dict]) -> list[dict]:
+        mine = {h: obj for (c, h), obj in {**self.written, **self.pending}.items() if c == cls}
+        rows = [row for row in listed if row["handle"] not in mine and (cls, row["handle"]) not in self.deleted]
+        return rows + [{k: obj.get(k) for k in ["handle", *keys]} for h, obj in mine.items()]
+
     def list_all(self, cls: str, keys: list[str]) -> list[dict]:
         """Every object of a class with only `keys`, read once per run, with this run's writes on top."""
         cache = (cls, tuple(keys))
         self.listed.add(cls)
         if "person_ref_list" in keys:
             self._touched(cls, None)
-        if cache not in self._lists and self.snapshot is not None:
-            self._lists[cache] = [{k: o.get(k) for k in ["handle", *keys]} for o in self.snapshot.get(cls, {}).values()]
         if cache not in self._lists:
-            r = self._request(
-                "GET", f"/{NAMESPACE[cls]}/", params={"keys": ",".join(["handle", *keys])}
-            )
-            if r.status_code != 200:
-                raise ApiError(f"GET {cls} list: HTTP {r.status_code}", r.status_code)
-            self._lists[cache] = r.json()
-        mine = {h: obj for (c, h), obj in {**self.written, **self.pending}.items() if c == cls}
-        rows = [row for row in self._lists[cache] if row["handle"] not in mine and (cls, row["handle"]) not in self.deleted]
-        rows += [{k: obj.get(k) for k in ["handle", *keys]} for h, obj in mine.items()]
+            self._lists[cache] = self._read_list(cls, keys)
+        rows = self._with_my_writes(cls, keys, self._lists[cache])
+        if cls == "Citation" and "source_handle" in keys and self.repointed:
+            rows = [{**row, "source_handle": self._merged_source(row.get("source_handle"))} for row in rows]
         return rows
+
+    def _merged_source(self, handle: str | None) -> str | None:
+        """The source a citation cites once this run's source merges are done, chained merges included. A dry run
+        merges nothing on the server, and a list read before a real merge still holds the old handles."""
+        seen = set()
+        while handle in self.repointed and handle not in seen:
+            seen.add(handle)
+            handle = self.repointed[handle]
+        return handle
 
     # -- writes -----------------------------------------------------------
 
@@ -475,13 +492,15 @@ class Client:
         A dry run only marks the loser as gone; the op shows what would move.
         """
         self._touched(None, None)  # a merge rewrites whatever pointed at the loser
+        if cls == "Source":
+            self.repointed[loser] = winner
         path = f"/{NAMESPACE[cls]}/{winner}/merge/{loser}"
         self.deleted.add((cls, loser))
         if self.dry_run:
             self.log(method="POST", path=path, body=body or {}, planned=True)
             return
         # a merge rewrites people, families and notes that pointed at the loser: stop trusting the snapshot for them
-        self.unsnapped |= {"Person", "Family", "Note"}
+        self.unsnapped |= {"Person", "Family", "Note"} | ({"Citation"} if cls == "Source" else set())
         self.stale |= {(cls, winner), (cls, loser)}
         try:
             r = self._request("POST", path, write=True, json=body or {})
