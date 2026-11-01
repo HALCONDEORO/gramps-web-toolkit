@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, names, notarial, touraine, variants
+from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, leads, names, notarial, touraine, variants
 
 
 def _max_images(text: str) -> int:
@@ -134,11 +134,18 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--locality", required=True, help="whole locality name as supplied in the catalogue")
     s.add_argument("--from", dest="year_from", required=True, type=int, help="inclusive first year (1-9999)")
     s.add_argument("--to", dest="year_to", required=True, type=int, help="inclusive last year (1-9999)")
+    leads.add_parser(sub)
     return p
 
 
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
+    if args.cmd == "leads":
+        try:
+            return leads.run(args, None)
+        except (OSError, ValueError) as exc:
+            print(f"gwt-fetch: {exc}", file=sys.stderr)
+            return 2
     if args.cmd == "variants":
         return variants.run(args)
     if args.cmd == "names" and not args.source:
