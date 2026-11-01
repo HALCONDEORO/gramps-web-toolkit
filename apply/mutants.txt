@@ -116,3 +116,6 @@ gwt_apply/ops.py |             if l_ and w != l_: |             if False: | merg
 gwt_apply/ops.py |             if row.get("source_handle") == loser["handle"]: |             if False: | merge_source does not name the citations that move
 gwt_apply/client.py | ({"Citation"} if cls == "Source" else set()) | set() | a snapshot is still trusted for citations after a source merge
 gwt_apply/ops.py |     "merge_source": ({"winner", "loser"}, {"reason"}), |     "merge_source_x": ({"winner", "loser"}, {"reason"}), | merge_source is not a known op
+gwt_apply/client.py |             self.repointed[loser] = winner | pass | a source merge is not remembered, so a chained merge misses the citations the first one moved
+gwt_apply/client.py |         while handle in self.repointed and handle not in seen: |         if handle in self.repointed: | chained source merges are followed one step only
+gwt_apply/client.py |         if cls == "Citation" and "source_handle" in keys and self.repointed: |         if False: | the cached citation list is used as it was read before the merge

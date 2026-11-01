@@ -4188,3 +4188,35 @@ def test_a_source_merge_makes_the_snapshot_untrusted_for_citations(cls, ns, cita
     client.snapshot = {}
     client.merge(cls, "w", "l")
     assert ("Citation" in client.unsnapped) is citations_stale
+
+
+def _three_sources():
+    fake = _source_fixture()
+    fake.add("sources", {"handle": "s3", "title": "Parish register, book 3", "author": "", "pubinfo": "", "abbrev": ""})  # S0003
+    return fake
+
+
+CHAIN = [dict(SRC_OP, key="m1"), dict(SRC_OP, key="m2", winner="S0003", loser="S0001")]
+
+
+def _run_with_snapshot(fake, ops, dry_run):
+    from gwt_apply.client import NAMESPACE
+    client = Client("https://gw.example", "u", "s3cret-pw", tree="tree-test", dry_run=dry_run, session=fake)
+    client.login()
+    client.snapshot = {cls: {h: dict(o) for h, o in fake.store.get(ns, {}).items()} for cls, ns in NAMESPACE.items()}
+    return Applier(client, retries=3, retry_wait=0).run(ops)
+
+
+@pytest.mark.parametrize("snapshot", [False, True])
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_chained_source_merges_name_the_citations_the_first_merge_moved(snapshot, dry_run):
+    """S2 into S1, then S1 into S3: the second merge touches the citations of all three, whatever the cache held."""
+    fake = _three_sources()
+    res = _run_with_snapshot(fake, CHAIN, dry_run) if snapshot else run(fake, CHAIN, dry_run=dry_run)
+    assert [r.status for r in res] == ["done", "done"], [r.actions for r in res]
+    first, second = "\n".join(res[0].actions), "\n".join(res[1].actions)
+    assert "Citation C0002 (f. 2): cites S0001 instead of S0002" in first and "C0001" not in first
+    for cit in ("C0001 (f. 1)", "C0002 (f. 2)", "C0003"):
+        assert f"Citation {cit}: cites S0003 instead of S0001" in second, second
+    if not dry_run:
+        assert {c["source_handle"] for c in fake.store["citations"].values()} == {"s3"}

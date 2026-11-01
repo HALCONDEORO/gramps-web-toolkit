@@ -116,6 +116,7 @@ class Client:
         self.snapshot: dict[str, dict[str, dict]] | None = None
         self.offline = False  # a dry run on a snapshot: no server at all
         self.stale: set[tuple[str, str]] = set()
+        self.repointed: dict[str, str] = {}  # loser source -> winner, from this run's source merges (also in a dry run)
         self.reads: set[tuple[str, str]] = set()  # every object the run read, for the snapshot check
         self.listed: set[str] = set()  # every class the run searched as a whole
         self.deleted: set[tuple[str, str]] = set()  # objects a merge removed
@@ -384,7 +385,18 @@ class Client:
         mine = {h: obj for (c, h), obj in {**self.written, **self.pending}.items() if c == cls}
         rows = [row for row in self._lists[cache] if row["handle"] not in mine and (cls, row["handle"]) not in self.deleted]
         rows += [{k: obj.get(k) for k in ["handle", *keys]} for h, obj in mine.items()]
+        if cls == "Citation" and "source_handle" in keys and self.repointed:
+            rows = [{**row, "source_handle": self._merged_source(row.get("source_handle"))} for row in rows]
         return rows
+
+    def _merged_source(self, handle: str | None) -> str | None:
+        """The source a citation cites once this run's source merges are done, chained merges included. A dry run
+        merges nothing on the server, and a list read before a real merge still holds the old handles."""
+        seen = set()
+        while handle in self.repointed and handle not in seen:
+            seen.add(handle)
+            handle = self.repointed[handle]
+        return handle
 
     # -- writes -----------------------------------------------------------
 
@@ -475,6 +487,8 @@ class Client:
         A dry run only marks the loser as gone; the op shows what would move.
         """
         self._touched(None, None)  # a merge rewrites whatever pointed at the loser
+        if cls == "Source":
+            self.repointed[loser] = winner
         path = f"/{NAMESPACE[cls]}/{winner}/merge/{loser}"
         self.deleted.add((cls, loser))
         if self.dry_run:
