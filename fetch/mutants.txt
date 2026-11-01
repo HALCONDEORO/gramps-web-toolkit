@@ -61,7 +61,7 @@ gwt_fetch/notarial.py | if len(ids) < 2: | if len(ids) < 3: | two offices coveri
 gwt_fetch/notarial.py | overlaps[-1]['entries'] == ids | True | overlapping periods with different active catalogue entries must remain separate
 gwt_fetch/notarial.py | 'unknown_coverage': sorted(unknown) | 'unknown_coverage': [] | undated or uncertain rows must be reported explicitly
 gwt_fetch/notarial.py | chain.append( | chain.clear(); chain.append( | same-name notaries and different offices must not silently collapse
-gwt_fetch/cli.py | if args.cmd in ("coverage", "notarial-plan"): | if args.cmd == "coverage": | notarial planning must bypass all network imports and client creation
+gwt_fetch/cli.py | if args.cmd in ("coverage", "notarial-plan", "index-locate"): | if args.cmd == "coverage": | notarial planning must bypass all network imports and client creation
 gwt_fetch/notarial.py | or fold(row['locality']).strip() != fold(locality).strip() |  | the Spanish helper must not erase distinguishing non-ASCII letters in locality labels
 
 gwt_fetch/notarial.py | object_pairs_hook=_unique_object, parse_constant=_reject_constant, | object_pairs_hook=dict, parse_constant=float, | reject ambiguous duplicate keys and non-JSON constants before any plan
@@ -118,6 +118,8 @@ gwt_fetch/variants.py | ("ph", "f"), ("f", "ph") | ("ph", "ph"), ("f", "f") | ph
 
 gwt_fetch/variants.py | path = os.path.realpath(os.path.abspath(os.path.expanduser(path))) | path = path | local config paths must be normalized before opening
 
+gwt_fetch/index_locator.py | key(reference)!=key(mapping) | False | cross-book and cross-face mappings must be refused
+gwt_fetch/index_locator.py | act_examined=False | act_examined=True | an index locator must never establish an act was examined
 gwt_fetch/leads.py |     return 'low' if '(?)' in left + name or role == 'other' else 'high' |     return 'low' if role == 'other' else 'high' | a name marked (?) is promoted to high confidence
 gwt_fetch/leads.py |         if not excluded_parent and not _same_name(name, subject): |         if True: | the subject and already declared parents leak into clues
 gwt_fetch/leads.py |     return dict(ref=headers['ref'], date=headers['date'], name=name, role=role, |     return dict(ref='SYN-A/001', date=headers['date'], name=name, role=role, | separate acts lose their own references

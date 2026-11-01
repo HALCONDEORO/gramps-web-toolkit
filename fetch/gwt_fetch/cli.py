@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, leads, names, notarial, touraine, variants
+from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, index_locator, leads, names, notarial, touraine, variants
 
 
 def _max_images(text: str) -> int:
@@ -134,6 +134,9 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--locality", required=True, help="whole locality name as supplied in the catalogue")
     s.add_argument("--from", dest="year_from", required=True, type=int, help="inclusive first year (1-9999)")
     s.add_argument("--to", dest="year_to", required=True, type=int, help="inclusive last year (1-9999)")
+    s = sub.add_parser("index-locate", help="exact local index-to-image crosswalk; offline")
+    s.add_argument("reference", help="local JSON: book, folio/face or page, source and checked date")
+    s.add_argument("--mapping", help="optional exact local JSON mapping with explicit zero/one image base")
     leads.add_parser(sub)
     return p
 
@@ -150,12 +153,12 @@ def main(argv=None) -> int:
         return variants.run(args)
     if args.cmd == "names" and not args.source:
         args.source = ["gazeta", "boe"]
-    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "names": names, "europeana": europeana, "geo": geo, "touraine": touraine, "coverage": coverage, "notarial-plan": notarial}[args.cmd]
+    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "names": names, "europeana": europeana, "geo": geo, "touraine": touraine, "coverage": coverage, "notarial-plan": notarial, "index-locate": index_locator}[args.cmd]
     if args.cmd == "touraine" and args.action == "catalogue":
         from . import touraine_catalogue
         mod = touraine_catalogue
     try:
-        if args.cmd in ("coverage", "notarial-plan"):
+        if args.cmd in ("coverage", "notarial-plan", "index-locate"):
             return mod.run(args, None)
         from .net import Client
         client = Client(delay=args.delay)
