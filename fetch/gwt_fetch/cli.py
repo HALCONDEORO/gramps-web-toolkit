@@ -92,6 +92,10 @@ def parser() -> argparse.ArgumentParser:
     ts.add_argument("query", help='e.g. "Commune 1793-1802"')
     ts.add_argument("--start", type=int, default=0, help="result offset for the next page")
     ts.add_argument("--limit", type=int, default=80)
+    ts.add_argument("--table", action="store_true",
+                    help="table mode sorted by cote: ark, cote, date, place, kind, media count, title")
+    ts.add_argument("--page", type=int, default=1, help="with --table: the results page, from 1")
+    ts.add_argument("--per-page", type=int, default=20, choices=touraine.TABLE_SIZES, help="with --table: rows per page")
     tp = t.add_parser("pages", help="list the pages of one register, or download a few")
     tp.add_argument("ark", help="the ark name from `search`")
     tp.add_argument("--pages", help="1-based page numbers, e.g. 1-5,9,12-")
