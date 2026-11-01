@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""gwt-ledger: a shared "already searched" ledger for parallel research agents.
+"""gwt-ledger: shared search and image-reading ledger for parallel research agents.
 
 One TSV file, one row per search: who was searched, where, with what query, when, and what came of it.
 Agents run `check` before a search and `add` after it, so two lanes never pay for the same search twice.
@@ -12,14 +12,19 @@ Agents run `check` before a search and `add` after it, so two lanes never pay fo
   gwt-ledger list --person KEY [--source SRC]
   gwt-ledger due [--on YYYY-MM-DD]                           rows whose next_date has arrived (appeal windows, retries)
   gwt-ledger stats
+  gwt-ledger mark --ark ID --image-from N --image-to N --reader NAME --result negative --ref FILE
+  gwt-ledger query --ark ID [--total N]                     offline JSON coverage, unread and double-read ranges
 
 The ledger path comes from --ledger, else $GWT_LEDGER, else ./buscado.tsv. With --ledger-dir (or $GWT_LEDGER_DIR),
-`add` writes to <dir>/<agent>.tsv, one file per lane, and every reader reads the ledger plus all <dir>/*.tsv.
+`add` writes to <dir>/<agent>.tsv and `mark` to <dir>/<key(reader)>.tsv;
+read commands include the ledger plus all <dir>/*.tsv.
 Standard library only.
 """
-import argparse, collections, datetime, difflib, fcntl, glob, os, re, sys, unicodedata
+import argparse, collections, datetime, difflib, fcntl, glob, json, os, re, stat, sys, tempfile, unicodedata
 
 COLUMNS = ('person_key', 'person_label', 'source', 'query', 'date', 'result', 'evidence', 'agent', 'next_date')
+READING_COLUMNS = ('ark', 'image_from', 'image_to', 'reader', 'ref')
+READING_RESULTS = ('negative', 'found', 'partial')
 RESULTS = ('hit', 'none', 'partial', 'blocked', 'denied')
 SEARCHED = ('hit', 'none', 'partial')  # results of a search that ran; blocked and denied did not answer it
 DEFAULT_THRESHOLD = 0.75
@@ -96,13 +101,17 @@ def read_rows(path):
         return []
     rows = []
     with open(path, encoding='utf-8') as f:
+        columns = COLUMNS
         for n, line in enumerate(f):
             parts = line.rstrip('\n').split('\t')
             if n == 0 and parts[0] == COLUMNS[0]:
+                columns = tuple(parts)
                 continue  # header; a ledger from before next_date has 8 columns and reads the same
-            if len(parts) < len(COLUMNS):
-                parts += [''] * (len(COLUMNS) - len(parts))
-            rows.append(dict(zip(COLUMNS, parts)))
+            row = dict.fromkeys(COLUMNS + READING_COLUMNS, '')
+            # Old add versions appended a ninth cell under an eight-column header.
+            names = COLUMNS if columns == COLUMNS[:-1] else columns
+            row.update(zip(names, parts))
+            rows.append(row)
     return rows
 
 
@@ -111,21 +120,167 @@ def ledger_paths(ledger, ledger_dir=''):
     return [ledger] + (sorted(glob.glob(os.path.join(ledger_dir, '*.tsv'))) if ledger_dir else [])
 
 
+def writable_ledger(path):
+    """Reject inode aliases that replacement cannot coordinate safely."""
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink > 1:
+        raise OSError('ledger must be a regular file with one link; symlinks and hardlinks are refused')
+    if info.st_uid != os.geteuid():
+        raise OSError("shared ledger writers must use the same UID as the ledger owner")
+    return info
+
+
+def validate_write_schema(path):
+    """Refuse unfamiliar layouts rather than discard columns during replacement."""
+    if not os.path.exists(path):
+        return
+    with open(path, encoding='utf-8') as f:
+        columns = COLUMNS
+        for n, line in enumerate(f):
+            parts = line.rstrip('\n').split('\t')
+            if n == 0 and parts[0] == COLUMNS[0]:
+                columns = tuple(parts)
+                if columns not in (COLUMNS[:-1], COLUMNS, COLUMNS + READING_COLUMNS):
+                    raise OSError('unsupported ledger header; refusing to discard columns')
+                continue
+            widths = (8, 9) if columns in (COLUMNS[:-1], COLUMNS) else (len(columns),)
+            if len(parts) not in widths:
+                raise OSError('unsupported ledger row width; refusing to discard cells')
+
+
+def extended_attributes(path):
+    """Include ACLs exposed as xattrs; inability to inspect them is a write refusal."""
+    if not all(hasattr(os, name) for name in ('listxattr', 'getxattr', 'setxattr', 'removexattr')):
+        raise OSError('cannot preserve ledger ACLs/extended attributes on this platform')
+    return {name: os.getxattr(path, name) for name in os.listxattr(path)}
+
+
+def preserve_metadata(fd, original, attributes):
+    current = os.fstat(fd)
+    if (current.st_uid, current.st_gid) != (original.st_uid, original.st_gid):
+        os.fchown(fd, original.st_uid, original.st_gid)
+    os.fchmod(fd, stat.S_IMODE(original.st_mode))
+    # The temporary file may inherit a directory ACL or security attributes.
+    for name in set(os.listxattr(fd)) - attributes.keys():
+        os.removexattr(fd, name)
+    for name, value in attributes.items():
+        os.setxattr(fd, name, value)
+    current = os.fstat(fd)
+    if ((current.st_uid, current.st_gid, stat.S_IMODE(current.st_mode)) !=
+            (original.st_uid, original.st_gid, stat.S_IMODE(original.st_mode)) or
+            extended_attributes(fd) != attributes):
+        raise OSError('cannot preserve ledger ownership, permissions or ACLs')
+
+
+def file_version(info):
+    # Reading can update atime without changing the ledger; exclude it.
+    return None if info is None else (info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+                                     info.st_uid, info.st_gid, info.st_size,
+                                     info.st_mtime_ns, info.st_ctime_ns)
+
+
+def open_sidecar(path):
+    """Stable same-UID lock only; never delete or replace an existing lock inode."""
+    fd = os.open(path + '.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    info = os.fstat(fd)
+    if info.st_uid != os.geteuid() or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        os.close(fd)
+        raise OSError("ledger sidecar must be a regular single-link file owned by the writer UID")
+    return os.fdopen(fd, 'a', encoding='utf-8')
+
+
 def add_row(path, row):
-    """Append one row under an exclusive lock, writing the header if the file is new or empty."""
-    line = '\t'.join(clean(row.get(c)) for c in COLUMNS) + '\n'
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with open(path, 'a', encoding='utf-8') as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
+    """Add under a stable sidecar lock; atomic replacement also upgrades old headers.
+
+    Every writer locks the sidecar, never the inode replaced by rename. Readers see
+    the complete old or new file. All writers must use this version when sharing it.
+    """
+    path = os.fspath(path)
+    writable_ledger(path)  # refuse file symlinks/hardlinks before creating even a lock
+    path = os.path.realpath(path)  # directory aliases must use one read/write/lock path
+    validate_write_schema(path)  # early refusal makes no files, including a sidecar
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    with open_sidecar(path) as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        tmp = None
         try:
-            f.seek(0, os.SEEK_END)
-            if f.tell() == 0:
-                f.write('\t'.join(COLUMNS) + '\n')
-            f.write(line)
-            f.flush()
-            os.fsync(f.fileno())
+            original = writable_ledger(path)
+            attributes = extended_attributes(path) if original else None
+            validate_write_schema(path)
+            rows = read_rows(path)
+            rows.append(row)
+            columns = COLUMNS + READING_COLUMNS if any(r.get(c) for r in rows for c in READING_COLUMNS) else COLUMNS
+            fd, tmp = tempfile.mkstemp(prefix='.gwt-ledger-', suffix='.tmp', dir=directory)
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.write('\t'.join(columns) + '\n')
+                for entry in rows:
+                    f.write('\t'.join(clean(entry.get(c)) for c in columns) + '\n')
+                f.flush()
+                if original:
+                    preserve_metadata(f.fileno(), original, attributes)
+                os.fsync(f.fileno())
+            current = writable_ledger(path)
+            if (file_version(original) != file_version(current) or
+                    (original and extended_attributes(path) != attributes)):
+                raise OSError('ledger changed outside the sidecar lock; refusing replacement')
+            os.replace(tmp, path)
         finally:
-            fcntl.flock(f, fcntl.LOCK_UN)
+            if tmp and os.path.exists(tmp):
+                os.unlink(tmp)
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def positive_image(value):
+    n = int(value)
+    if n < 1:
+        raise ValueError('image numbers and totals must be positive')
+    return n
+
+
+def reading_coverage(rows, ark, total=None):
+    """Sweep interval endpoints, retaining independent readers without expanding images."""
+    marks = []
+    events = collections.defaultdict(collections.Counter)
+    for row in rows:
+        if row.get('ark') != ark:
+            continue
+        start, end = positive_image(row['image_from']), positive_image(row['image_to'])
+        if start > end or row['result'] not in READING_RESULTS or not clean(row['reader']):
+            raise ValueError('invalid stored reading row')
+        mark = {c: row[c] for c in ('ark', 'image_from', 'image_to', 'reader', 'date', 'result', 'ref')}
+        mark.update(image_from=start, image_to=end)
+        marks.append(mark)
+        events[start][row['reader']] += 1
+        events[end + 1][row['reader']] -= 1
+    upper = max((r['image_to'] for r in marks), default=0)
+    if total is not None and total < upper:
+        raise ValueError('--total is below a logged image')
+    bound = total if total is not None else upper
+    events[1]  # start at image 1, including any known leading gap
+    events[bound + 1]
+    covered, unread, double = [], [], []
+    active = collections.Counter()
+    points = sorted(events)
+
+    def append_range(ranges, lo, hi):
+        if ranges and ranges[-1][1] + 1 == lo:
+            ranges[-1][1] = hi
+        else:
+            ranges.append([lo, hi])
+
+    for i, lo in enumerate(points[:-1]):
+        active.update(events[lo])
+        hi = points[i + 1] - 1
+        readers = sum(count > 0 for count in active.values())
+        append_range(covered if readers else unread, lo, hi)
+        if readers >= 2:
+            append_range(double, lo, hi)
+    return dict(ark=ark, rows=marks, covered=covered, unread=unread, double_read=double,
+                total=total, unknown_tail=total is None)
 
 
 def find(rows, person=None, source=None, query=None, threshold=DEFAULT_THRESHOLD, exact=False):
@@ -135,6 +290,8 @@ def find(rows, person=None, source=None, query=None, threshold=DEFAULT_THRESHOLD
     pk, sk, q = key(person) if person else None, key(source) if source else None, normalize(query or '')
     out = []
     for i, r in enumerate(rows):
+        if r.get('ark'):
+            continue  # reading marks never satisfy a person/search lookup
         if pk and key(r['person_key']) != pk:
             continue
         if sk and key(r['source']) != sk:
@@ -164,7 +321,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog='gwt-ledger', description=__doc__.split('\n')[0])
     p.add_argument('--ledger', default=os.environ.get('GWT_LEDGER', 'buscado.tsv'))
     p.add_argument('--ledger-dir', default=os.environ.get('GWT_LEDGER_DIR', ''),
-                   help='one file per lane: add writes <dir>/<agent>.tsv, readers read the ledger and every file here')
+                   help='lane files: add uses agent, mark uses reader; read commands include all *.tsv here')
     sub = p.add_subparsers(dest='cmd', required=True)
     c = sub.add_parser('check', help='has this search been done? print the matching rows; exit 0 if one is a '
                                      'search that ran and is not due again, 1 if not')
@@ -186,7 +343,44 @@ def main(argv=None):
     l = sub.add_parser('list', help='rows for one person')
     l.add_argument('--person', required=True); l.add_argument('--source')
     sub.add_parser('stats', help='counts by result, source and agent')
+    m = sub.add_parser('mark', help='record an inclusive image reading range offline; preserve every reading')
+    m.add_argument('--ark', required=True, help='exact source identifier; never fetched or normalized')
+    m.add_argument('--image-from', required=True, type=positive_image)
+    m.add_argument('--image-to', required=True, type=positive_image)
+    m.add_argument('--reader', required=True, help='reader identity; also selects the lane file')
+    m.add_argument('--date', default=datetime.date.today().isoformat(), type=iso_date)
+    m.add_argument('--result', required=True, choices=READING_RESULTS)
+    m.add_argument('--ref', required=True, help='local evidence reference, stored without opening it')
+    q = sub.add_parser('query', help='offline JSON: covered, unread, distinct-reader double_read ranges and rows')
+    q.add_argument('--ark', required=True, help='exact source identifier')
+    q.add_argument('--total', type=positive_image,
+                   help='known final image; without it the tail after known coverage stays unknown')
     args = p.parse_args(argv)
+    if args.cmd in ('mark', 'query'):
+        for name in (('ark', 'reader', 'ref', 'date') if args.cmd == 'mark' else ('ark',)):
+            value = getattr(args, name)
+            if not value.strip() or clean(value) != value:
+                p.error('--%s must be non-empty with no tabs, newlines or edge spaces' % name)
+        if args.cmd == 'mark' and args.image_from > args.image_to:
+            p.error('--image-from must not exceed --image-to')
+        try:
+            if args.cmd == 'mark':
+                path = args.ledger
+                if args.ledger_dir:
+                    if not key(args.reader):
+                        p.error('--reader needs a lane name after normalising')
+                    path = os.path.join(args.ledger_dir, key(args.reader) + '.tsv')
+                add_row(path, {c: getattr(args, c) for c in
+                              ('ark', 'image_from', 'image_to', 'reader', 'date', 'result', 'ref')})
+            else:
+                rows = [r for path in ledger_paths(args.ledger, args.ledger_dir) for r in read_rows(path)]
+                print(json.dumps(reading_coverage(rows, args.ark, args.total), ensure_ascii=False))
+        except ValueError as exc:
+            p.error(str(exc))
+        except (OSError, UnicodeDecodeError) as exc:
+            sys.stderr.write('gwt-ledger: cannot read/write the ledger: %s\n' % exc)
+            return 2
+        return 0
     # A query or person that normalizes to nothing (only punctuation, say) would match every row.
     for name in ('query', 'person'):
         value = getattr(args, name, None)
@@ -199,13 +393,17 @@ def main(argv=None):
             if not key(args.agent):
                 p.error('add needs --agent (or $GWT_AGENT): rows go to <ledger-dir>/<agent>.tsv')
             path = os.path.join(args.ledger_dir, key(args.agent) + '.tsv')
-        add_row(path, {'person_key': key(args.person), 'person_label': args.label,
-                       'source': key(args.source), 'query': normalize(args.query), 'date': args.date,
-                       'result': args.result, 'evidence': args.evidence, 'agent': args.agent,
-                       'next_date': args.next_date})
+        try:
+            add_row(path, {'person_key': key(args.person), 'person_label': args.label,
+                           'source': key(args.source), 'query': normalize(args.query), 'date': args.date,
+                           'result': args.result, 'evidence': args.evidence, 'agent': args.agent,
+                           'next_date': args.next_date})
+        except (OSError, UnicodeDecodeError) as exc:
+            sys.stderr.write('gwt-ledger: cannot read/write the ledger: %s\n' % exc)
+            return 2
         return 0
     try:
-        rows = [r for path in ledger_paths(args.ledger, args.ledger_dir) for r in read_rows(path)]
+        rows = [r for path in ledger_paths(args.ledger, args.ledger_dir) for r in read_rows(path) if not r.get('ark')]
     except (OSError, UnicodeDecodeError) as exc:  # an unreadable ledger is an error, never "not searched yet"
         sys.stderr.write('gwt-ledger: cannot read the ledger: %s\n' % exc)
         return 2

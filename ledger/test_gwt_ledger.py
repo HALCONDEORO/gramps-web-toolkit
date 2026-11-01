@@ -135,7 +135,8 @@ class LedgerTest(unittest.TestCase):
         for agent, query in (('Lane A', 'Ana Peiro bautismo 1850'), ('lane-b', 'Ana Peiro boda 1875')):
             self.assertEqual(run('--ledger', self.path, '--ledger-dir', lanes, 'add', '--person', 'Ana Peiro Toledo',
                                  '--source', 'FamilySearch', '--query', query, '--result', 'none', '--agent', agent)[0], 0)
-        self.assertEqual(sorted(os.listdir(lanes)), ['lane-a.tsv', 'lane-b.tsv'])
+        self.assertEqual(sorted(os.listdir(lanes)), ['lane-a.tsv', 'lane-a.tsv.lock',
+                                                     'lane-b.tsv', 'lane-b.tsv.lock'])
         with open(self.path) as f:
             self.assertEqual(len(f.read().splitlines()), 2)  # the shared file got no new rows
         for query in ('Ana Peiro bautismo 1850', 'Ana Peiro boda 1875', 'Ana Peiro defuncion 1890'):
