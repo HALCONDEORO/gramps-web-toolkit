@@ -47,7 +47,7 @@ gwt_fetch/names.py | m = min(found, key=lambda m: m.start()) | m = found[0] | th
 gwt_fetch/touraine.py | "sort": "referencecode_asc", | "sort": "referencecode_dsc", | the registers of a place do not come in cote order
 gwt_fetch/touraine.py | "mode": "table", | "mode": "list", | the table mode is not the one asked for
 gwt_fetch/touraine.py | cote = re.sub(r"\s*\(Cote\)$", "", _cell(block, "Cote")) | cote = _cell(block, "Cote") | the cote keeps the site's "(Cote)" label
-gwt_fetch/touraine.py | if table and page < 1: | if False: | page 0 or a negative page is sent to the site
-gwt_fetch/touraine.py | if not table and (page != 1 or per_page != 20): | if False: | --page without --table is silently ignored
-gwt_fetch/touraine.py | if table and (getattr(args, "start", 0) or getattr(args, "limit", 80) != 80): | if False: | --start and --limit are silently ignored in table mode
 gwt_fetch/touraine.py | return "" if text == "'-" else text | return text | the site's "-" for an empty cell is read as a formula
+gwt_fetch/touraine.py | if table and given["page"] is not None and given["page"] < 1: | if False: | page 0 or a negative page is sent to the site
+gwt_fetch/touraine.py | wrong = [f"--{k.replace('_', '-')}" for k in other if given[k] is not None] | wrong = [f"--{k.replace('_', '-')}" for k in other if given[k]] | an option of the other mode is accepted when it is given with its default value
+gwt_fetch/touraine.py | rows[: 80 if limit is None else limit] | rows[: limit or 80] | --limit 0 prints 80 rows
