@@ -788,7 +788,7 @@ def test_touraine_search_table_asks_for_table_mode_sorted_by_cote():
 
 
 def _tour_args(**kw):
-    base = dict(action="search", query="Exampleville", start=0, limit=80, table=True, page=1, per_page=20)
+    base = dict(action="search", query="Exampleville", start=None, limit=None, table=True, page=None, per_page=None)
     return argparse.Namespace(**{**base, **kw})
 
 
@@ -802,8 +802,19 @@ def test_touraine_search_table_prints_tsv_and_names_the_next_page(capsys):
 
 
 @pytest.mark.parametrize("kw", [dict(page=0), dict(page=-2), dict(table=False, page=2), dict(table=False, per_page=40),
-                                dict(start=80), dict(limit=10)])
+                                dict(start=80), dict(limit=10),
+                                dict(table=False, page=1), dict(table=False, per_page=20),  # a default value is still given
+                                dict(start=0), dict(limit=80)])
 def test_touraine_search_refuses_bad_options_with_exit_2_and_asks_nothing(kw, capsys):
     c = FakeClient({})
     assert touraine.run(_tour_args(**kw), c) == 2 and c.calls == []
     assert "gwt-fetch:" in capsys.readouterr().err
+
+
+def test_touraine_search_list_mode_keeps_its_own_defaults_and_a_zero_limit(capsys):
+    rows = "".join(f'<li class="element-list"><a href="/ark:/{touraine.NAAN}/ab{i}cdef12">x</a></li>' for i in range(3))
+    c = FakeClient({touraine.BASE + "/search/results": Resp(rows)})
+    assert touraine.run(_tour_args(table=False, limit=0), c) == 0
+    assert capsys.readouterr().out.splitlines() == ["ark\ttitle\tdate\tcote"]
+    assert touraine.run(_tour_args(table=False), c) == 0
+    assert len(capsys.readouterr().out.splitlines()) == 4

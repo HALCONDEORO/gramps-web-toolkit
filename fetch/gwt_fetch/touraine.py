@@ -195,16 +195,21 @@ def parse_range(spec: str | None, total: int) -> list[int]:
 
 
 def problem(args) -> str:
-    """What is wrong with the options of a search, or an empty string; checked before any request."""
+    """What is wrong with the options of a search, or an empty string; checked before any request.
+
+    The options that belong to one mode default to None, so giving one of them at all (even its default value)
+    is told apart from not giving it."""
     if getattr(args, "action", "") != "search":
         return ""
-    table, page, per_page = (getattr(args, k, d) for k, d in (("table", False), ("page", 1), ("per_page", 20)))
-    if table and page < 1:
+    table = getattr(args, "table", False)
+    given = {k: getattr(args, k, None) for k in ("page", "per_page", "start", "limit")}
+    other = ("start", "limit") if table else ("page", "per_page")
+    wrong = [f"--{k.replace('_', '-')}" for k in other if given[k] is not None]
+    if wrong:
+        return f"{' and '.join(wrong)} belong to the {'list' if table else 'table'} mode" + (
+            "; --table pages with --page" if table else " (add --table)")
+    if table and given["page"] is not None and given["page"] < 1:
         return "--page counts from 1"
-    if not table and (page != 1 or per_page != 20):
-        return "--page and --per-page belong to --table"
-    if table and (getattr(args, "start", 0) or getattr(args, "limit", 80) != 80):
-        return "--start and --limit belong to the list mode; --table pages with --page"
     return ""
 
 
@@ -225,20 +230,22 @@ def run(args, client) -> int:
 
 
 def _run_table(args, client) -> int:
-    rows = search_table(client, args.query, args.page, args.per_page)
+    page = args.page or 1
+    rows = search_table(client, args.query, page, args.per_page or 20)
     print("\t".join(TABLE_COLUMNS))
     for r in rows:
         print("\t".join(r[k] for k in TABLE_COLUMNS))
-    print(f"gwt-fetch: {len(rows)} row(s) on page {args.page}; the next page is --page {args.page + 1}", file=sys.stderr)
+    print(f"gwt-fetch: {len(rows)} row(s) on page {page}; the next page is --page {page + 1}", file=sys.stderr)
     return 0
 
 
 def _run_search(args, client) -> int:
     if getattr(args, "table", False):
         return _run_table(args, client)
-    rows = search(client, args.query, args.start)
+    start, limit = getattr(args, "start", None), getattr(args, "limit", None)
+    rows = search(client, args.query, 0 if start is None else start)
     print("ark\ttitle\tdate\tcote")
-    for r in rows[: args.limit]:
+    for r in rows[: 80 if limit is None else limit]:
         print("\t".join(r[k] for k in ("ark", "title", "date", "cote")))
     return 0
 
