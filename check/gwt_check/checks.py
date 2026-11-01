@@ -279,6 +279,86 @@ def hygiene_checks(T: dict, out: Findings, in_scope) -> None:
     date_precision_checks(T, out, in_scope)
 
 
+def _homonym_birth_span(p: dict, events: dict) -> dates.Span | None:
+    """All Primary Birth alternatives, widened rather than choosing a convenient year.
+
+    An unreadable alternative makes the birth unknown. Baptism alone cannot establish
+    a birth gap (adult baptisms exist), unlike the older duplicate hints above.
+    """
+    spans = []
+    for r in p.get("event_ref_list", []):
+        e = events.get(r.get("ref"))
+        if not e or r.get("role") != "Primary" or dates.kind(e.get("type")) not in dates.BIRTH:
+            continue
+        span = dates.span(e.get("date"))
+        if span is None:
+            return None
+        spans.append(span)
+    if not spans:
+        return None
+    return dates.Span(min(s.lo for s in spans), max(s.hi for s in spans), all(s.firm for s in spans),
+                      "; ".join(sorted({s.text for s in spans})))
+
+
+def _homonym_birth_anniversary(s: dates.Span | None) -> int | None:
+    """Ten civil years after the latest possible birth, or no usable bound.
+
+    March 1 is the conservative anniversary of February 29 in a non-leap
+    year. Open ends and endpoints outside the civil calendar stay unknown.
+    Compute once per person, never once per same-name pair.
+    """
+    if s is None or not 1 <= s.hi <= datetime.date.max.toordinal():
+        return None
+    day = datetime.date.fromordinal(s.hi)
+    if day.year + 10 > datetime.MAXYEAR:
+        return None
+    try:
+        anniversary = day.replace(year=day.year + 10)
+    except ValueError:  # February 29 has no anniversary day that year
+        anniversary = datetime.date(day.year + 10, 3, 1)
+    return anniversary.toordinal()
+
+
+class _HomonymBirthGaps:
+    """Accumulate scoped gaps while the caller retains the duplicate-hint guard."""
+
+    def __init__(self, group: list[dict], events: dict, out: Findings):
+        self.group = group
+        self.out = out
+        self.birth_spans = {p["handle"]: _homonym_birth_span(p, events) for p in group}
+        self.anniversaries = {h: _homonym_birth_anniversary(s) for h, s in self.birth_spans.items()}
+        self.gap_count = 0
+        self.witness = None
+
+    def record_gap(self, p: dict, q: dict) -> bool:
+        """Record an incompatible pair; the caller has already checked its scope."""
+        a, b = self.birth_spans[p["handle"]], self.birth_spans[q["handle"]]
+        anniversary_a = self.anniversaries[p["handle"]]
+        anniversary_b = self.anniversaries[q["handle"]]
+        # Only a gap between the full intervals rules out a safe merge hint.
+        if a and b and ((anniversary_a is not None and b.lo > anniversary_a)
+                        or (anniversary_b is not None and a.lo > anniversary_b)):
+            self.gap_count += 1
+            if self.witness is None:
+                self.witness = (p, q, a, b)
+            return True
+        return False
+
+    def report(self, n: str) -> None:
+        """Emit one bounded row, preserving the first pair as the witness."""
+        if self.witness is not None:
+            p, q, a, b = self.witness
+            detail = (f"{p['gramps_id']} Birth {a.text}; {q['gramps_id']} Birth {b.text}; "
+                      "possible births more than 10 civil years apart; not a safe merge candidate")
+            if len(self.group) == 2:  # preserve existing pair keys for two-person groups
+                self.out.add("homonym-birth-gap", f"{p['gramps_id']},{q['gramps_id']}", f"{n}: {detail}")
+            else:
+                self.out.add("homonym-birth-gap", f"name:{n}",
+                             f"{n}: {self.gap_count} incompatible pairs (at least one person in scope) "
+                             f"among {len(self.group)} same-name people; witness {detail}; "
+                             "group summary, not a complete pair listing")
+
+
 def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
                root: str | None = None) -> tuple[list[dict], dict]:
     """Structural checks over the whole tree; duplicate checks need one object of each pair in scope.
@@ -479,47 +559,9 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
                 got.add((dv[2], dv[1], dv[0]))
         return got
 
-    def birth_span(p: dict) -> dates.Span | None:
-        """All Primary Birth alternatives, widened rather than choosing a convenient year.
-
-        An unreadable alternative makes the birth unknown. Baptism alone cannot establish
-        a birth gap (adult baptisms exist), unlike the older duplicate hints above.
-        """
-        spans = []
-        for r in p.get("event_ref_list", []):
-            e = E.get(r.get("ref"))
-            if not e or r.get("role") != "Primary" or dates.kind(e.get("type")) not in dates.BIRTH:
-                continue
-            span = dates.span(e.get("date"))
-            if span is None:
-                return None
-            spans.append(span)
-        if not spans:
-            return None
-        return dates.Span(min(s.lo for s in spans), max(s.hi for s in spans), all(s.firm for s in spans),
-                          "; ".join(sorted({s.text for s in spans})))
-
     def compatible(xs, ys) -> bool:
         return any(x[0] == y[0] and (not x[1] or not y[1] or x[1] == y[1]) and (not x[2] or not y[2] or x[2] == y[2])
                    for x in xs for y in ys)
-
-    def birth_anniversary(s: dates.Span | None) -> int | None:
-        """Ten civil years after the latest possible birth, or no usable bound.
-
-        March 1 is the conservative anniversary of February 29 in a non-leap
-        year. Open ends and endpoints outside the civil calendar stay unknown.
-        Compute once per person, never once per same-name pair.
-        """
-        if s is None or not 1 <= s.hi <= datetime.date.max.toordinal():
-            return None
-        day = datetime.date.fromordinal(s.hi)
-        if day.year + 10 > datetime.MAXYEAR:
-            return None
-        try:
-            anniversary = day.replace(year=day.year + 10)
-        except ValueError:  # February 29 has no anniversary day that year
-            anniversary = datetime.date(day.year + 10, 3, 1)
-        return anniversary.toordinal()
 
     def kin(p: dict) -> tuple[set, set, set]:
         parents, spouses, children = set(), set(), set()
@@ -553,27 +595,17 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
         if len(group) < 2 or not any(in_scope("people", p["handle"]) for p in group):
             continue
         group = sorted(group, key=lambda p: id_order(p["gramps_id"]))
-        birth_spans = {p["handle"]: birth_span(p) for p in group}
-        anniversaries = {h: birth_anniversary(s) for h, s in birth_spans.items()}
+        homonyms = _HomonymBirthGaps(group, E, out)
         facts = {p["handle"]: (births(p), *kin(p)) for p in group}
         scoped = {p["handle"] for p in group if in_scope("people", p["handle"])}
-        gap_count = 0
-        witness = None
         for i, p in enumerate(group):
             ph = p["handle"]
-            a, anniversary_a = birth_spans[ph], anniversaries[ph]
             bp, pp, sp, cp = facts[ph]
             for q in group[i + 1:]:
                 qh = q["handle"]
                 if not (ph in scoped or qh in scoped):
                     continue
-                b, anniversary_b = birth_spans[qh], anniversaries[qh]
-                # Only a gap between the full intervals rules out a safe merge hint.
-                if a and b and ((anniversary_a is not None and b.lo > anniversary_a)
-                                or (anniversary_b is not None and a.lo > anniversary_b)):
-                    gap_count += 1
-                    if witness is None:
-                        witness = (p, q, a, b)
+                if homonyms.record_gap(p, q):
                     continue  # homonym guard: do not emit same-name duplicate hints
                 bq, pq, sq, cq = facts[qh]
                 pair = ",".join(sorted((p["gramps_id"], q["gramps_id"])))
@@ -586,17 +618,7 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
                     why = "same parent" if pp & pq else "same spouse" if sp & sq else "same child"
                     out.add("dup-person-relative", pair, f"{n}, {why}")
 
-        if witness is not None:
-            p, q, a, b = witness
-            detail = (f"{p['gramps_id']} Birth {a.text}; {q['gramps_id']} Birth {b.text}; "
-                      "possible births more than 10 civil years apart; not a safe merge candidate")
-            if len(group) == 2:  # preserve existing pair keys for two-person groups
-                out.add("homonym-birth-gap", f"{p['gramps_id']},{q['gramps_id']}", f"{n}: {detail}")
-            else:
-                out.add("homonym-birth-gap", f"name:{n}",
-                        f"{n}: {gap_count} incompatible pairs (at least one person in scope) "
-                        f"among {len(group)} same-name people; witness {detail}; "
-                        "group summary, not a complete pair listing")
+        homonyms.report(n)
 
     # the same person written with an extra given name or surname: «Vicente» and «Miguel Vicente»
     def tokens(s: str) -> frozenset:
