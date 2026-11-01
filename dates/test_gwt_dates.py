@@ -131,3 +131,68 @@ def test_gwt_check_does_not_read_complementary_days_at_all():
     note = gd.note(D(1795, 9, 22))
     assert note.startswith('6 jour complementaire an 3')
     assert republican_report(_check_tree(note))['rows'] == []
+
+
+@pytest.mark.parametrize('text,want', [
+    ('1805-04-04', 'bef 1805-04-04'),
+    ('14 germinal an XIII', 'bef 1805-04-04'),
+    ('30 7bre 1812', 'bef 1812-09-30'),
+    ('3 de marzo de 1805', 'bef 1805-03-03'),
+])
+def test_bef_marks_an_issue_date_whatever_calendar_it_is_written_in(text, want):
+    assert gd.before(text) == want
+
+
+def test_bef_refuses_what_it_cannot_read():
+    with pytest.raises(ValueError):
+        gd.before('sometime in spring')
+    assert gd.main(['bef', 'sometime in spring']) == 2
+
+
+def test_age_in_years_gives_the_range_with_both_ends_included():
+    # aged 63 on 1850-06-10: the 63rd birthday fell in the year before, so born 1786-06-11 .. 1787-06-10
+    assert gd.birth_from_age(D(1850, 6, 10), 63) == 'between 1786-06-11 and 1787-06-10'
+
+
+def test_age_in_years_months_and_days_gives_one_date_counted_in_that_order():
+    assert gd.birth_from_age(D(1850, 6, 10), 63, 2, 5) == '1787-04-05'
+    assert gd.birth_from_age(D(1850, 6, 10), 0, None, 3) == '1850-06-07'
+    assert gd.birth_from_age(D(1850, 6, 10), 63, 2) == '1787-04-10'
+
+
+def test_age_across_a_leap_day_is_exact_in_days():
+    assert gd.birth_from_age(D(1800, 3, 1), 0, None, 1) == '1800-02-28'
+    assert gd.birth_from_age(D(1804, 3, 1), 0, None, 1) == '1804-02-29'
+
+
+@pytest.mark.parametrize('args', [(D(1804, 2, 29), 1), (D(1850, 3, 31), 0, 1), (D(1850, 6, 10), -1)])
+def test_age_refuses_a_day_that_does_not_exist_or_a_negative_age(args):
+    with pytest.raises(ValueError):
+        gd.birth_from_age(*args)
+
+
+def test_age_command_prints_and_exits(capsys):
+    assert gd.main(['age', '1850-06-10', '--years', '63']) == 0
+    assert capsys.readouterr().out.strip() == 'between 1786-06-11 and 1787-06-10'
+    assert gd.main(['age', '1804-02-29', '--years', '1']) == 2
+
+
+@pytest.mark.parametrize('argv', [
+    ['age', '1850-06-10', '--years', '1', '--days', '9999999999'],
+    ['age', '1850-06-10', '--years', '1', '--months', '9' * 34],
+    ['age', '1850-06-10', '--years', '9' * 34],
+    ['age', '1850-06-10', '--years', '1850'],
+    ['age', '0001-01-05', '--years', '0', '--days', '5'],
+    ['age', '1850-06-10', '--years', '0', '--months', '22200'],
+])
+def test_age_that_leaves_the_calendar_is_refused_with_exit_2_and_no_date(argv, capsys):
+    assert gd.main(argv) == 2
+    out = capsys.readouterr()
+    assert out.out == '' and 'outside the years' in out.err
+
+
+def test_age_reaching_year_1_is_still_given_and_one_more_year_is_refused():
+    assert gd.birth_from_age(D(1850, 6, 10), 1848) == 'between 0001-06-11 and 0002-06-10'
+    assert gd.birth_from_age(D(1, 1, 6), 0, None, 5) == '0001-01-01'
+    with pytest.raises(ValueError):
+        gd.birth_from_age(D(1850, 6, 10), 1849)

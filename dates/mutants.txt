@@ -6,3 +6,12 @@ gwt_dates.py | '7bre': 9, '8bre': 10, '9bre': 11, '10bre': 12, 'xbre': 12 | '7br
 gwt_dates.py | words = [w for w in words if w not in ('de', 'du', 'd')] | pass | the Spanish "3 de marzo de 1805" is not read
 gwt_dates.py | return f'{shown} = {date:%d/%m/%Y}' | return f'{shown} = {date:%m/%d/%Y}' | the note writes the Gregorian day month first
 gwt_dates.py | m = REPUBLICAN.fullmatch(fold(text)) | m = REPUBLICAN.fullmatch(fold(text).replace('.', '')) | a stray dot inside the day or the year is dropped, so "an 1.3" reads as an 13
+gwt_dates.py | earliest = minus_years(event, years + 1) + datetime.timedelta(days=1) | earliest = minus_years(event, years + 1) | the earliest birth of the range is a day too early
+gwt_dates.py | latest = minus_years(event, years) | latest = minus_years(event, years - 1) | the range of births is a year late
+gwt_dates.py | return (out - datetime.timedelta(days=days or 0)).isoformat() | return (out + datetime.timedelta(days=days or 0)).isoformat() | the days of the age are added to the birth instead of taken off
+gwt_dates.py | return f'bef {read_any_date(text).isoformat()}' | return read_any_date(text).isoformat() | an issue date is given as the date of the event
+gwt_dates.py | if min(years, months or 0, days or 0) < 0: | if False: | a negative age is accepted
+gwt_dates.py | total = date.year * 12 + date.month - 1 - months | total = date.year * 12 + date.month - 1 + months | the months of the age are added instead of taken off
+gwt_dates.py | if not 1 <= year <= 9999: | if False: | a number of months that leaves the calendar is not refused
+gwt_dates.py | if not 1 <= date.year - years <= 9999: | if False: | a number of years that leaves the calendar is not refused
+gwt_dates.py | except OverflowError: | except ZeroDivisionError: | a number of days that leaves the calendar ends in a traceback

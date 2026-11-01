@@ -120,6 +120,62 @@ def parse_gregorian_text(text):
     return datetime.date(int(words[2]), month, int(words[0]))
 
 
+def read_any_date(text):
+    """A date written as YYYY-MM-DD, as a Republican date or as a written Gregorian date."""
+    text = text.strip()
+    try:
+        return datetime.date.fromisoformat(text)
+    except ValueError:
+        pass
+    try:
+        return parse_republican(text)
+    except ValueError:
+        return parse_gregorian_text(text)
+
+
+def before(text):
+    """An issue date ("acte delivre le ...") is not the date of the event: the event is before it."""
+    return f'bef {read_any_date(text).isoformat()}'
+
+
+def minus_years(date, years):
+    """The same day and month `years` earlier. A 29 February has no such day in a common year: refused."""
+    if not 1 <= date.year - years <= 9999:
+        raise ValueError(f'{date} minus {years} years is outside the years the calendar can hold')
+    try:
+        return date.replace(year=date.year - years)
+    except ValueError:
+        raise ValueError(f'{date} has no anniversary {years} years earlier (29 February): decide by hand') from None
+
+
+def minus_months(date, months):
+    """The same day `months` earlier; a day the month does not have (31 March minus one month) is refused."""
+    total = date.year * 12 + date.month - 1 - months
+    year, month = divmod(total, 12)
+    if not 1 <= year <= 9999:
+        raise ValueError(f'{date} minus {months} months is outside the years the calendar can hold')
+    try:
+        return date.replace(year=year, month=month + 1)
+    except ValueError:
+        raise ValueError(f'{date} minus {months} months is not a day of that month: decide by hand') from None
+
+
+def birth_from_age(event, years, months=None, days=None):
+    """Birth from an event date and the age the act gives. Years alone: the range the age allows, both ends
+    included. Years with months and/or days: the one date, counted back in that order."""
+    if min(years, months or 0, days or 0) < 0:
+        raise ValueError('an age cannot be negative')
+    if months is None and days is None:
+        latest = minus_years(event, years)
+        earliest = minus_years(event, years + 1) + datetime.timedelta(days=1)
+        return f'between {earliest.isoformat()} and {latest.isoformat()}'
+    out = minus_months(minus_years(event, years), months or 0)
+    try:
+        return (out - datetime.timedelta(days=days or 0)).isoformat()
+    except OverflowError:
+        raise ValueError(f'{out} minus {days} days is outside the years the calendar can hold') from None
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog='gwt-dates', description=__doc__.split('\n')[0])
     sub = ap.add_subparsers(dest='cmd', required=True)
@@ -130,6 +186,13 @@ def main(argv=None):
     g.add_argument('date')
     p = sub.add_parser('parse', help='a written Gregorian date ("30 7bre 1812") to YYYY-MM-DD')
     p.add_argument('text')
+    b = sub.add_parser('bef', help='an issue date ("acte delivre le ...") as "bef YYYY-MM-DD"')
+    b.add_argument('text')
+    a = sub.add_parser('age', help='the birth date or range from an event date (YYYY-MM-DD) and the age in the act')
+    a.add_argument('event')
+    a.add_argument('--years', type=int, required=True)
+    a.add_argument('--months', type=int)
+    a.add_argument('--days', type=int)
     args = ap.parse_args(argv)
     try:
         if args.cmd == 'r2g':
@@ -137,6 +200,10 @@ def main(argv=None):
             print(note(d) if args.as_note else d.isoformat())
         elif args.cmd == 'g2r':
             print(label(*to_republican(datetime.date.fromisoformat(args.date))))
+        elif args.cmd == 'bef':
+            print(before(args.text))
+        elif args.cmd == 'age':
+            print(birth_from_age(datetime.date.fromisoformat(args.event), args.years, args.months, args.days))
         else:
             print(parse_gregorian_text(args.text).isoformat())
     except ValueError as e:
