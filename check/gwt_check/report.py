@@ -14,9 +14,7 @@ def check_names(names: set) -> None:
         raise BadInput(f"--ignore-check: no such check {sorted(unknown)}; the checks are {sorted(CHECKS)}")
 
 
-def check(tree: Tree, *, since: Tree | None = None, tag: str | None = None, root: str | None = None,
-          known: dict | set | None = None, ignore: set | None = None) -> dict:
-    """Every check on one tree. Returns the report; report["new"] are the findings not in `known`."""
+def _scope(tree, since, tag):
     if tree.partial:
         raise BadInput(f"{tree.source}: a .gramps backup can be the earlier tree (--since), not the one checked")
     tagged = None
@@ -29,8 +27,10 @@ def check(tree: Tree, *, since: Tree | None = None, tag: str | None = None, root
         scope = set(tagged or ())
         if since is not None:
             scope |= {(t, h) for t, objs in tree.objs.items() for h in objs if h not in since.objs[t]}
-    findings, info = run_checks(tree, scope, root)
-    report = {"counts": tree.counts(), "scope": None if scope is None else len(scope), "info": info}
+    return scope, tagged
+
+
+def _comparison(tree, since, tagged, root, findings, report):
     if since is not None:
         f, report["diff"] = diff(since, tree, tagged)
         findings += f
@@ -46,6 +46,9 @@ def check(tree: Tree, *, since: Tree | None = None, tag: str | None = None, root
             report["ahnentafel"]["truncated"] = f"over {compare.MAX_POSITIONS} positions; walked up to generation {a.complete_depth}"
             findings.append({"check": "ahnentafel-truncated", "key": f"root {root}",
                              "detail": report["ahnentafel"]["truncated"]})
+
+
+def _classify(findings, report, known, ignore):
     known = dict.fromkeys(known, "") if isinstance(known, set) else (known or {})
     ignore = ignore or set()
     check_names(ignore)
@@ -59,4 +62,14 @@ def check(tree: Tree, *, since: Tree | None = None, tag: str | None = None, root
         f["info"] = f["check"] in INFO_CHECKS
     report["new"] = [f for f in findings if not f["known"] and not f["info"]]
     report["ignored"] = {c: sum(1 for f in findings if f["check"] == c) for c in sorted(ignore)}
+
+
+def check(tree: Tree, *, since: Tree | None = None, tag: str | None = None, root: str | None = None,
+          known: dict | set | None = None, ignore: set | None = None) -> dict:
+    """Every check on one tree. Returns the report; report["new"] are the findings not in `known`."""
+    scope, tagged = _scope(tree, since, tag)
+    findings, info = run_checks(tree, scope, root)
+    report = {"counts": tree.counts(), "scope": None if scope is None else len(scope), "info": info}
+    _comparison(tree, since, tagged, root, findings, report)
+    _classify(findings, report, known, ignore)
     return report
