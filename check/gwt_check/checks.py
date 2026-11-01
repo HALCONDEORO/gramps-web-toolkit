@@ -7,7 +7,7 @@ import re
 import unicodedata
 from collections import defaultdict
 
-from . import dates
+from . import dates, homonyms
 from .tree import Tree
 
 # list of handles -> type they point at
@@ -210,8 +210,11 @@ class Findings:
     def __init__(self):
         self.items: list[dict] = []
         self._seen: set[tuple[str, str]] = set()
+        self.duplicate_guard = lambda key: False
 
     def add(self, check: str, key: str, detail: str = "") -> None:
+        if check in {"dup-person-birth", "dup-person-relative"} and self.duplicate_guard(key):
+            return
         if (check, key) not in self._seen:
             self._seen.add((check, key))
             self.items.append({"check": check, "key": key, "detail": detail})
@@ -277,124 +280,7 @@ def hygiene_checks(T: dict, out: Findings, in_scope) -> None:
     """The checks for information only that read sources and dates; one call in `run_checks`."""
     source_ark_checks(T, out, in_scope)
     date_precision_checks(T, out, in_scope)
-
-
-def _homonym_birth_span(p: dict, events: dict) -> dates.Span | None:
-    """All Primary Birth alternatives, widened rather than choosing a convenient year.
-
-    An unreadable alternative makes the birth unknown. Baptism alone cannot establish
-    a birth gap (adult baptisms exist), unlike the older duplicate hints above.
-    """
-    spans = []
-    for r in p.get("event_ref_list", []):
-        e = events.get(r.get("ref"))
-        if not e or r.get("role") != "Primary" or dates.kind(e.get("type")) not in dates.BIRTH:
-            continue
-        span = dates.span(e.get("date"))
-        if span is None:
-            return None
-        spans.append(span)
-    if not spans:
-        return None
-    return dates.Span(min(s.lo for s in spans), max(s.hi for s in spans), all(s.firm for s in spans),
-                      "; ".join(sorted({s.text for s in spans})))
-
-
-def _homonym_birth_anniversary(s: dates.Span | None) -> int | None:
-    """Ten civil years after the latest possible birth, or no usable bound.
-
-    March 1 is the conservative anniversary of February 29 in a non-leap
-    year. Open ends and endpoints outside the civil calendar stay unknown.
-    Compute once per person, never once per same-name pair.
-    """
-    if s is None or not 1 <= s.hi <= datetime.date.max.toordinal():
-        return None
-    day = datetime.date.fromordinal(s.hi)
-    if day.year + 10 > datetime.MAXYEAR:
-        return None
-    try:
-        anniversary = day.replace(year=day.year + 10)
-    except ValueError:  # February 29 has no anniversary day that year
-        anniversary = datetime.date(day.year + 10, 3, 1)
-    return anniversary.toordinal()
-
-
-class _HomonymBirthGaps:
-    """Accumulate scoped gaps while the caller retains the duplicate-hint guard."""
-
-    def __init__(self, group: list[dict], events: dict, out: Findings):
-        self.group = group
-        self.out = out
-        self.birth_spans = {p["handle"]: _homonym_birth_span(p, events) for p in group}
-        self.anniversaries = {h: _homonym_birth_anniversary(s) for h, s in self.birth_spans.items()}
-        self.gap_count = 0
-        self.witness = None
-
-    def record_gap(self, p: dict, q: dict) -> bool:
-        """Record an incompatible pair; the caller has already checked its scope."""
-        a, b = self.birth_spans[p["handle"]], self.birth_spans[q["handle"]]
-        anniversary_a = self.anniversaries[p["handle"]]
-        anniversary_b = self.anniversaries[q["handle"]]
-        # Only a gap between the full intervals rules out a safe merge hint.
-        if a and b and ((anniversary_a is not None and b.lo > anniversary_a)
-                        or (anniversary_b is not None and a.lo > anniversary_b)):
-            self.gap_count += 1
-            if self.witness is None:
-                self.witness = (p, q, a, b)
-            return True
-        return False
-
-    def report(self, n: str) -> None:
-        """Emit one bounded row, preserving the first pair as the witness."""
-        if self.witness is not None:
-            p, q, a, b = self.witness
-            detail = (f"{p['gramps_id']} Birth {a.text}; {q['gramps_id']} Birth {b.text}; "
-                      "possible births more than 10 civil years apart; not a safe merge candidate")
-            if len(self.group) == 2:  # preserve existing pair keys for two-person groups
-                self.out.add("homonym-birth-gap", f"{p['gramps_id']},{q['gramps_id']}", f"{n}: {detail}")
-            else:
-                self.out.add("homonym-birth-gap", f"name:{n}",
-                             f"{n}: {self.gap_count} incompatible pairs (at least one person in scope) "
-                             f"among {len(self.group)} same-name people; witness {detail}; "
-                             "group summary, not a complete pair listing")
-
-
-def _check_same_name_groups(P, E, out, in_scope, births, kin, compatible, parent_and_child):
-    """Keep scoped duplicate and homonym decisions outside the whole-tree checker."""
-    names: dict[str, list] = defaultdict(list)
-    for p in P.values():
-        n = person_name(p)
-        if len(n.split()) >= 2:  # a lone first name matches half the tree
-            names[n].append(p)
-    for n, group in names.items():
-        if len(group) < 2 or not any(in_scope("people", p["handle"]) for p in group):
-            continue
-        group = sorted(group, key=lambda p: id_order(p["gramps_id"]))
-        homonyms = _HomonymBirthGaps(group, E, out)
-        facts = {p["handle"]: (births(p), *kin(p)) for p in group}
-        scoped = {p["handle"] for p in group if in_scope("people", p["handle"])}
-        for i, p in enumerate(group):
-            ph = p["handle"]
-            bp, pp, sp, cp = facts[ph]
-            for q in group[i + 1:]:
-                qh = q["handle"]
-                if not (ph in scoped or qh in scoped):
-                    continue
-                if homonyms.record_gap(p, q):
-                    continue  # homonym guard: do not emit same-name duplicate hints
-                bq, pq, sq, cq = facts[qh]
-                pair = ",".join(sorted((p["gramps_id"], q["gramps_id"])))
-                if bp and bq and compatible(bp, bq):
-                    out.add("dup-person-birth", pair, n)
-                years_differ = bp and bq and not ({x[0] for x in bp} & {x[0] for x in bq})
-                # a shared relative proves nothing when one is the other's parent; a shared birth date still does
-                if (pp & pq or sp & sq or cp & cq) and not years_differ \
-                        and not parent_and_child(p["handle"], q["handle"]):
-                    why = "same parent" if pp & pq else "same spouse" if sp & sq else "same child"
-                    out.add("dup-person-relative", pair, f"{n}, {why}")
-
-        homonyms.report(n)
-
+    homonyms.install(T, out, in_scope, person_name, id_order)
 
 
 def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
@@ -624,7 +510,30 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
         """A person is never their own parent: a father and a son with one name are two people."""
         return a in parent_handles(P[b]) or b in parent_handles(P[a])
 
-    _check_same_name_groups(P, E, out, in_scope, births, kin, compatible, parent_and_child)
+    names: dict[str, list] = defaultdict(list)
+    for p in P.values():
+        n = person_name(p)
+        if len(n.split()) >= 2:  # a lone first name matches half the tree
+            names[n].append(p)
+    for n, group in names.items():
+        if len(group) < 2 or not any(in_scope("people", p["handle"]) for p in group):
+            continue
+        facts = {p["handle"]: (births(p), *kin(p)) for p in group}
+        for i, p in enumerate(group):
+            for q in group[i + 1:]:
+                if not (in_scope("people", p["handle"]) or in_scope("people", q["handle"])):
+                    continue
+                bp, pp, sp, cp = facts[p["handle"]]
+                bq, pq, sq, cq = facts[q["handle"]]
+                pair = ",".join(sorted((p["gramps_id"], q["gramps_id"])))
+                if bp and bq and compatible(bp, bq):
+                    out.add("dup-person-birth", pair, n)
+                years_differ = bp and bq and not ({x[0] for x in bp} & {x[0] for x in bq})
+                # a shared relative proves nothing when one is the other's parent; a shared birth date still does
+                if (pp & pq or sp & sq or cp & cq) and not years_differ \
+                        and not parent_and_child(p["handle"], q["handle"]):
+                    why = "same parent" if pp & pq else "same spouse" if sp & sq else "same child"
+                    out.add("dup-person-relative", pair, f"{n}, {why}")
 
     # the same person written with an extra given name or surname: «Vicente» and «Miguel Vicente»
     def tokens(s: str) -> frozenset:

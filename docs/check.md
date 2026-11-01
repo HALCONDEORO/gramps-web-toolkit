@@ -381,3 +381,5 @@ gwt-check timeline HANDLE [HANDLE ...] [--limit 200]
 ```
 
 `timeline` asks the server for the events of one or more people (`/api/timelines/people/`) and prints a row for each: the person's Gramps ID, the event's Gramps ID, type, role and date, in the order the server gives them. It never prints a description, a place or a citation, and it never writes to the tree. An event with no date comes back with an empty date.
+
+The homonym rule registers through the existing hygiene hook; the inherited whole-tree checker is unchanged. Findings checks duplicate evidence with the same full-interval guard, without retaining a quadratic pair set.
