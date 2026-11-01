@@ -343,6 +343,8 @@ or `inhumation de` are skipped. `--subject` also excludes exact names after
 case/accent folding, and explicitly declared parents in that subject's immediate
 clause, including `et de` continuations. It does not remove an unrelated parent in
 another clause/act or a separate witness with the same name as a declared parent.
+Negated, doubtful or alternative parent mentions stay as `other`/`low` clues with
+their whole clause as evidence, even when `--subject` is supplied.
 No ancestry is inferred from a surname, an uncle, or a repeated appearance.
 Unusual order, lowercase names, one-word names and complex narrative syntax may
 be missed or assigned `other`; human validation against every literal is required.

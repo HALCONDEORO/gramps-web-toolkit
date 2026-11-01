@@ -256,6 +256,20 @@ def test_wrapped_subject_parent_clause_is_still_excluded(leads):
     assert [r['name'] for r in rows] == ['Luc Gamma']
 
 
+@pytest.mark.parametrize('body', [
+    "Jean Alfa n'est pas fils de Paul Beta et de Anne Delta",
+    'Jean Alfa fils probable de Paul Beta et de Anne Delta',
+    'Jean Alfa fils de Paul Beta ou Anne Delta',
+    'Jean Alfa fils de Paul Beta et de Anne Delta probablement',
+])
+def test_subject_keeps_doubtful_parent_mentions(leads, body):
+    rows = leads.extract(block(body + '; temoin Luc Gamma'), subject='Jean Alfa')
+    assert [(r['name'], r['role'], r['confidence']) for r in rows] == [
+        ('Paul Beta', 'other', 'low'), ('Anne Delta', 'other', 'low'),
+        ('Luc Gamma', 'witness', 'high')]
+    assert all(r['literal'] == body for r in rows[:2])
+
+
 def test_doubt_after_name_before_stop_withdraws_role():
     from gwt_fetch.leads import extract
     rows = extract("ref: SYN-A/001\ndate: 1800-01-01\nparrain Paul Beta probablement; témoin Luc Gamma.")

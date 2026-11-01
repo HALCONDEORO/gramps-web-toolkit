@@ -107,3 +107,4 @@ gwt_fetch/leads.py |     r"probabl\w*|peut[- ]?[eê]tre|vraisemblabl\w*|possibl\
 gwt_fetch/leads.py |     r"ou|soit)(?!\w)|\?", re.I)  # alternatives |     r"soit)(?!\w)|\?", re.I)  # alternatives | "Paul Beta ou Luc Gamma" affirms the first name alone
 gwt_fetch/leads.py |     return bool(DOUBT.search(clause.replace('(?)', ' '))) |     return bool(DOUBT.search(clause)) | a (?) mark is treated as clause doubt and the role is lost
 gwt_fetch/leads.py |         clause_end = end + stop.start() |         clause_end = end | doubt after the name is outside the clause evidence
+gwt_fetch/leads.py | and not _doubtful(_clause(body, found.start(), end)) | and True | subject filtering silently drops negated or doubtful parent clues

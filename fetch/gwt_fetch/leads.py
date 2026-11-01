@@ -163,7 +163,8 @@ def _extract_block(headers, body, subject):
         active, chain = _advance_role(left, previous_end, active, chain)
         role, relation, start = active or ('other', '', found.start())
         relation, end = _shared_relation(body, role, relation, found.end())
-        excluded_parent = chain and role in PARENT_ROLES
+        # Only affirmative parent declarations can suppress collateral clues.
+        excluded_parent = chain and role in PARENT_ROLES and not _doubtful(_clause(body, found.start(), end))
         if role not in PARENT_ROLES:
             chain = False
         if not excluded_parent and not _same_name(name, subject):
