@@ -175,3 +175,24 @@ def test_age_command_prints_and_exits(capsys):
     assert gd.main(['age', '1850-06-10', '--years', '63']) == 0
     assert capsys.readouterr().out.strip() == 'between 1786-06-11 and 1787-06-10'
     assert gd.main(['age', '1804-02-29', '--years', '1']) == 2
+
+
+@pytest.mark.parametrize('argv', [
+    ['age', '1850-06-10', '--years', '1', '--days', '9999999999'],
+    ['age', '1850-06-10', '--years', '1', '--months', '9' * 34],
+    ['age', '1850-06-10', '--years', '9' * 34],
+    ['age', '1850-06-10', '--years', '1850'],
+    ['age', '0001-01-05', '--years', '0', '--days', '5'],
+    ['age', '1850-06-10', '--years', '0', '--months', '22200'],
+])
+def test_age_that_leaves_the_calendar_is_refused_with_exit_2_and_no_date(argv, capsys):
+    assert gd.main(argv) == 2
+    out = capsys.readouterr()
+    assert out.out == '' and 'outside the years' in out.err
+
+
+def test_age_reaching_year_1_is_still_given_and_one_more_year_is_refused():
+    assert gd.birth_from_age(D(1850, 6, 10), 1848) == 'between 0001-06-11 and 0002-06-10'
+    assert gd.birth_from_age(D(1, 1, 6), 0, None, 5) == '0001-01-01'
+    with pytest.raises(ValueError):
+        gd.birth_from_age(D(1850, 6, 10), 1849)

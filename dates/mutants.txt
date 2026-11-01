@@ -12,3 +12,6 @@ gwt_dates.py | return (out - datetime.timedelta(days=days or 0)).isoformat() | r
 gwt_dates.py | return f'bef {read_any_date(text).isoformat()}' | return read_any_date(text).isoformat() | an issue date is given as the date of the event
 gwt_dates.py | if min(years, months or 0, days or 0) < 0: | if False: | a negative age is accepted
 gwt_dates.py | total = date.year * 12 + date.month - 1 - months | total = date.year * 12 + date.month - 1 + months | the months of the age are added instead of taken off
+gwt_dates.py | if not 1 <= year <= 9999: | if False: | a number of months that leaves the calendar is not refused
+gwt_dates.py | if not 1 <= date.year - years <= 9999: | if False: | a number of years that leaves the calendar is not refused
+gwt_dates.py | except OverflowError: | except ZeroDivisionError: | a number of days that leaves the calendar ends in a traceback

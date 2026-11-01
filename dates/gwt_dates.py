@@ -140,6 +140,8 @@ def before(text):
 
 def minus_years(date, years):
     """The same day and month `years` earlier. A 29 February has no such day in a common year: refused."""
+    if not 1 <= date.year - years <= 9999:
+        raise ValueError(f'{date} minus {years} years is outside the years the calendar can hold')
     try:
         return date.replace(year=date.year - years)
     except ValueError:
@@ -150,6 +152,8 @@ def minus_months(date, months):
     """The same day `months` earlier; a day the month does not have (31 March minus one month) is refused."""
     total = date.year * 12 + date.month - 1 - months
     year, month = divmod(total, 12)
+    if not 1 <= year <= 9999:
+        raise ValueError(f'{date} minus {months} months is outside the years the calendar can hold')
     try:
         return date.replace(year=year, month=month + 1)
     except ValueError:
@@ -166,7 +170,10 @@ def birth_from_age(event, years, months=None, days=None):
         earliest = minus_years(event, years + 1) + datetime.timedelta(days=1)
         return f'between {earliest.isoformat()} and {latest.isoformat()}'
     out = minus_months(minus_years(event, years), months or 0)
-    return (out - datetime.timedelta(days=days or 0)).isoformat()
+    try:
+        return (out - datetime.timedelta(days=days or 0)).isoformat()
+    except OverflowError:
+        raise ValueError(f'{out} minus {days} days is outside the years the calendar can hold') from None
 
 
 def main(argv=None):
