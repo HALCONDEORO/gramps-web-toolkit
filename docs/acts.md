@@ -38,3 +38,18 @@ The score is the one `gwt-cross` uses, so spelling variants count (a surname tha
 A TSV on standard output: `card`, `verdict`, `detail`. Cells have no tab or newline and a leading `=`, `+`, `-` or `@` is neutralised. Exit 0 when no card was rejected and no conflict was found, 1 otherwise, 2 when a file cannot be read.
 
 This is a lead for the reader, not an identification: a match is two sets of words that look alike.
+
+## Independent table and margin readings
+
+Optional fields `source_kind` (`act-body`, `decennial-table`, `margin`),
+`table_date_iso`, `table_name`, `margin_date_iso`, and `margin_name` retain independent
+readings. A table or margin crop cannot establish `verificado-zoom`; that state
+requires reading the act body. Missing `source_kind` keeps older cards compatible,
+but is not proof that their source is an act body.
+
+A secondary date must use the card's ISO date syntax. Keep an ambiguous `idem` in
+notes until the referent is read. Different dates or names produce `CONFLICT`, also
+without a dump, with exit 1. Both readings remain unchanged. A partial date versus
+an exact date is flagged conservatively for review, not automatically corrected.
+Name comparison ignores case and accents, not spelling differences. This checker
+reports conflicts; it does not authenticate a document or apply a correction.

@@ -24,3 +24,8 @@ gwt_acts.py |         return [int(d[:4]) for k in kinds for d in when.get(k, [])
 gwt_acts.py | for p, why in tied if not ('nombre completo' | for p, why in tied[:1] if not ('nombre completo' | only the first tied candidate is judged
 gwt_acts.py | if get('type') and kind not in EVENTS and kind != MILITARY: | if get('type') and kind not in EVENTS: | a matricule card is rejected as an unknown type
 gwt_acts.py | for k in MILITARY_REQUIRED if not get(k)] | for k in () if not get(k)] | a matricule card without the class or the register number is accepted
+gwt_acts.py | if source and source not in ('act-body', 'decennial-table', 'margin'): | if False: | unknown evidence kind is accepted
+gwt_acts.py | if source in ('decennial-table', 'margin') and get('state') == 'verificado-zoom': | if False: | a table crop can verify an act
+gwt_acts.py |         if value and not split_date(value): |         if False: | ambiguous or invalid secondary date is accepted
+gwt_acts.py |         if other_date and other_date != actual: |         if False: | table and margin date conflicts disappear
+gwt_acts.py |         if other_name and dates.fold(other_name) != dates.fold(name): |         if False: | table and margin name conflicts disappear

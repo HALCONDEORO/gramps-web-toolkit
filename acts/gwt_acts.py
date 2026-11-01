@@ -92,6 +92,36 @@ def zoom_problems(get):
     return out
 
 
+
+def source_problems(get):
+    """Optional provenance fields cannot promote an index entry to a verified act."""
+    out = []
+    source = get('source_kind')
+    if source and source not in ('act-body', 'decennial-table', 'margin'):
+        out.append('source_kind must be act-body, decennial-table or margin')
+    if source in ('decennial-table', 'margin') and get('state') == 'verificado-zoom':
+        out.append('verificado-zoom needs the act body, not a table or margin')
+    for prefix in ('table', 'margin'):
+        value = get(prefix + '_date_iso')
+        if value and not split_date(value):
+            out.append(prefix + '_date_iso is not a date; keep ambiguous text such as idem in notes')
+    return out
+
+
+def source_conflicts(card):
+    """Compare independent readings, retaining both; never choose or edit an event."""
+    out = []
+    actual = (card.get('date_iso') or '').strip()
+    name = ' '.join((card.get(k) or '').strip() for k in ('given', 'surname')).strip()
+    for prefix in ('table', 'margin'):
+        other_date = (card.get(prefix + '_date_iso') or '').strip()
+        other_name = (card.get(prefix + '_name') or '').strip()
+        if other_date and other_date != actual:
+            out.append(f'CONFLICT {prefix} date: card says {actual}; {prefix} says {other_date}')
+        if other_name and dates.fold(other_name) != dates.fold(name):
+            out.append(f'CONFLICT {prefix} name: card says {name}; {prefix} says {other_name}')
+    return out
+
 def card_problems(card):
     """Why this card is rejected: a list of short messages, empty when it is fine."""
     def get(k):
@@ -105,6 +135,7 @@ def card_problems(card):
         out.append(f'state must be one of {", ".join(STATES)}')
     out += zoom_problems(get)
     out += republican_problems(get)
+    out += source_problems(get)
     return out
 
 
@@ -219,6 +250,7 @@ def check(cards, dump=None):
             results.append((card['card'], 'rejected', '; '.join(problems), True))
             continue
         verdict, notes = lookup(card, people, by_id) if dump else ('ok', [])
+        notes += source_conflicts(card)
         if (card.get('father') or card.get('mother')) and (card.get('state') or '').strip() != 'verificado-zoom':
             notes.append('read-only: the parents are not to be written (not verificado-zoom)')
         results.append((card['card'], verdict, '; '.join(notes), any(n.startswith('CONFLICT') for n in notes)))

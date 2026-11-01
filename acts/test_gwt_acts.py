@@ -240,3 +240,59 @@ def test_a_matricule_card_is_matched_to_the_person_and_compares_no_event():
 
 def test_an_unknown_type_is_still_rejected():
     assert 'type must be one of' in verdict(card(type='cartilla'), None)[2]
+
+
+@pytest.mark.parametrize('source', ['decennial-table', 'margin'])
+def test_zoom_of_a_table_or_margin_cannot_verify_an_act(source):
+    r = verdict(card(source_kind=source), None)
+    assert r[1] == 'rejected' and 'act body' in r[2] and r[3]
+    assert verdict(card(source_kind=source, state='por-confirmar-acta'), None)[1] == 'ok'
+
+
+def test_unknown_source_kind_is_not_silently_treated_as_a_body():
+    assert 'source_kind must be' in verdict(card(source_kind='certain'), None)[2]
+    assert verdict(card(source_kind='act-body'), None)[1] == 'ok'
+
+
+@pytest.mark.parametrize('prefix', ['table', 'margin'])
+@pytest.mark.parametrize('value', ['1777-03-09', '1771-03-19', '1771-01-09', 'abt 1771-03-09'])
+def test_conflicting_source_dates_are_reported_without_mutation(prefix, value):
+    c = card(source_kind='act-body', **{prefix + '_date_iso': value})
+    before = json.loads(json.dumps(c))
+    r = verdict(c, None)
+    assert r[3] and f'CONFLICT {prefix} date:' in r[2]
+    assert '1771-03-09' in r[2] and value in r[2]
+    assert c == before
+
+
+@pytest.mark.parametrize('prefix', ['table', 'margin'])
+def test_source_name_conflicts_preserve_both_readings(prefix):
+    r = verdict(card(**{prefix + '_name': 'Rosa Elise Marlot'}), None)
+    assert r[3] and 'Rosa Maria Marlot' in r[2] and 'Rosa Elise Marlot' in r[2]
+
+
+def test_matching_sources_add_no_conflict_and_do_not_require_new_fields():
+    assert not verdict(card(table_date_iso='1771-03-09', table_name='ROSA MARIA MARLOT'), None)[3]
+    assert not verdict(card(), None)[3]
+
+
+@pytest.mark.parametrize('prefix', ['table', 'margin'])
+@pytest.mark.parametrize('value', ['idem', '1771-02-30', '1771-13-01'])
+def test_ambiguous_or_invalid_secondary_date_is_kept_out_of_iso(prefix, value):
+    assert verdict(card(**{prefix + '_date_iso': value}), None)[1] == 'rejected'
+
+
+def test_source_and_tree_conflicts_are_both_returned():
+    r = verdict(card(date_iso='1771-03-10', table_date_iso='1771-03-11'))
+    assert r[3] and 'CONFLICT I1 Birth' in r[2] and 'CONFLICT table date' in r[2]
+
+
+def test_cli_exits_one_on_source_conflict_without_dump(tmp_path, capsys):
+    path = tmp_path / 'cards.tsv'
+    c = card(table_date_iso='1771-03-11')
+    with path.open('w', newline='') as f:
+        w = csv.DictWriter(f, fieldnames=list(c), delimiter='\t')
+        w.writeheader()
+        w.writerow(c)
+    assert A.main(['check', str(path)]) == 1
+    assert 'CONFLICT table date' in capsys.readouterr().out

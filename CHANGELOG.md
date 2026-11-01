@@ -12,6 +12,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 - `gwt-acts` accepts `type = matricule` cards (class and register number required, matched to a person, compared with no event). Docs: "Military records", a guide to the public sources.
 - `run_tests.py --mutants` puts the other single-file tools on the path of the scratch copy, so a tool that imports a sibling can have mutants.
 - `gwt-dates`: converts French Republican dates (an I to an XIV) and old-style month names (`7bre`, `9bre`) to Gregorian and back, offline, by calculation; `--as-note` writes the form `gwt-check republican` reads.
+- `gwt-acts check` keeps independent table and margin readings (`source_kind`, `table_date_iso`, `table_name`, `margin_date_iso`, `margin_name`): a different date or name is a `CONFLICT` (exit 1), both readings stay unchanged, and a table or margin crop cannot set `verificado-zoom`.
 - `gwt-books`: for a register on an image viewer with no name index, keeps the dates read on images and says which image to open next (`add`, `next`, `show`). Offline: it never fetches an image.
 - `gwt-books status` and `export`; `next` prints the remaining zone and exits 1 when it has no image to suggest.
 - Docs: "Finding church and civil registers", a guide to the public sources for Spanish parish and French civil registers.
