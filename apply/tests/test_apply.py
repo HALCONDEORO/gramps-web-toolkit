@@ -4220,3 +4220,23 @@ def test_chained_source_merges_name_the_citations_the_first_merge_moved(snapshot
         assert f"Citation {cit}: cites S0003 instead of S0001" in second, second
     if not dry_run:
         assert {c["source_handle"] for c in fake.store["citations"].values()} == {"s3"}
+
+
+CHAIN3 = [dict(SRC_OP, key="m1", winner="S0002", loser="S0003"),
+          dict(SRC_OP, key="m2", winner="S0001", loser="S0002"),
+          dict(SRC_OP, key="m3", winner="S0004", loser="S0001")]
+
+
+@pytest.mark.parametrize("snapshot", [False, True])
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_three_chained_source_merges_follow_the_citation_of_the_first_loser_to_the_last_winner(snapshot, dry_run):
+    """S3 into S2, S2 into S1, S1 into S4: a citation of S3 is three hops from its final source, and the lookup follows all."""
+    fake = _three_sources()
+    fake.add("sources", {"handle": "s4", "title": "Parish register, book 3", "author": "", "pubinfo": "", "abbrev": ""})  # S0004
+    fake.add("citations", {"handle": "c4", "source_handle": "s3", "page": "f. 4"})  # C0004
+    res = _run_with_snapshot(fake, CHAIN3, dry_run) if snapshot else run(fake, CHAIN3, dry_run=dry_run)
+    assert [r.status for r in res] == ["done"] * 3, [r.actions for r in res]
+    third = "\n".join(res[2].actions)
+    assert "Citation C0004 (f. 4): cites S0004 instead of S0001" in third, third
+    if not dry_run:
+        assert {c["source_handle"] for c in fake.store["citations"].values()} == {"s4"}
