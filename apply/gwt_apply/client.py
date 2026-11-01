@@ -367,24 +367,29 @@ class Client:
             out += r.json()
         return out
 
+    def _read_list(self, cls: str, keys: list[str]) -> list[dict]:
+        """One class's list with only `keys`: from the snapshot when there is one, else from the server."""
+        if self.snapshot is not None:
+            return [{k: o.get(k) for k in ["handle", *keys]} for o in self.snapshot.get(cls, {}).values()]
+        r = self._request("GET", f"/{NAMESPACE[cls]}/", params={"keys": ",".join(["handle", *keys])})
+        if r.status_code != 200:
+            raise ApiError(f"GET {cls} list: HTTP {r.status_code}", r.status_code)
+        return r.json()
+
+    def _with_my_writes(self, cls: str, keys: list[str], listed: list[dict]) -> list[dict]:
+        mine = {h: obj for (c, h), obj in {**self.written, **self.pending}.items() if c == cls}
+        rows = [row for row in listed if row["handle"] not in mine and (cls, row["handle"]) not in self.deleted]
+        return rows + [{k: obj.get(k) for k in ["handle", *keys]} for h, obj in mine.items()]
+
     def list_all(self, cls: str, keys: list[str]) -> list[dict]:
         """Every object of a class with only `keys`, read once per run, with this run's writes on top."""
         cache = (cls, tuple(keys))
         self.listed.add(cls)
         if "person_ref_list" in keys:
             self._touched(cls, None)
-        if cache not in self._lists and self.snapshot is not None:
-            self._lists[cache] = [{k: o.get(k) for k in ["handle", *keys]} for o in self.snapshot.get(cls, {}).values()]
         if cache not in self._lists:
-            r = self._request(
-                "GET", f"/{NAMESPACE[cls]}/", params={"keys": ",".join(["handle", *keys])}
-            )
-            if r.status_code != 200:
-                raise ApiError(f"GET {cls} list: HTTP {r.status_code}", r.status_code)
-            self._lists[cache] = r.json()
-        mine = {h: obj for (c, h), obj in {**self.written, **self.pending}.items() if c == cls}
-        rows = [row for row in self._lists[cache] if row["handle"] not in mine and (cls, row["handle"]) not in self.deleted]
-        rows += [{k: obj.get(k) for k in ["handle", *keys]} for h, obj in mine.items()]
+            self._lists[cache] = self._read_list(cls, keys)
+        rows = self._with_my_writes(cls, keys, self._lists[cache])
         if cls == "Citation" and "source_handle" in keys and self.repointed:
             rows = [{**row, "source_handle": self._merged_source(row.get("source_handle"))} for row in rows]
         return rows

@@ -1365,28 +1365,34 @@ class MergingFake(FakeGrampsWeb):
             win, lose = store[w], store.pop(l_)
             for lst in ("event_ref_list", "citation_list", "note_list", "child_ref_list", "family_list", "parent_family_list"):
                 win[lst] = win.get(lst, []) + [x for x in lose.get(lst, []) if x not in win.get(lst, [])]
-            if ns == "events":
-                self._merge_event_refs(win, lose, w, l_)
-            elif ns == "people":
-                win["attribute_list"].append({"_class": "Attribute", "type": "Merged Gramps ID", "value": lose["gramps_id"]})
-                for fam in self.store["families"].values():
-                    for role in ("father_handle", "mother_handle"):
-                        if fam.get(role) == l_:
-                            fam[role] = w
-                    for ref in fam.get("child_ref_list", []):
-                        if ref["ref"] == l_:
-                            ref["ref"] = w
-            elif ns == "sources":
-                for c in self.store["citations"].values():
-                    if c.get("source_handle") == l_:
-                        c["source_handle"] = w
-            else:
-                for p in self.store["people"].values():
-                    for lst in ("family_list", "parent_family_list"):
-                        p[lst] = [w if x == l_ else x for x in p.get(lst, [])]
+            self._merge_by_kind(ns, win, lose, w, l_)
             win["change"] = self.tick()
             return Resp(200, {})
         return super()._route(method, path, headers, params, body, data)
+
+    def _merge_by_kind(self, ns, win, lose, w, l_):
+        if ns == "events":
+            self._merge_event_refs(win, lose, w, l_)
+        elif ns == "people":
+            self._merge_person_refs(win, lose, w, l_)
+        elif ns == "sources":
+            for c in self.store["citations"].values():
+                if c.get("source_handle") == l_:
+                    c["source_handle"] = w
+        else:
+            for p in self.store["people"].values():
+                for lst in ("family_list", "parent_family_list"):
+                    p[lst] = [w if x == l_ else x for x in p.get(lst, [])]
+
+    def _merge_person_refs(self, win, lose, w, l_):
+        win["attribute_list"].append({"_class": "Attribute", "type": "Merged Gramps ID", "value": lose["gramps_id"]})
+        for fam in self.store["families"].values():
+            for role in ("father_handle", "mother_handle"):
+                if fam.get(role) == l_:
+                    fam[role] = w
+            for ref in fam.get("child_ref_list", []):
+                if ref["ref"] == l_:
+                    ref["ref"] = w
 
     def _merge_event_refs(self, win, lose, w, l_):
         """Gramps' MergeEventQuery: lists move to the winner; a holder's ref to the loser becomes a ref to the
