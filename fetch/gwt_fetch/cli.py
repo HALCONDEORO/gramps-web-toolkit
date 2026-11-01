@@ -136,7 +136,11 @@ def main(argv=None) -> int:
     if args.cmd == "variants":
         return variants.run(args)
     if args.cmd == "leads":
-        return leads.run(args, None)
+        try:
+            return leads.run(args, None)
+        except (OSError, ValueError) as exc:
+            print(f"gwt-fetch: {exc}", file=sys.stderr)
+            return 2
     from .net import Client
 
     client = Client(delay=args.delay)
