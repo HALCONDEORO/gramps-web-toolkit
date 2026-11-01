@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from gwt_fetch import boe, digibib, europeana, gazeta, geo, iiif
+from gwt_fetch import boe, digibib, europeana, gazeta, geo, iiif, names
 from gwt_fetch.store import Store, slug
 
 
@@ -353,6 +353,101 @@ def test_gazeta_fetch_reads_the_pdf_link_of_a_modern_document(tmp_path):
     assert (tmp_path / "BOE-A-1978-9001.pdf").read_bytes() == b"%PDF"
 
 
+# ---------------------------------------------------------------- names
+
+NAMES_DOC = """<h3 class="documento-tit">Lista de ejemplo.</h3>
+<dl><dt>Publicado en:</dt><dd>«Gaceta de Madrid» núm. 1, de 1 de enero de 1900, páginas 1 a 1</dd></dl>
+<li class="puntoPDF"><a href="/datos/pdfs/BOE//1900/001/A00001-00001.pdf">PDF</a></li>
+<div id="textoxslt"><p>Pedro Gómez Ruiz. Juan Ejemplo Uno, de Luis y Ana. Otro Nombre Distinto.</p></div>
+<!-- #textoxslt -->"""
+
+
+def test_names_queries_cover_both_orders_and_spellings_once():
+    q = names.queries("Juan", "Ejemplo Uno", ["Ejenplo", "Ejémplo"])
+    assert q == ['"Juan Ejemplo Uno"', '"Ejemplo Uno, Juan"', '"Juan Ejenplo Uno"', '"Ejenplo Uno, Juan"']
+
+
+def test_names_person_needs_given_and_surname():
+    assert names.parse_person("Juan/Ejemplo Uno") == ("Juan", "Ejemplo Uno")
+    for bad in ("Juan Ejemplo", "/Ejemplo", "Juan/ "):
+        with pytest.raises(ValueError):
+            names.parse_person(bad)
+
+
+@pytest.mark.parametrize("extra", [["--from", "1979-13-01"], ["--from", "19790101"], ["--to", "1979-02-30"],
+                                   ["--from", "1980-01-01", "--to", "1979-01-01"], ["--limit", "0"],
+                                   ["--limit", "99999"], ["--spell", " "]])
+def test_names_refuses_bad_arguments_before_asking_the_site(extra, capsys):
+    class NoNet:
+        def __getattr__(self, k):
+            raise AssertionError("the site was asked")
+    from gwt_fetch import cli
+    args = cli.parser().parse_args(["names", "Juan/Ejemplo Uno", *extra])
+    assert names.run(args, NoNet()) == 2
+    assert "gwt-fetch:" in capsys.readouterr().err
+
+
+def test_names_person_without_surname_exits_2(capsys):
+    from gwt_fetch import cli
+    assert names.run(cli.parser().parse_args(["names", "Juan"]), None) == 2
+
+
+def test_names_tsv_cell_stays_on_one_line(monkeypatch, tmp_path, capsys):
+    from gwt_fetch import cli
+    monkeypatch.setattr(names, "hits", lambda *a: iter([("boe", {"ref": "BOE-A-1-1", "date": "1970-01-01\r"})]))
+    monkeypatch.setattr(names.gazeta, "fetch", lambda *a: 0)
+    f = tmp_path / "BOE-A-1-1_text.txt"
+    f.write_text("Juan Ejemplo Uno\r\n=SUMA(1)\tx\nmas")
+    monkeypatch.setattr(names.Store, "find", lambda self, ref: f)
+    args = cli.parser().parse_args(["names", "Juan/Ejemplo\tUno", "--out", str(tmp_path)])
+    names.run(args, None)
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 2 and len(lines[1].split("\t")) == 6
+
+
+def test_names_context_wants_the_given_name_next_to_the_full_surname():
+    text = "Ana Ejemplo Dos, de Luis. Más abajo, Juan Éjemplo Uno, de Luis y Ana."
+    assert "Juan Éjemplo Uno" in names.context(text, ["Ejemplo Uno"], "Juan")
+    assert names.context("Ana Ejemplo Uno.", ["Ejemplo Uno"], "Juan").startswith("(given name not adjacent)")
+    assert names.context("Nada.", ["Ejemplo Uno"], "Juan") == ""
+
+
+def test_names_context_accepts_the_second_order_with_separators():
+    assert names.context("Ejemplo Uno, Juan.", ["Ejemplo Uno"], "Juan").startswith("Ejemplo Uno, Juan")
+    assert names.context("Ejemplo   Uno ,  Juan", ["Ejemplo Uno"], "Juan") == "Ejemplo Uno , Juan"
+
+
+def test_names_context_is_not_fooled_by_a_longer_word_or_a_longer_surname():
+    cx = lambda text: names.context(text, ["Ejemplo Uno"], "Juan")
+    assert cx("Juanita Ejemplo Uno.") == "(given name not adjacent) Juanita Ejemplo Uno."
+    assert cx("Juan Ejemplote Uno.") == ""
+    assert cx("Juan Ejemplo Unos.") == ""
+    assert cx("Pedro Juan Ejemplo Dos.") == ""
+    assert cx("Rejuan Ejemplo Uno.") == "(given name not adjacent) Rejuan Ejemplo Uno."
+
+
+def test_names_context_prefers_the_whole_word_match_even_when_it_is_further_away():
+    text = "Juanita Ejemplo Uno. " + "lejos " * 60 + "Juan Ejemplo Uno, de Luis."
+    out = names.context(text, ["Ejemplo Uno"], "Juan")
+    assert "lejos" in out and "Juan Ejemplo Uno, de Luis" in out and "Juanita" not in out
+
+
+def test_names_run_merges_sources_prints_context_and_flags_no_proof(tmp_path, capsys):
+    hit = lambda url, params: Resp(RESULTS.replace("Betanzos", "x")) if dict(params)["dato[4]"] == '"Juan Ejemplo Uno"' else Resp("")
+    c = FakeClient({gazeta.SEARCH: hit, boe.SEARCH: Resp(""),
+                    gazeta.DOC + "BOE-A-1870-1111": Resp(NAMES_DOC.replace("1900/001/A00001-00001", "1870/040/A00002-00002")),
+                    "https://www.boe.es/datos/pdfs/BOE//1870/040/A00002-00002.pdf": Resp(b"%PDF", "application/pdf")})
+    c.routes[gazeta.DOC + "BOE-A-1890-910"] = Resp("<html></html>")
+    args = argparse.Namespace(person=["Juan/Ejemplo Uno"], spell=[], source=["gazeta", "boe"], date_from=None,
+                              date_to=None, limit=50, out=str(tmp_path))
+    names.run(args, c)
+    out, err = capsys.readouterr()
+    rows_ = [l.split("\t") for l in out.strip().splitlines()[1:]]
+    first = [r for r in rows_ if r[1] == "BOE-A-1870-1111"][0]
+    assert first[3] == "gazeta" and "Juan Ejemplo Uno, de Luis y Ana" in first[5]
+    assert "not proof of kinship" in err
+
+
 # ---------------------------------------------------------------- europeana
 
 def test_europeana_skips_without_key(monkeypatch, capsys):
@@ -607,6 +702,13 @@ def test_boe_search_page_without_results_and_without_the_box_is_still_zero(capsy
 
 
 
+def test_names_error_box_and_arabic_digits_and_blank_spelling_exit_2(capsys):
+    from gwt_fetch import cli
+    c = FakeClient({boe.SEARCH: Resp(ERROR_BOX), gazeta.SEARCH: Resp("<html></html>")})
+    args = cli.parser().parse_args(["names", "Juan/Ejemplo Uno", "--source", "boe"])
+    assert names.run(args, c) == 2
+    bad = cli.parser().parse_args(["names", "Juan/Ejemplo Uno", "--from", "١٩٧٩-١٠-٠١"])
+    assert names.run(bad, FakeClient({})) == 2
 ERROR_BOX_REAL = ('<div class="mensajeError"><p>Los valores de b&amp;uacute;squeda enviados son incorrectos.</p></div>'
                   '<div>Los valores de b&uacute;squeda enviados son incorrectos</div>')
 
@@ -617,6 +719,11 @@ def test_boe_search_error_box_as_the_site_writes_it_with_html_entities(page, cap
     assert "result(s)" not in capsys.readouterr().err
 
 
+def test_names_error_box_with_html_entities_exits_2(capsys):
+    from gwt_fetch import cli
+    page = "<p>Los valores de b&amp;uacute;squeda enviados son incorrectos</p>"
+    args = cli.parser().parse_args(["names", "Juan/Ejemplo Uno", "--source", "boe"])
+    assert names.run(args, FakeClient({boe.SEARCH: Resp(page)})) == 2
 REAL_ERROR_PAGE = Path(__file__).parent / "data" / "boe_error_unicode_date.html"
 
 
@@ -625,3 +732,21 @@ def test_boe_search_real_error_page_is_exit_2_and_not_zero_results(capsys):
     assert hashlib.sha256(raw).hexdigest() == "d677a09471c26621d2ef6f9f0c2570d6390a3412541ad741a8d7fb36a92a60a7"
     assert boe.run(_boe_args(), FakeClient({boe.SEARCH: Resp(raw)})) == 2
     assert "result(s)" not in capsys.readouterr().err
+
+
+def test_names_real_error_page_exits_2():
+    from gwt_fetch import cli
+    args = cli.parser().parse_args(["names", "Juan/Ejemplo Uno", "--source", "boe"])
+    assert names.run(args, FakeClient({boe.SEARCH: Resp(REAL_ERROR_PAGE.read_bytes())})) == 2
+
+
+def test_names_context_reads_a_compound_given_name_with_uneven_spaces():
+    ctx = names.context("... Juan Carlos Ejemplo Uno ...", ["Ejemplo Uno"], "Juan  Carlos")
+    assert "Juan Carlos Ejemplo Uno" in ctx and "not adjacent" not in ctx
+
+
+def test_names_context_takes_the_earlier_of_the_two_orders():
+    text = "Ejemplo Uno, Juan " + "x " * 200 + "Juan Ejemplo Uno"
+    assert names.context(text, ["Ejemplo Uno"], "Juan", width=10).startswith("Ejemplo Uno, Juan")
+    later = "Juan Ejemplo Uno " + "x " * 200 + "Ejemplo Uno, Juan"
+    assert names.context(later, ["Ejemplo Uno"], "Juan", width=10).startswith("Juan Ejemplo Uno")
