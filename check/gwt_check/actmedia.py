@@ -201,18 +201,28 @@ def pick(cands: list[tuple[str, dict]]) -> dict:
     return {"value": values[0], "status": "found", "from": [w for v, w in cands if v == values[0]]}
 
 
-def filename(person: dict, event: dict, found: list[tuple]) -> dict:
-    cands = candidates(found)
-    cote, ark, vue = pick(cands["cote"]), pick(cands["ark"]), pick(cands["vue"])
+def filename_person(person):
     n = person.get("primary_name") or {}
     private_name = n.get("private") or any(x.get("private") for x in n.get("surname_list") or [])
     surname = " ".join(s.get("surname") or "" for s in n.get("surname_list") or [])
+    return UNKNOWN if private_name else slug(f"{n.get('first_name') or ''} {surname}", CAPS["person"]) or UNKNOWN
+
+
+def filename_reference(cote, ark):
     ref_part = UNKNOWN
     if cote["status"] == "found":
         ref_part = "cote-" + (slug(cote["value"], CAPS["ref"] - 5) or UNKNOWN)
     elif cote["status"] == "not found" and ark["status"] == "found":
         ref_part = "ark-" + (slug(ark["value"], CAPS["ref"] - 4) or UNKNOWN)
-    parts = {"person": UNKNOWN if private_name else slug(f"{n.get('first_name') or ''} {surname}", CAPS["person"]) or UNKNOWN,
+    return ref_part
+
+
+def filename(person: dict, event: dict, found: list[tuple]) -> dict:
+    cands = candidates(found)
+    cote, ark, vue = pick(cands["cote"]), pick(cands["ark"]), pick(cands["vue"])
+    person_part = filename_person(person)
+    ref_part = filename_reference(cote, ark)
+    parts = {"person": person_part,
              "event": slug(kind(event.get("type")), CAPS["event"]) or UNKNOWN,
              "date": date_part(event), "ref": ref_part,
              "vue": f"vue{vue['value']}" if vue["status"] == "found" else UNKNOWN}
@@ -239,6 +249,23 @@ def own_events(tree: Tree, person: dict) -> list[dict]:
             if kind(r.get("role")) == "primary" and r.get("ref") in E]
 
 
+def person_targets(tree, gid, wanted):
+    rows = []
+    p = tree.by_gid("people", gid)
+    if p is None:
+        raise BadInput(f"--person {gid}: no such person")
+    if p.get("private"):
+        rows.append({"person": ref("people", p), "private": True})
+        return rows
+    evs = [e for e in own_events(tree, p) if not wanted or e.get("gramps_id") in wanted]
+    rows += [target(tree, p, e) for e in evs if not e.get("private")]
+    rows += [{"person": ref("people", p), "event": ref("events", e), "private": True} for e in evs if e.get("private")]
+    if not evs:
+        rows.append({"person": ref("people", p), "event": None,
+                     "note": "no own (Primary) event of this person matches in the dump"})
+    return rows
+
+
 def media_report(tree: Tree, persons: list[str], events: list[str] | None = None) -> dict:
     if tree.partial:
         raise BadInput(f"{tree.source}: a .gramps backup has no media or note details; use a dump")
@@ -246,18 +273,7 @@ def media_report(tree: Tree, persons: list[str], events: list[str] | None = None
         raise BadInput("act-media needs at least one --person: nothing is searched for by name")
     wanted, rows = set(events or []), []
     for gid in persons:
-        p = tree.by_gid("people", gid)
-        if p is None:
-            raise BadInput(f"--person {gid}: no such person")
-        if p.get("private"):
-            rows.append({"person": ref("people", p), "private": True})
-            continue
-        evs = [e for e in own_events(tree, p) if not wanted or e.get("gramps_id") in wanted]
-        rows += [target(tree, p, e) for e in evs if not e.get("private")]
-        rows += [{"person": ref("people", p), "event": ref("events", e), "private": True} for e in evs if e.get("private")]
-        if not evs:
-            rows.append({"person": ref("people", p), "event": None,
-                         "note": "no own (Primary) event of this person matches in the dump"})
+        rows.extend(person_targets(tree, gid, wanted))
     missing = wanted - {r["event"]["gramps_id"] for r in rows if r.get("event")}
     if missing:
         raise BadInput(f"--event {', '.join(sorted(missing))}: not an own event of the named persons")

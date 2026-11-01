@@ -19,7 +19,9 @@ def _d():
 
 
 def _get(d, t, gid):
-    return next(o for o in d[t] if o["gramps_id"] == gid)
+    found = [o for o in d[t] if o["gramps_id"] == gid]
+    assert len(found) == 1
+    return found[0]
 
 
 def _media(d, gid, **kw):
