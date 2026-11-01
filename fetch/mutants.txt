@@ -65,6 +65,22 @@ gwt_fetch/cli.py | if args.cmd in ("coverage", "notarial-plan"): | if args.cmd =
 gwt_fetch/notarial.py | or fold(row['locality']).strip() != fold(locality).strip() |  | the Spanish helper must not erase distinguishing non-ASCII letters in locality labels
 
 gwt_fetch/notarial.py | object_pairs_hook=_unique_object, parse_constant=_reject_constant, | object_pairs_hook=dict, parse_constant=float, | reject ambiguous duplicate keys and non-JSON constants before any plan
+gwt_fetch/surname_clusters.py | if cid in ids: | if False: | duplicate IDs and conflicting definitions must be rejected
+gwt_fetch/surname_clusters.py | if key in seen: | if False: | folded aliases within one cluster cannot be duplicated
+gwt_fetch/surname_clusters.py | _text(alias["provenance"], "provenance") | pass | blank provenance cannot pass validation
+gwt_fetch/surname_clusters.py | validate_config(doc)  # Validate before any lookup. | pass | an unmatched query must not bypass configuration validation
+gwt_fetch/surname_clusters.py | copy.deepcopy(c) | c | callers cannot mutate configuration through candidates
+gwt_fetch/surname_clusters.py | fold(a["spelling"]) == key | fold(a["spelling"]).startswith(key) | partial aliases must remain unmatched
+gwt_fetch/surname_clusters.py | key = fold(alias) | key = fold(alias.strip()) | lookup must use existing folding without trimming literal input
+gwt_fetch/surname_clusters.py | "ambiguous" if len(candidates) > 1 | "matched" if len(candidates) > 1 | shared normalized aliases must be marked ambiguous
+gwt_fetch/surname_clusters.py | if len(candidates) == 1: | if candidates: | ambiguity cannot expand the first cluster
+gwt_fetch/surname_clusters.py | "candidates": candidates | "candidates": candidates[:1] | all ambiguous candidates must remain visible regardless of order
+gwt_fetch/surname_clusters.py | "requires_human_review": True | "requires_human_review": False | suggestions always require human review
+gwt_fetch/surname_clusters.py | **a} for a in cluster["aliases"] | "spelling": fold(a["spelling"]), "provenance": a["provenance"]} for a in cluster["aliases"] | suggestions must preserve literal spelling
+gwt_fetch/surname_clusters.py | **a} for a in cluster["aliases"] | "spelling": a["spelling"]} for a in cluster["aliases"] | provenance must survive in each search suggestion
+gwt_fetch/surname_clusters.py | raise ValueError(f"duplicate JSON field: {key!r}") | pass | duplicate JSON fields must not become last wins
+gwt_fetch/surname_clusters.py | return 1 if result["status"] == "ambiguous" else 0 | return 0 | CLI must signal ambiguous input
+gwt_fetch/surname_clusters.py | if any("\ud800" <= char <= "\udfff" for char in value): | if False: | lone surrogates must be rejected before UTF-8 JSON output
 gwt_fetch/touraine_catalogue.py | if not rows: | if len(rows) < per_page: | a short populated page is discarded as terminal without retaining row provenance
 gwt_fetch/touraine_catalogue.py | if not result["complete"] or not rows: | if not rows: | partial pagination certifies uncovered years
 gwt_fetch/touraine_catalogue.py | re.fullmatch(r"([0-9]{4})(?:\s*[-–]\s*([0-9]{4}))?", date.strip()) | re.search(r"([0-9]{4})(?:\s*[-–]\s*([0-9]{4}))?", date.strip()) | uncertain dates silently become exact years
