@@ -75,6 +75,7 @@ The toolkit works for genealogy in any country. `gwt-spanish-poller` and some `g
 - [Finding church and civil registers](finding-registers.md): public sources for Spanish parish and French civil registers, and how to record what you find.
 - [gwt-rank](rank.md): orders record-search results by how well they fit a person, and never hides a row.
 - [gwt-fetch](fetch.md): archive images and text without a browser: IIIF, Europeana, and Spanish sources.
+- [gwt-surname-clusters](surname-clusters.md): offline surname search suggestions with literal spellings, provenance and explicit ambiguity, requiring human review.
 - [gwt-mh](myheritage.md): MyHeritage records through a signed-in browser, on a free or a paid account.
 - [gwt-read](read.md): record search and records on FamilySearch (with your own session token) and PARES, and index search on Genae, slow and cached by default.
 - [gwt-rawstore](rawstore.md): source images in an S3-compatible bucket, a small manifest in git.
