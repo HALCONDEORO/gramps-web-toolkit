@@ -1,0 +1,9 @@
+{
+  "format": "gwt-notarial-catalogue/1",
+  "entries": [
+    {"id": "CAT-A", "locality": "Villaejemplo", "notary": "NotarioEjemplo", "office": "OfficeAlfa", "archive_ref": "ArchivoEjemplo/REF-A", "cote": "COTE-A", "start": 1798, "end": 1802, "certainty": "exact"},
+    {"id": "CAT-B", "locality": "Villaejemplo", "notary": "NotarioEjemplo", "office": "OfficeBeta", "archive_ref": "ArchivoEjemplo/REF-B", "cote": "COTE-B", "start": 1802, "end": 1803, "certainty": "exact"},
+    {"id": "CAT-C", "locality": "Villaejemplo", "notary": "NotariaEjemplo", "office": "OfficeAlfa", "archive_ref": "ArchivoEjemplo/REF-C", "cote": "COTE-C", "start": 1805, "end": 1810, "certainty": "exact"},
+    {"id": "CAT-U", "locality": "Villaejemplo", "notary": "NotarioEjemplo", "office": "OfficeBeta", "archive_ref": "ArchivoEjemplo/REF-U", "cote": "COTE-U", "start": 1803, "end": 1805, "certainty": "uncertain", "date_text": "about 1803-1805"}
+  ]
+}

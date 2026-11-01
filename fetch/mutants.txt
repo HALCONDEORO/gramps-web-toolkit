@@ -51,6 +51,20 @@ gwt_fetch/touraine.py | return "" if text == "'-" else text | return text | the 
 gwt_fetch/touraine.py | if table and given["page"] is not None and given["page"] < 1: | if False: | page 0 or a negative page is sent to the site
 gwt_fetch/touraine.py | wrong = [f"--{k.replace('_', '-')}" for k in other if given[k] is not None] | wrong = [f"--{k.replace('_', '-')}" for k in other if given[k]] | an option of the other mode is accepted when it is given with its default value
 gwt_fetch/touraine.py | rows[: 80 if limit is None else limit] | rows[: limit or 80] | --limit 0 prints 80 rows
+gwt_fetch/notarial.py | return parse_views(f'{start}-{end}', MAX_YEAR) | return parse_views(str(start), MAX_YEAR) | inclusive coverage must include the last year and every intervening year
+gwt_fetch/notarial.py | row['certainty'] == 'exact' and lo is not None and hi is not None | lo is not None and hi is not None | uncertain catalogue dates never establish coverage
+gwt_fetch/notarial.py | first, last = max(start, lo), min(end, hi) | first, last = lo, hi | search periods and coverage cannot extend outside the requested period
+gwt_fetch/notarial.py | if _fold(row['locality']) != _fold(locality) or fold(row['locality']).strip() != fold(locality).strip(): | if False: | another locality cannot supply coverage
+gwt_fetch/notarial.py | if row['id'] in seen: | if False: | duplicate catalogue IDs must be refused rather than merged across offices
+gwt_fetch/notarial.py | type(value) is not int | not isinstance(value, int) | boolean years are not catalogue evidence
+gwt_fetch/notarial.py | if len(ids) < 2: | if len(ids) < 3: | two offices covering the same inclusive year must appear as an overlap
+gwt_fetch/notarial.py | overlaps[-1]['entries'] == ids | True | overlapping periods with different active catalogue entries must remain separate
+gwt_fetch/notarial.py | 'unknown_coverage': sorted(unknown) | 'unknown_coverage': [] | undated or uncertain rows must be reported explicitly
+gwt_fetch/notarial.py | chain.append( | chain.clear(); chain.append( | same-name notaries and different offices must not silently collapse
+gwt_fetch/cli.py | if args.cmd in ("coverage", "notarial-plan"): | if args.cmd == "coverage": | notarial planning must bypass all network imports and client creation
+gwt_fetch/notarial.py | or fold(row['locality']).strip() != fold(locality).strip() |  | the Spanish helper must not erase distinguishing non-ASCII letters in locality labels
+
+gwt_fetch/notarial.py | object_pairs_hook=_unique_object, parse_constant=_reject_constant, | object_pairs_hook=dict, parse_constant=float, | reject ambiguous duplicate keys and non-JSON constants before any plan
 gwt_fetch/surname_clusters.py | if cid in ids: | if False: | duplicate IDs and conflicting definitions must be rejected
 gwt_fetch/surname_clusters.py | if key in seen: | if False: | folded aliases within one cluster cannot be duplicated
 gwt_fetch/surname_clusters.py | _text(alias["provenance"], "provenance") | pass | blank provenance cannot pass validation
@@ -103,3 +117,5 @@ gwt_fetch/variants.py | if not isinstance(value, str) or not value.strip() or le
 gwt_fetch/variants.py | ("ph", "f"), ("f", "ph") | ("ph", "ph"), ("f", "f") | ph and f are not suggested in either direction
 
 gwt_fetch/variants.py | path = os.path.realpath(os.path.abspath(os.path.expanduser(path))) | path = path | local config paths must be normalized before opening
+
+gwt_fetch/notarial.py | if not math.isfinite(number): | if False: | overflowing JSON exponents must not produce Infinity in preserved metadata

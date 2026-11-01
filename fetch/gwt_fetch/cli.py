@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, names, touraine, variants
+from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, names, notarial, touraine, variants
 
 
 def _max_images(text: str) -> int:
@@ -127,6 +127,13 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("total", type=int, help="number of views in the register")
     s.add_argument("--read", action="append", help="views read, e.g. 1-5,9,12-; may be repeated")
     s.add_argument("--dir", help="a download folder: files named NNNN_label count as that view")
+    s = sub.add_parser("notarial-plan", help="local notarial catalogue research candidates; offline",
+                       description="Plan a candidate search chain from local JSON catalogue metadata. "
+                                   "Years are inclusive; no contract or kinship is inferred. No network or file writes.")
+    s.add_argument("catalogue", help="local JSON file (gwt-notarial-catalogue/1)")
+    s.add_argument("--locality", required=True, help="whole locality name as supplied in the catalogue")
+    s.add_argument("--from", dest="year_from", required=True, type=int, help="inclusive first year (1-9999)")
+    s.add_argument("--to", dest="year_to", required=True, type=int, help="inclusive last year (1-9999)")
     return p
 
 
@@ -134,16 +141,17 @@ def main(argv=None) -> int:
     args = parser().parse_args(argv)
     if args.cmd == "variants":
         return variants.run(args)
-    from .net import Client
-
-    client = Client(delay=args.delay)
     if args.cmd == "names" and not args.source:
         args.source = ["gazeta", "boe"]
-    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "names": names, "europeana": europeana, "geo": geo, "touraine": touraine, "coverage": coverage}[args.cmd]
+    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "names": names, "europeana": europeana, "geo": geo, "touraine": touraine, "coverage": coverage, "notarial-plan": notarial}[args.cmd]
     if args.cmd == "touraine" and args.action == "catalogue":
         from . import touraine_catalogue
         mod = touraine_catalogue
     try:
+        if args.cmd in ("coverage", "notarial-plan"):
+            return mod.run(args, None)
+        from .net import Client
+        client = Client(delay=args.delay)
         return mod.run(args, client)
     except KeyboardInterrupt:
         return 130
