@@ -71,6 +71,19 @@ gwt-fetch touraine pages ARK --pages 40-44 --out /tmp/reg
 - Read the site's [terms of use](https://archives.touraine.fr/page/conditions-generales-d-utilisation) and [reuse page](https://archives.touraine.fr/page/reutilisation) yourself before you rely on this for anything but private research.
 - The Loir-et-Cher archives (`archives41.fr`) sit behind a proof-of-work challenge. This tool does not try to solve it; use a browser there.
 
+## `coverage`: which views of a register a sweep read
+
+Some portals show every view as a double page, and the views are consecutive. A sweep that opens only the odd views, or the first of each pair, reads half of the register and raises no error. `coverage` is offline: it reads numbers, never a page.
+
+```
+gwt-fetch coverage 240 --read 1-100,150,200-       # views read by hand
+gwt-fetch coverage 240 --dir /tmp/reg              # files named NNNN_label.jpg count as that view
+```
+
+- It prints how many views were read, which ranges are missing, and a warning when every missing view is even (or odd) and every other one was read.
+- Exit 0 when every view was read, 1 when some are missing, 2 for a bad number, a view outside `1-total`, a backwards range or no `--read`/`--dir`.
+- `--dir` counts only non-empty files whose name starts with four or more digits and an underscore, leaving out the downloader's `.part` files. It does not check that a file is a complete image.
+
 ## `digibib`: DIGIBIB viewers without IIIF
 
 DIGIBÍS's DIGIBIB runs BVPH, the Biblioteca Virtual de Defensa, Galiciana and many regional digital libraries. None of these installs serve IIIF. The viewer URL is `.../catalogo_imagenes/grupo.do?path=N`. Each page view (`&presentacion=pagina&posicion=K`) names one image as `imagen_id.do?idImagen=M`, and that URL with `&formato=jpg` returns the full JPEG. `gwt-fetch digibib` walks those page views. When the object is a single file, `grupo.do` serves the file itself (often a PDF); it is saved as `0001_document.pdf`.
