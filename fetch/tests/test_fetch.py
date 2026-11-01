@@ -1,8 +1,10 @@
 """Offline tests: a fake client answers from fixtures, so nothing touches the network."""
+import hashlib
 import argparse
 import csv
 import io
 import json
+from pathlib import Path
 
 import pytest
 
@@ -612,4 +614,14 @@ ERROR_BOX_REAL = ('<div class="mensajeError"><p>Los valores de b&amp;uacute;sque
 @pytest.mark.parametrize("page", [ERROR_BOX_REAL, ERROR_BOX_REAL.split("</div>")[0], "<p>Los valores de b&uacute;squeda enviados son incorrectos</p>"])
 def test_boe_search_error_box_as_the_site_writes_it_with_html_entities(page, capsys):
     assert boe.run(_boe_args(), FakeClient({boe.SEARCH: Resp(page)})) == 2
+    assert "result(s)" not in capsys.readouterr().err
+
+
+REAL_ERROR_PAGE = Path(__file__).parent / "data" / "boe_error_unicode_date.html"
+
+
+def test_boe_search_real_error_page_is_exit_2_and_not_zero_results(capsys):
+    raw = REAL_ERROR_PAGE.read_bytes()  # captured from boe.es for a date written with Arabic-Indic digits
+    assert hashlib.sha256(raw).hexdigest() == "d677a09471c26621d2ef6f9f0c2570d6390a3412541ad741a8d7fb36a92a60a7"
+    assert boe.run(_boe_args(), FakeClient({boe.SEARCH: Resp(raw)})) == 2
     assert "result(s)" not in capsys.readouterr().err
