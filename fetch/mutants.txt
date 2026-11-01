@@ -61,7 +61,7 @@ gwt_fetch/notarial.py | if len(ids) < 2: | if len(ids) < 3: | two offices coveri
 gwt_fetch/notarial.py | overlaps[-1]['entries'] == ids | True | overlapping periods with different active catalogue entries must remain separate
 gwt_fetch/notarial.py | 'unknown_coverage': sorted(unknown) | 'unknown_coverage': [] | undated or uncertain rows must be reported explicitly
 gwt_fetch/notarial.py | chain.append( | chain.clear(); chain.append( | same-name notaries and different offices must not silently collapse
-gwt_fetch/cli.py | if args.cmd in ("coverage", "notarial-plan"): | if args.cmd == "coverage": | notarial planning must bypass all network imports and client creation
+gwt_fetch/cli.py | if args.cmd in ("coverage", "notarial-plan", "index-locate"): | if args.cmd == "coverage": | notarial planning must bypass all network imports and client creation
 gwt_fetch/notarial.py | or fold(row['locality']).strip() != fold(locality).strip() |  | the Spanish helper must not erase distinguishing non-ASCII letters in locality labels
 
 gwt_fetch/notarial.py | object_pairs_hook=_unique_object, parse_constant=_reject_constant, | object_pairs_hook=dict, parse_constant=float, | reject ambiguous duplicate keys and non-JSON constants before any plan

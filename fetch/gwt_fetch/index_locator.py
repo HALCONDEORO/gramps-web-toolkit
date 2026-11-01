@@ -67,7 +67,8 @@ def locate(reference,mapping=None):
     """
     if not isinstance(reference,IndexLocator) or (mapping is not None and not isinstance(mapping,ImageMapping)):
         raise ValueError('IndexLocator and optional ImageMapping required')
-    key=lambda row:(row.book_id,row.reference_kind,row.number,row.side)
+    def key(row):
+        return row.book_id, row.reference_kind, row.number, row.side
     if mapping is not None and key(reference)!=key(mapping):
         raise ValueError('mapping must match book, reference kind, number and face exactly')
     return dict(state='manual_target' if mapping is not None else 'mapping_needed',
@@ -105,7 +106,7 @@ def _load(path, model):
         raise ValueError('invalid locator JSON schema') from exc
 
 
-def run(args, client=None):
+def run(args, _client=None):
     """Read local caller-supplied metadata; never use a network client."""
     import json
     reference = _load(args.reference, IndexLocator)
