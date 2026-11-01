@@ -35,7 +35,9 @@ def _link(d, t, gid, handle):
 
 
 def _only(d, person="I0001"):
-    [r] = media_report(Tree(d), [person])["targets"]
+    targets = media_report(Tree(d), [person])["targets"]
+    assert len(targets) == 1
+    r = targets[0]
     return r
 
 
@@ -332,7 +334,9 @@ def test_a_private_person_or_event_shows_only_ids():
 def test_a_person_with_no_own_event_gets_a_row_saying_so():
     d = _d()
     _get(d, "people", "I0001")["event_ref_list"] = []
-    [r] = media_report(Tree(d), ["I0001"])["targets"]
+    targets = media_report(Tree(d), ["I0001"])["targets"]
+    assert len(targets) == 1
+    r = targets[0]
     assert r["event"] is None and "no own" in r["note"]
 
 

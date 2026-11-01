@@ -302,7 +302,7 @@ def _command_timeline(args):
     print(json.dumps(timeline(_client(args), args.handles, args.limit), ensure_ascii=False, indent=1))
     return 0
 
-def _command_selftest(args):
+def _command_selftest(_args):
     from .selftest import selftest
     return selftest(verbose=True)
 
@@ -434,6 +434,23 @@ def _command_insight(args):
         print_insight(rep, args.limit)
     return 0
 
+def _repository_suggestions(args, tree):
+    from .repos import print_suggestions, suggest_links, write_link_ops
+    rep = suggest_links(tree)
+    if args.ops:
+        try:
+            n = write_link_ops(rep, args.ops)
+        except OSError as exc:
+            raise BadInput(f"{args.ops}: {exc} (an existing file is never replaced)") from exc
+        print(f"{n} ops written to {args.ops} with an empty ruling; nothing was applied", file=sys.stderr)
+    if args.json:
+        json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)
+        print()
+    else:
+        print_suggestions(rep, args.limit)
+    return 0
+
+
 def _command_repos(args):
     from .repos import print_repository_report, repository_report
     if args.classify and (args.name or args.rtype or args.unlinked):
@@ -453,20 +470,7 @@ def _command_repos(args):
             print_classification(rep, args.limit)
         return 0
     if args.suggest:
-        from .repos import print_suggestions, suggest_links, write_link_ops
-        rep = suggest_links(tree)
-        if args.ops:
-            try:
-                n = write_link_ops(rep, args.ops)
-            except OSError as exc:
-                raise BadInput(f"{args.ops}: {exc} (an existing file is never replaced)") from exc
-            print(f"{n} ops written to {args.ops} with an empty ruling; nothing was applied", file=sys.stderr)
-        if args.json:
-            json.dump(rep, sys.stdout, ensure_ascii=False, indent=1)
-            print()
-        else:
-            print_suggestions(rep, args.limit)
-        return 0
+        return _repository_suggestions(args, tree)
     if args.ops:
         raise BadInput("--ops goes with --suggest")
     rep = repository_report(tree, name=args.name, rtype=args.rtype)
@@ -494,6 +498,52 @@ COMMAND_HANDLERS = {
     'insight': _command_insight,
     'repos': _command_repos,
 }
+
+
+def _known_and_seed(args):
+    known = load_known(args.known) if args.known else None
+    seed = None
+    if args.from_tree:
+        if args.tree or args.live:
+            raise BadInput("--from refreshes a saved tree from the live one; it takes no TREE and no --live")
+        seed = load(args.from_tree)
+        if seed.partial:
+            raise BadInput(f"--from {args.from_tree}: a .gramps backup has no objects to start from; use a dump")
+    base = load(args.baseline) if args.baseline else seed if seed is not None and not args.known else None
+    if base is not None:
+        if base.partial:
+            raise BadInput(f"{args.baseline or args.from_tree}: a .gramps backup has no objects to check; "
+                           "--baseline needs a dump")
+        old = check(base)["findings"]
+        known = {**{(f["check"], f["key"]): "" for f in old}, **(known or {})}
+    return known, seed
+
+
+def _filter_settled_report(args, data, report, seen, persistent):
+    if not args.tree and "passes" in data:
+        report["passes"] = data["passes"]
+        if data.get("settled"):
+            unconfirmed = (seen[-1] & seen[-2]) - seen[-3]
+            keep = lambda fs: [f for f in fs if f["info"]  # noqa: E731
+                               or (f["check"], f["key"]) in persistent[-1] | unconfirmed]
+            report["in_flight"] = len(report["findings"]) - len(keep(report["findings"]))
+            report["findings"], report["new"] = keep(report["findings"]), keep(report["new"])
+            for f in report["findings"]:
+                if (f["check"], f["key"]) in unconfirmed:
+                    f["unconfirmed"] = True
+
+
+def _print_check_report(args, report):
+    if args.json == "-":
+        json.dump(report, sys.stdout, ensure_ascii=False, indent=1)
+        print()
+    else:
+        print_report(report, args.limit)
+        print(f"read {report['seconds']['read']} s, checks {report['seconds']['check']} s")
+        if args.json:
+            with open(args.json, "w", encoding="utf-8") as fh:
+                json.dump(report, fh, ensure_ascii=False, indent=1)
+    return 1 if report["new"] else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -638,21 +688,7 @@ def main(argv: list[str] | None = None) -> int:
             return handler(args)
         check_names(set(args.ignore_check))  # before a dump that can take minutes
         t0 = time.monotonic()
-        known = load_known(args.known) if args.known else None
-        seed = None
-        if args.from_tree:
-            if args.tree or args.live:
-                raise BadInput("--from refreshes a saved tree from the live one; it takes no TREE and no --live")
-            seed = load(args.from_tree)
-            if seed.partial:
-                raise BadInput(f"--from {args.from_tree}: a .gramps backup has no objects to start from; use a dump")
-        base = load(args.baseline) if args.baseline else seed if seed is not None and not args.known else None
-        if base is not None:
-            if base.partial:
-                raise BadInput(f"{args.baseline or args.from_tree}: a .gramps backup has no objects to check; "
-                               "--baseline needs a dump")
-            old = check(base)["findings"]
-            known = {**{(f["check"], f["key"]): "" for f in old}, **(known or {})}
+        known, seed = _known_and_seed(args)
         since = load(args.since) if args.since else None
         run = lambda tree: check(tree, since=since, tag=args.tag, root=args.root, known=known,  # noqa: E731
                                  ignore=set(args.ignore_check))
@@ -680,31 +716,13 @@ def main(argv: list[str] | None = None) -> int:
             tree = Tree(data["objects"], source="live tree")
         t1 = time.monotonic()
         report = run(tree)
-        if not args.tree and "passes" in data:
-            report["passes"] = data["passes"]
-            if data.get("settled"):
-                unconfirmed = (seen[-1] & seen[-2]) - seen[-3]
-                keep = lambda fs: [f for f in fs if f["info"]  # noqa: E731
-                                   or (f["check"], f["key"]) in persistent[-1] | unconfirmed]
-                report["in_flight"] = len(report["findings"]) - len(keep(report["findings"]))
-                report["findings"], report["new"] = keep(report["findings"]), keep(report["new"])
-                for f in report["findings"]:
-                    if (f["check"], f["key"]) in unconfirmed:
-                        f["unconfirmed"] = True
+        if not args.tree:
+            _filter_settled_report(args, data, report, seen, persistent)
         report["seconds"] = {"read": round(t1 - t0, 1), "check": round(time.monotonic() - t1, 1)}
     except BadInput as exc:
         print(f"gwt-check: {exc}", file=sys.stderr)
         return 2
-    if args.json == "-":
-        json.dump(report, sys.stdout, ensure_ascii=False, indent=1)
-        print()
-    else:
-        print_report(report, args.limit)
-        print(f"read {report['seconds']['read']} s, checks {report['seconds']['check']} s")
-        if args.json:
-            with open(args.json, "w", encoding="utf-8") as fh:
-                json.dump(report, fh, ensure_ascii=False, indent=1)
-    return 1 if report["new"] else 0
+    return _print_check_report(args, report)
 
 
 if __name__ == "__main__":
