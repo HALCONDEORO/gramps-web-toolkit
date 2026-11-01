@@ -8,6 +8,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
+- `gwt-surname-clusters`: offline suggestions from human-maintained cluster IDs and aliases, preserving spelling and provenance. Shared folded aliases are ambiguous and require human review; no identity proof, automatic clustering or merges. Uses existing names folding; variants integration is deferred.
 - `gwt-apply` `merge_source`: merges two sources that are one register entered twice, with Gramps' own merge. The dry run names every citation that moves; a loser whose title, author, publication info or abbreviation differs is a conflict, so no text is lost. It answers `dup-source-ark` findings.
 - `gwt-fetch touraine search --table`: lists the registers of a place in the site's table mode sorted by cote, with the ark and the cote in the same row (20, 40 or 80 rows a page).
 - `gwt-fetch boe search` and `boe fetch` search and download the BOE from 1960 onwards, which `gazeta` does not cover. `gazeta fetch` also reads the PDF link of modern documents. A date with non-ASCII digits or a blank `--text`/`--title` is refused with exit 2, and the form's error box exits 2 instead of printing 0 results.
