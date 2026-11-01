@@ -60,6 +60,50 @@ def parse_results(page: str) -> list[dict]:
     return rows
 
 
+TABLE_SIZES = (20, 40, 80)  # the results per page the site offers; any other value is answered with a redirect
+TABLE_COLUMNS = ["ark", "cote", "date", "place", "kind", "medias", "title"]
+
+
+def _cell(block: str, label: str) -> str:
+    """The text of the cell that carries `label`: a div with the text, or the bare text after the label."""
+    text = _field(block, rf'<span class="label">{label}</span>(.*?)</td>')
+    return "" if text == "'-" else text  # the site writes "-" for none, which clean_cell would make a formula
+
+
+def parse_table(page: str) -> list[dict]:
+    """The rows of a results page in table mode: ark, cote, date, place, kind, number of media, title.
+
+    The cote and the ark stand in the same row, so a whole commune can be listed without opening each record.
+    """
+    rows = []
+    link_pattern = rf'href="(?:https://archives\.touraine\.fr)?/?ark:/{NAAN}/([A-Za-z0-9]+)[^"]*"'
+    for block in re.findall(r'<tr class="result record">(.*?)</tr>', page, re.S):
+        link = re.search(link_pattern, block)
+        if not link:
+            continue
+        cote = re.sub(r"\s*\(Cote\)$", "", _cell(block, "Cote"))
+        medias = re.search(r"(\d+)\s+medias?", block)
+        rows.append({
+            "ark": link.group(1),
+            "cote": cote,
+            "date": _cell(block, "Date"),
+            "place": _cell(block, "Lieu"),
+            "kind": _cell(block, "Type de document"),
+            "medias": medias.group(1) if medias else "",
+            "title": _field(block, r"<h2>\s*<span>(.*?)</span>"),
+        })
+    return rows
+
+
+def search_table(client, query: str, page: int = 1, per_page: int = 20) -> list[dict]:
+    """One results page in table mode, sorted by cote, so the registers of a place come in order."""
+    params = {"q": query, "scope": "archival", "mode": "table", "sort": "referencecode_asc",
+              "resultsPerPage": per_page, "page": page}
+    r = _get(client, BASE + "/search/results", params=params)
+    _ok(r, BASE + "/search/results", ("text/html",))
+    return parse_table(r.text)
+
+
 def _get(client, url: str, **kw):
     """One GET that follows no redirect, so every request goes through the client's pacing."""
     return client.get(url, allow_redirects=False, **kw)
@@ -150,9 +194,27 @@ def parse_range(spec: str | None, total: int) -> list[int]:
     return sorted(n for n in out if 1 <= n <= total)
 
 
+def problem(args) -> str:
+    """What is wrong with the options of a search, or an empty string; checked before any request."""
+    if getattr(args, "action", "") != "search":
+        return ""
+    table, page, per_page = (getattr(args, k, d) for k, d in (("table", False), ("page", 1), ("per_page", 20)))
+    if table and page < 1:
+        return "--page counts from 1"
+    if not table and (page != 1 or per_page != 20):
+        return "--page and --per-page belong to --table"
+    if table and (getattr(args, "start", 0) or getattr(args, "limit", 80) != 80):
+        return "--start and --limit belong to the list mode; --table pages with --page"
+    return ""
+
+
 def run(args, client) -> int:
     client.delay = max(getattr(client, "delay", 0.0), 1.0)  # one request per second at most, whatever --delay says
     client.retries = 0  # a refusal is not retried
+    bad = problem(args)
+    if bad:
+        print(f"gwt-fetch: {bad}", file=sys.stderr)
+        return 2
     try:
         if args.action == "search":
             return _run_search(args, client)
@@ -162,7 +224,18 @@ def run(args, client) -> int:
         return 1
 
 
+def _run_table(args, client) -> int:
+    rows = search_table(client, args.query, args.page, args.per_page)
+    print("\t".join(TABLE_COLUMNS))
+    for r in rows:
+        print("\t".join(r[k] for k in TABLE_COLUMNS))
+    print(f"gwt-fetch: {len(rows)} row(s) on page {args.page}; the next page is --page {args.page + 1}", file=sys.stderr)
+    return 0
+
+
 def _run_search(args, client) -> int:
+    if getattr(args, "table", False):
+        return _run_table(args, client)
     rows = search(client, args.query, args.start)
     print("ark\ttitle\tdate\tcote")
     for r in rows[: args.limit]:
