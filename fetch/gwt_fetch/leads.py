@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import datetime
 import json
+import io
 import os
 import re
 import sys
@@ -234,8 +235,9 @@ def _run_extract(args):
 
 
 def _read_leads(path):
-    path = os.path.realpath(os.path.abspath(os.path.expanduser(path)))
-    with open(path, encoding='utf-8', newline='') as source:
+    # CLI deliberately reads the local file the caller names. Resolve it before parsing.
+    path = Path(path).expanduser().resolve(strict=True)
+    with io.StringIO(path.read_text(encoding='utf-8'), newline='') as source:
         reader = csv.DictReader(source, delimiter='\t')
         if reader.fieldnames != COLUMNS:
             raise ValueError('leads TSV must have the ungrouped extract header')
