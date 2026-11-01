@@ -10,6 +10,7 @@ Python 3.11 or newer with `requests`. Run it as [`fetch/gwt-fetch`](https://gith
 gwt-fetch iiif URL [--pages 1-5,9] [--labels REGEX] [--out DIR] [--list]
 gwt-fetch digibib URL [--pages ...] [--out DIR] [--list]
 gwt-fetch touraine search QUERY [--start N] [--limit N]
+gwt-fetch touraine catalogue "<place>" [--per-page 20|40|80] [--max-pages N]
 gwt-fetch touraine pages ARK [--pages 1-5,9] [--max N] [--out DIR] [--list]
 gwt-fetch gazeta search (--text WORDS | --title WORDS) [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N]
 gwt-fetch gazeta fetch BOE-A-YYYY-N [...] [--out DIR]
@@ -63,18 +64,17 @@ Antenati traps from real downloads (two Italian birth registers of the 1850s and
 ```
 gwt-fetch touraine search "Commune 1793-1802"      # ark, title, dates, cote (80 results a page, --start for the next)
 gwt-fetch touraine search --table "Commune naissances" --page 1   # table mode sorted by cote: ark, cote, date, place, kind, medias, title
+gwt-fetch touraine catalogue "Exampleville"        # year and cote, with source provenance; mocked fixtures only so far
 gwt-fetch touraine pages ARK --list                # page number, page URL, page uuid
 gwt-fetch touraine pages ARK --pages 40-44 --out /tmp/reg
 ```
 
 - `search --table` asks for the site's table mode sorted by cote (`mode=table`, `sort=referencecode_asc`), 20, 40 or 80 rows a page (`--per-page`, `--page` from 1; the stderr line names the next page). The ark and the cote stand in the same row, so the registers of one place are listed in cote order without opening each record. The site's own `-` for an empty cell becomes an empty cell; any other cell starting with `=`, `+`, `-` or `@` gets a leading quote. `--start` and `--limit` belong to the list mode and are refused with `--table`, as are `--page` and `--per-page` without it, whatever their value, even the default one (exit 2, before any request). A result count above 10 000 is shown as such by the site, so narrow the query.
-- The search mixes every fonds. Keep the rows whose title and cote are civil registration (births, marriages, deaths, `6NUM`) and ignore the rest.
-- `pages` asks the site's visualizer API for 100 pages at a time. For a range past the end it answers HTTP 400 with an error string, and the tool finds the last page by bisection. Checked live on one register of 23 pages.
-- A download is a JPEG of about 1200 px from `/images/UUID.jpg`, one manifest row per file, resumable, never overwritten. One run selects at most 30 images: `--max` can lower that number, not raise it, and a larger `--pages` selection is refused. It is meant for the pages around an act. Region and size parameters on the IIIF URL returned an HTML error page in our tests, so it does not use them.
-- **It stops at the first refusal.** It follows no redirect and retries nothing. A 403 or 429, a redirect, a page that is not the expected JSON or image, or an HTTP 400 other than the site's own "past the end" and E-depot messages ends the whole run with exit 1 and a line saying why. Pages already saved stay. It does not try the next page and does not work around a challenge.
-- The E-depot fonds (`EDEP`) answer "Group with index 0 not found". The tool says so and exits 1. They need a browser.
-- Read the site's [terms of use](https://archives.touraine.fr/page/conditions-generales-d-utilisation) and [reuse page](https://archives.touraine.fr/page/reutilisation) yourself before you rely on this for anything but private research.
-- The Loir-et-Cher archives (`archives41.fr`) sit behind a proof-of-work challenge. This tool does not try to solve it; use a browser there.
+- `catalogue "<place>"` follows the same table search from page 1, with 20 rows requested per page by default. It sends the place as a query value unchanged, including a leading `=`. Output is TSV sorted by numeric year, cote and ARK: `year`, `cote`, `ark`, `date`, `place`, `kind`, `medias`, `title`, `conflict`, `query`, `record_url`, `source_url`, `source_page`, `source_row`. Each register has a row for each year of its inclusive range; unknown dates have one `year=unknown` row. Source page and row are 1-based; the source URL includes the query and pagination parameters. No records are deduplicated by cote: different ARKs with the same cote keep both records and flag both as conflicts. Different metadata for one ARK also flags a conflict. All TSV cells have whitespace flattened and leading spreadsheet formula characters quoted.
+- Catalogue completeness is currently **UNKNOWN**: this repository has no captured positive terminal-page contract for Touraine. Certification would require the expected complete site layout/structure together with a site-owned terminal/no-results marker established by captured source fixtures. Neither an empty (or header-only) `results-table`, nor absence of a `next` relation or known challenge wording proves completion. No live-site marker has been guessed. The parser stops at an empty table, retains earlier rows and provenance, and gives the missing contract as its incomplete reason. **All catalogue gap claims are withheld**, with exit 1, `pagination=incomplete`, `completeness=UNKNOWN`, `coverage=incomplete`, and no `uncovered=` output.
+- Every table row must be a parsed record, its recognised following context row, or a header containing only header cells. Unrecognised or partly parsed tables, next links on empty tables, repeated pages, transport errors and refusals stop collection with a reason and retain previous rows. A short populated page requests the following page. `--max-pages` is a request ceiling from 1 to 100 (default 100), including the terminal-page candidate; reaching it leaves pagination incomplete. `--per-page` accepts 20, 40 or 80. Blank places and invalid options exit 2 before any request. Requests use the shared host pacing, follow no redirects and retry no refusals.
+- Coverage also requires a nonempty result set whose dates are all exact four-digit ASCII years or ascending inclusive ranges (`1700-1702`, also with an en dash), present cotes, no conflicts, and explicit row `Lieu` metadata establishing one place throughout. Place identity uses Unicode NFC, case folding and collapsed whitespace only; accents, punctuation and spelling differences remain significant. Missing or mixed places, list separators or conjunctions, repeated place labels, line breaks or multiple place links withhold gaps. Query text and titles never establish place scope. Unknown or approximate dates withhold gaps. These checks remain necessary even if a terminal-page contract is established later; they do not prove survival, digitisation, every record type's coverage, or anything outside the returned dated span.
+- Validation is **offline parser proof, not actual archive compatibility**. Existing Touraine table snippets are invented and do not capture a legitimate complete terminal page. Earlier positive tests incorrectly certified synthetic empty tables; that oracle was unsafe because denial and challenge pages can contain the same table. Independent denial-title, non-English human-challenge, reCAPTCHA-widget and unmarked-empty-table cases now all withhold gaps while preserving rows/provenance. No terminal positive control was added without source evidence. Date-union and explicit-place guard unit tests use an assumed completeness input solely to exercise those guards; they do not establish parser completion. No archive was fetched.
 
 ## `coverage`: which views of a register a sweep read
 
@@ -163,6 +163,76 @@ For every spelling it searches the two orders the gazettes print names in, `"Giv
 ```
 $ gwt-fetch names 'Given/Surname1 Surname2' --spell Surnameone --from 1940-01-01 --to 1946-12-31 --out research/raw/fuentes/boe
 ```
+
+## `variants`: offline surname search suggestions
+
+`gwt-fetch variants --surname Alfa` prints one literal spelling per line, unique and
+sorted by Unicode code point, always preserving the original exactly. Without
+`--file` or `--rules`, even an unknown surname returns only the original. No default
+file is read. This command makes no requests and creates no HTTP client.
+
+Pass `--file variants.json` to read a local UTF-8 JSON object. Keys match exactly,
+including accents and case; values are lists of literal spellings. This invented
+example is also in `fetch/variants.example.json` in the source checkout:
+
+```json
+{
+  "Alfa": ["Alfa", "Alpha", "Alfha"],
+  "Beta": ["Beta", "Bheta"]
+}
+```
+
+```text
+gwt-fetch variants --surname Alfa --file variants.json
+Alfa
+Alfha
+Alpha
+```
+
+Duplicate spellings, blank spellings and empty lists warn on stderr; duplicates and
+blank spellings are ignored. Missing/unreadable files, invalid JSON, duplicate JSON
+keys, invalid entry types and invalid surnames exit 2 with no stdout. Files are
+limited to 1 MiB. Input surnames, config keys and nonblank config spellings must be
+1–128 characters, without control characters or line separators. Empty or
+whitespace-only `--surname` exits 2. No spelling is evaluated as code or shell text.
+An apostrophe such as in `D'Alfa` is literal; pass it as a quoted shell argument,
+for example `--surname "D'Alfa"`.
+
+`--rules` explicitly enables these heuristic ASCII substitutions in both directions:
+
+- `s` ↔ `z`, `c` ↔ `s`, `ph` ↔ `f`, `y` ↔ `i`.
+- Double a single ASCII consonant (`bcdfghjklmnpqrstvwxyz`), or shorten an adjacent
+  doubled consonant. A consonant already next to the same letter is not doubled.
+
+Each suggestion makes **one edit at one position in the original**. Rules never
+process their own output or configured spellings. There are at most `1 + 6*n`
+rule spellings for an input of `n` characters (at most 769 including the original);
+configured spellings are added separately. Rule output may be one character longer
+than the input limit. Uppercase and initial capitals are retained; accented letters
+and punctuation are not substituted. For example, `Besa --rules` includes `Besa`,
+`Beza` and `Bessa`, but does not combine edits to produce `Bbeza` or `Bezza`.
+
+`--regex` replaces the list with one Python regex: `(?i)(?:alfa|alfha|alpha)` for
+the config example. Every alternative is escaped with `re.escape`, so `.`, `*`,
+`[`, `|`, backslashes and all other regex metacharacters in a surname remain literal.
+`(?i)` supplies case-insensitive matching. **Regex alone does not fold accents**:
+apply the existing `gwt_fetch.names.fold` helper to the text first (NFKD
+normalization, lowercase, remove combining marks). That also handles decomposed
+accents. For example, within Python:
+
+```python
+import re
+from gwt_fetch.names import fold
+
+pattern = re.compile(r"(?i)(?:alfa|alfha|alpha)")  # literal CLI output
+assert pattern.fullmatch(fold("ÁLFA"))
+```
+
+Use `fullmatch` for a whole surname or `search` for occurrences within text; the
+pattern adds no word boundaries. Do not pass regex output through shell `eval`.
+Plain output retains the original accents and case. Every successful run reminds
+the caller on stderr: these are **search suggestions only, never identity or merge
+evidence**. There is no catalogue or ledger integration.
 
 ## `europeana`: Spanish records with a manifest
 
