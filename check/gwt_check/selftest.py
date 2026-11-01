@@ -198,6 +198,13 @@ def p_dup_source_ark(d):
                          "title": "Same register, ark 12345/ABCD1234EFGH"})
 
 
+def p_date_false_precision(d):
+    p = _new_person(d, "I0726", "Plantado", "Cubierto", birth=(1700,))
+    _event(d, p, "E0727", "Residence", (1750,))
+    ev = _get(d, "events", "E0727")
+    ev["date"]["modifier"], ev["date"]["quality"] = 3, 1
+
+
 def p_dangling_child(d):
     _get(d, "families", "F0002")["child_ref_list"].append(_ref("ghost-person", frel="Birth", mrel="Birth"))
 
@@ -520,6 +527,7 @@ PLANTS = [
     (p_dup_media, "dup-media", "O0097,O0098", False),
     (p_dup_citation, "dup-citation", "C0001,C0098", False),
     (p_dup_source_ark, "dup-source-ark", "S0001,S0098", False),
+    (p_date_false_precision, "date-false-precision", "E0727", False),
     (p_dangling_child, "dangling-ref", "F0002 child_ref_list -> people ghost-person", False),
     (p_dangling_subref, "dangling-ref", "F0003 child_ref_list[I0003].note_list -> notes ghost-note", False),
     (p_place_not_place, "place-not-place", "E0201 place", False),
