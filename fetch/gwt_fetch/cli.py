@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, names, touraine, variants
+from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, leads, names, touraine
 
 
 def _max_images(text: str) -> int:
@@ -95,14 +95,6 @@ def parser() -> argparse.ArgumentParser:
                     help="table mode sorted by cote: ark, cote, date, place, kind, media count, title")
     ts.add_argument("--page", type=int, default=None, help="with --table: the results page, from 1 (default 1)")
     ts.add_argument("--per-page", type=int, default=None, choices=touraine.TABLE_SIZES, help="with --table: rows per page (default 20)")
-    tc = t.add_parser("catalogue", help="catalogue a place by year and cote; completeness UNKNOWN, gaps withheld",
-                      description="Print TSV by year and cote with row provenance. Completeness is UNKNOWN: no captured "
-                      "positive terminal layout and site-owned marker contract. All gaps withheld; exit 1.")
-    tc.add_argument("query", metavar="place", help="place search value, sent unchanged (including a leading '=')")
-    tc.add_argument("--per-page", type=int, default=20, choices=touraine.TABLE_SIZES,
-                    help="rows requested per page (default 20)")
-    tc.add_argument("--max-pages", type=int, default=100,
-                    help="request ceiling, 1 to 100 including the terminal-page candidate (default 100); reaching it is incomplete")
     tp = t.add_parser("pages", help="list the pages of one register, or download a few")
     tp.add_argument("ark", help="the ark name from `search`")
     tp.add_argument("--pages", help="1-based page numbers, e.g. 1-5,9,12-")
@@ -111,39 +103,24 @@ def parser() -> argparse.ArgumentParser:
     tp.add_argument("--out", default=".")
     tp.add_argument("--list", action="store_true", help="print page numbers and uuids, download nothing")
 
-    s = sub.add_parser(
-        "variants", help="offline surname search suggestions",
-        description="Offline search suggestions only; never identity or merge evidence. "
-                    "Print unique sorted spellings, preserving the original (1-128 characters).")
-    s.add_argument("--surname", required=True, help="literal surname, including apostrophes or regex punctuation")
-    s.add_argument("--file", help="local JSON object mapping exact surnames to lists of spellings; no default file")
-    s.add_argument("--rules", action="store_true",
-                   help="single edits of the original only: s/z, c/s, ph/f, y/i, double ASCII consonants; no recursion")
-    s.add_argument("--regex", action="store_true",
-                   help="one escaped Python regex with case-insensitive (?i); fold input accents with "
-                        "gwt_fetch.names.fold (NFKD, lowercase, remove combining marks) before matching")
-
     s = sub.add_parser("coverage", help="which views of a register a sweep read and which it missed; offline")
     s.add_argument("total", type=int, help="number of views in the register")
     s.add_argument("--read", action="append", help="views read, e.g. 1-5,9,12-; may be repeated")
     s.add_argument("--dir", help="a download folder: files named NNNN_label count as that view")
+    leads.add_parser(sub)
     return p
 
 
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
-    if args.cmd == "variants":
-        return variants.run(args)
-    from .net import Client
-
-    client = Client(delay=args.delay)
     if args.cmd == "names" and not args.source:
         args.source = ["gazeta", "boe"]
-    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "names": names, "europeana": europeana, "geo": geo, "touraine": touraine, "coverage": coverage}[args.cmd]
-    if args.cmd == "touraine" and args.action == "catalogue":
-        from . import touraine_catalogue
-        mod = touraine_catalogue
+    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "names": names, "europeana": europeana, "geo": geo, "touraine": touraine, "coverage": coverage, "leads": leads}[args.cmd]
     try:
+        if args.cmd in ("leads", "coverage"):
+            return mod.run(args, None)
+        from .net import Client
+        client = Client(delay=args.delay)
         return mod.run(args, client)
     except KeyboardInterrupt:
         return 130

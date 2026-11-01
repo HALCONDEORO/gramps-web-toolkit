@@ -10,7 +10,6 @@ Python 3.11 or newer with `requests`. Run it as [`fetch/gwt-fetch`](https://gith
 gwt-fetch iiif URL [--pages 1-5,9] [--labels REGEX] [--out DIR] [--list]
 gwt-fetch digibib URL [--pages ...] [--out DIR] [--list]
 gwt-fetch touraine search QUERY [--start N] [--limit N]
-gwt-fetch touraine catalogue "<place>" [--per-page 20|40|80] [--max-pages N]
 gwt-fetch touraine pages ARK [--pages 1-5,9] [--max N] [--out DIR] [--list]
 gwt-fetch gazeta search (--text WORDS | --title WORDS) [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N]
 gwt-fetch gazeta fetch BOE-A-YYYY-N [...] [--out DIR]
@@ -64,17 +63,18 @@ Antenati traps from real downloads (two Italian birth registers of the 1850s and
 ```
 gwt-fetch touraine search "Commune 1793-1802"      # ark, title, dates, cote (80 results a page, --start for the next)
 gwt-fetch touraine search --table "Commune naissances" --page 1   # table mode sorted by cote: ark, cote, date, place, kind, medias, title
-gwt-fetch touraine catalogue "Exampleville"        # year and cote, with source provenance; mocked fixtures only so far
 gwt-fetch touraine pages ARK --list                # page number, page URL, page uuid
 gwt-fetch touraine pages ARK --pages 40-44 --out /tmp/reg
 ```
 
 - `search --table` asks for the site's table mode sorted by cote (`mode=table`, `sort=referencecode_asc`), 20, 40 or 80 rows a page (`--per-page`, `--page` from 1; the stderr line names the next page). The ark and the cote stand in the same row, so the registers of one place are listed in cote order without opening each record. The site's own `-` for an empty cell becomes an empty cell; any other cell starting with `=`, `+`, `-` or `@` gets a leading quote. `--start` and `--limit` belong to the list mode and are refused with `--table`, as are `--page` and `--per-page` without it, whatever their value, even the default one (exit 2, before any request). A result count above 10 000 is shown as such by the site, so narrow the query.
-- `catalogue "<place>"` follows the same table search from page 1, with 20 rows requested per page by default. It sends the place as a query value unchanged, including a leading `=`. Output is TSV sorted by numeric year, cote and ARK: `year`, `cote`, `ark`, `date`, `place`, `kind`, `medias`, `title`, `conflict`, `query`, `record_url`, `source_url`, `source_page`, `source_row`. Each register has a row for each year of its inclusive range; unknown dates have one `year=unknown` row. Source page and row are 1-based; the source URL includes the query and pagination parameters. No records are deduplicated by cote: different ARKs with the same cote keep both records and flag both as conflicts. Different metadata for one ARK also flags a conflict. All TSV cells have whitespace flattened and leading spreadsheet formula characters quoted.
-- Catalogue completeness is currently **UNKNOWN**: this repository has no captured positive terminal-page contract for Touraine. Certification would require the expected complete site layout/structure together with a site-owned terminal/no-results marker established by captured source fixtures. Neither an empty (or header-only) `results-table`, nor absence of a `next` relation or known challenge wording proves completion. No live-site marker has been guessed. The parser stops at an empty table, retains earlier rows and provenance, and gives the missing contract as its incomplete reason. **All catalogue gap claims are withheld**, with exit 1, `pagination=incomplete`, `completeness=UNKNOWN`, `coverage=incomplete`, and no `uncovered=` output.
-- Every table row must be a parsed record, its recognised following context row, or a header containing only header cells. Unrecognised or partly parsed tables, next links on empty tables, repeated pages, transport errors and refusals stop collection with a reason and retain previous rows. A short populated page requests the following page. `--max-pages` is a request ceiling from 1 to 100 (default 100), including the terminal-page candidate; reaching it leaves pagination incomplete. `--per-page` accepts 20, 40 or 80. Blank places and invalid options exit 2 before any request. Requests use the shared host pacing, follow no redirects and retry no refusals.
-- Coverage also requires a nonempty result set whose dates are all exact four-digit ASCII years or ascending inclusive ranges (`1700-1702`, also with an en dash), present cotes, no conflicts, and explicit row `Lieu` metadata establishing one place throughout. Place identity uses Unicode NFC, case folding and collapsed whitespace only; accents, punctuation and spelling differences remain significant. Missing or mixed places, list separators or conjunctions, repeated place labels, line breaks or multiple place links withhold gaps. Query text and titles never establish place scope. Unknown or approximate dates withhold gaps. These checks remain necessary even if a terminal-page contract is established later; they do not prove survival, digitisation, every record type's coverage, or anything outside the returned dated span.
-- Validation is **offline parser proof, not actual archive compatibility**. Existing Touraine table snippets are invented and do not capture a legitimate complete terminal page. Earlier positive tests incorrectly certified synthetic empty tables; that oracle was unsafe because denial and challenge pages can contain the same table. Independent denial-title, non-English human-challenge, reCAPTCHA-widget and unmarked-empty-table cases now all withhold gaps while preserving rows/provenance. No terminal positive control was added without source evidence. Date-union and explicit-place guard unit tests use an assumed completeness input solely to exercise those guards; they do not establish parser completion. No archive was fetched.
+- The search mixes every fonds. Keep the rows whose title and cote are civil registration (births, marriages, deaths, `6NUM`) and ignore the rest.
+- `pages` asks the site's visualizer API for 100 pages at a time. For a range past the end it answers HTTP 400 with an error string, and the tool finds the last page by bisection. Checked live on one register of 23 pages.
+- A download is a JPEG of about 1200 px from `/images/UUID.jpg`, one manifest row per file, resumable, never overwritten. One run selects at most 30 images: `--max` can lower that number, not raise it, and a larger `--pages` selection is refused. It is meant for the pages around an act. Region and size parameters on the IIIF URL returned an HTML error page in our tests, so it does not use them.
+- **It stops at the first refusal.** It follows no redirect and retries nothing. A 403 or 429, a redirect, a page that is not the expected JSON or image, or an HTTP 400 other than the site's own "past the end" and E-depot messages ends the whole run with exit 1 and a line saying why. Pages already saved stay. It does not try the next page and does not work around a challenge.
+- The E-depot fonds (`EDEP`) answer "Group with index 0 not found". The tool says so and exits 1. They need a browser.
+- Read the site's [terms of use](https://archives.touraine.fr/page/conditions-generales-d-utilisation) and [reuse page](https://archives.touraine.fr/page/reutilisation) yourself before you rely on this for anything but private research.
+- The Loir-et-Cher archives (`archives41.fr`) sit behind a proof-of-work challenge. This tool does not try to solve it; use a browser there.
 
 ## `coverage`: which views of a register a sweep read
 
@@ -164,76 +164,6 @@ For every spelling it searches the two orders the gazettes print names in, `"Giv
 $ gwt-fetch names 'Given/Surname1 Surname2' --spell Surnameone --from 1940-01-01 --to 1946-12-31 --out research/raw/fuentes/boe
 ```
 
-## `variants`: offline surname search suggestions
-
-`gwt-fetch variants --surname Alfa` prints one literal spelling per line, unique and
-sorted by Unicode code point, always preserving the original exactly. Without
-`--file` or `--rules`, even an unknown surname returns only the original. No default
-file is read. This command makes no requests and creates no HTTP client.
-
-Pass `--file variants.json` to read a local UTF-8 JSON object. Keys match exactly,
-including accents and case; values are lists of literal spellings. This invented
-example is also in `fetch/variants.example.json` in the source checkout:
-
-```json
-{
-  "Alfa": ["Alfa", "Alpha", "Alfha"],
-  "Beta": ["Beta", "Bheta"]
-}
-```
-
-```text
-gwt-fetch variants --surname Alfa --file variants.json
-Alfa
-Alfha
-Alpha
-```
-
-Duplicate spellings, blank spellings and empty lists warn on stderr; duplicates and
-blank spellings are ignored. Missing/unreadable files, invalid JSON, duplicate JSON
-keys, invalid entry types and invalid surnames exit 2 with no stdout. Files are
-limited to 1 MiB. Input surnames, config keys and nonblank config spellings must be
-1–128 characters, without control characters or line separators. Empty or
-whitespace-only `--surname` exits 2. No spelling is evaluated as code or shell text.
-An apostrophe such as in `D'Alfa` is literal; pass it as a quoted shell argument,
-for example `--surname "D'Alfa"`.
-
-`--rules` explicitly enables these heuristic ASCII substitutions in both directions:
-
-- `s` ↔ `z`, `c` ↔ `s`, `ph` ↔ `f`, `y` ↔ `i`.
-- Double a single ASCII consonant (`bcdfghjklmnpqrstvwxyz`), or shorten an adjacent
-  doubled consonant. A consonant already next to the same letter is not doubled.
-
-Each suggestion makes **one edit at one position in the original**. Rules never
-process their own output or configured spellings. There are at most `1 + 6*n`
-rule spellings for an input of `n` characters (at most 769 including the original);
-configured spellings are added separately. Rule output may be one character longer
-than the input limit. Uppercase and initial capitals are retained; accented letters
-and punctuation are not substituted. For example, `Besa --rules` includes `Besa`,
-`Beza` and `Bessa`, but does not combine edits to produce `Bbeza` or `Bezza`.
-
-`--regex` replaces the list with one Python regex: `(?i)(?:alfa|alfha|alpha)` for
-the config example. Every alternative is escaped with `re.escape`, so `.`, `*`,
-`[`, `|`, backslashes and all other regex metacharacters in a surname remain literal.
-`(?i)` supplies case-insensitive matching. **Regex alone does not fold accents**:
-apply the existing `gwt_fetch.names.fold` helper to the text first (NFKD
-normalization, lowercase, remove combining marks). That also handles decomposed
-accents. For example, within Python:
-
-```python
-import re
-from gwt_fetch.names import fold
-
-pattern = re.compile(r"(?i)(?:alfa|alfha|alpha)")  # literal CLI output
-assert pattern.fullmatch(fold("ÁLFA"))
-```
-
-Use `fullmatch` for a whole surname or `search` for occurrences within text; the
-pattern adds no word boundaries. Do not pass regex output through shell `eval`.
-Plain output retains the original accents and case. Every successful run reminds
-the caller on stderr: these are **search suggestions only, never identity or merge
-evidence**. There is no catalogue or ledger integration.
-
 ## `europeana`: Spanish records with a manifest
 
 The Europeana Search API needs a free key: get one at https://pro.europeana.eu/pages/get-api and `export EUROPEANA_KEY=...`. Without a key, the command prints a message and exits 0, so pipelines carry on.
@@ -264,3 +194,102 @@ From the awesome-spain list (https://github.com/GeiserX/awesome-spain):
 - **spanish-names-surnames** (INE name and surname frequencies): not a fetch source. It may help a name-normalising step later.
 - **boe-mcp, MCP-BOE, rOpenSpain/BOE, Datania BOE**: they wrap the modern BOE open data API, which does not cover the Gazeta collection. `gazeta` is the part that does.
 - **API-CNIG, mapSpain, es-atlas**: map display and boundaries, outside what fetch does.
+
+## `leads`: collateral people in local transcriptions
+
+This offline command extracts clues for a human to check. It never creates a person,
+relationship or change list, reads a tree, or contacts an archive. It uses fixed French
+patterns, not a general language parser. `gwt-fetch leads` is separate from `gwt-leads`,
+which ranks gaps in a tree.
+
+```text
+gwt-fetch leads extract --in transcription.txt --format tsv
+gwt-fetch leads extract --in transcription.txt --subject "Jean Alfa" --format json
+gwt-fetch leads extract --in transcription.txt --group-by name --format json
+gwt-fetch leads match --leads leads.tsv --catalogue-names names.txt
+```
+
+`gwt fetch leads ...` is the equivalent unified command. In a source checkout,
+`python fetch/gwt-fetch leads ...` also works. `gwt_fetch` is the Python package;
+the installed executable uses a hyphen: `gwt-fetch`.
+
+Input is local UTF-8 text. Each act starts with exactly one `ref: <cote>/<image>`
+and one `date: YYYY-MM-DD` header (either order); separate acts with a line `---`.
+Dates must be valid calendar dates. All examples below are invented, including the
+references; they do not describe archive images.
+
+```text
+ref: SYN-A/001
+date: 1719-05-09
+mariage de Jean Alfa fils de feu Jean Alfa; presence de Paul Beta et Luc Gamma amis de l'epoux
+---
+ref: SYN-B/002
+date: 1720-06-10
+parrain Paul Beta, marraine Anne Delta
+frere de l'epouse Marc Epsilon
+```
+
+The default TSV has `ref`, `date`, `name`, `role`, `declared_relation`, `confidence`,
+and `literal` columns. JSON is an array of objects with the same fields.
+`declared_relation` retains the matched French wording, including a recognised
+trailing `amis de l'epoux` or `amis de l'epouse`. `literal` is an exact contiguous
+fragment of the transcription containing the name and its recognised evidence.
+Shared evidence may include another named witness. TSV uses CSV quoting for embedded
+tabs and newlines; read it with a TSV/CSV reader. Every cell starting with `=`, `+`,
+`-` or `@` gets an apostrophe to prevent spreadsheet formulas; JSON preserves the raw
+text. TSV matching preserves that protective apostrophe.
+
+| Wording before a name | Role |
+| --- | --- |
+| `parrain`, `marraine` | `godparent` |
+| `temoin(s)`, `present(s)`, `presence de`, `amis` | `witness` |
+| `frere`, optionally `de l'epouse` or `de l'epoux` | `sibling` |
+| `fils de`, `fille de` | `parent` |
+| `grand-pere`, `grand-mere` | `grandparent` |
+| `veuf de`, `veuve de` | `spouse` (the named spouse) |
+| `fils de feu`, `fille de feue` | `deceased_parent` |
+| `oncle`, `cousin`, isolated `feu`/`feue`, other named mentions | `other`, `low` |
+
+Accented forms such as `témoin`, `présents`, `frère` and `grand-mère` work too.
+The `(s)` in this table means an optional plural letter, not literal parentheses.
+An isolated `feu X` says X is deceased, not whose parent X is, so it stays `other`.
+Recognised patterns receive `high` unless the mention contains `(?)`; unknown roles
+and uncertain mentions receive `low`. Confidence describes pattern recognition,
+never the truth of the transcription or a genealogical identification.
+
+Conservative limit: if the clause (text between `.`/`;` marks) holding a name
+contains negation (`ne`, `n'`, `pas`, `sans`, `non`, `jamais`, `ni`, `aucun`),
+uncertainty (`probable`, `peut-être`, `possible`, `semble`, `douteux`, `?`) or an
+alternative (`ou`, `soit`), every name in it becomes `other`/`low` and `literal` is
+the whole clause. For example `ne fut pas parrain Paul Beta`, `parrain probable Paul
+Beta` and `parrain Paul Beta ou Luc Gamma` never yield `godparent`/`high`. This is a
+fixed word list, not a parser: it over-withdraws (any `ou`, `pas`…) and can miss
+other phrasings, so check every literal.
+
+Names must contain at least two capitalised words, with optional particles,
+hyphens, apostrophes and `(?)`. Lists joined by `et` or commas share the preceding
+role within their clause. Event subjects introduced by `mariage de`, `baptême de`
+or `inhumation de` are skipped. `--subject` also excludes exact names after
+case/accent folding, and explicitly declared parents in that subject's immediate
+clause, including `et de` continuations. It does not remove an unrelated parent in
+another clause/act or a separate witness with the same name as a declared parent.
+No ancestry is inferred from a surname, an uncle, or a repeated appearance.
+Unusual order, lowercase names, one-word names and complex narrative syntax may
+be missed or assigned `other`; human validation against every literal is required.
+
+Separate acts retain separate rows even for the same witness. `--group-by name`
+replaces evidence rows with `name`, `count`, counting exact transcribed spellings
+across all acts (mentions, not distinct people or distinct acts). Keep the original
+ungrouped output to inspect evidence; grouped output is not accepted by `match`.
+
+`match` reads the ungrouped TSV and adds a `match` column. The optional UTF-8 catalogue
+contains one surname per line; explicit variants share a line separated by `|`, for
+example `Beta|Betta`. Case and accents are folded using the existing name helper.
+A complete surname suffix after the first given name must agree; no fuzzy or
+substring matching is used. Compound given names and surnames remain ambiguous.
+The only nonempty mark is **`posible coincidencia`**, never an identity claim.
+With no catalogue, or an empty catalogue, all marks are empty.
+
+Exit status is 0 for valid input, including zero people (JSON `[]`, TSV header only).
+Empty input, a missing/duplicate header, an invalid date, an unreadable file or malformed
+TSV exits 2 with no partial result. All input blocks are validated before output.

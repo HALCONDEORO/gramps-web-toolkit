@@ -32,9 +32,10 @@ class Edepot(Exception):
     """The register is on the E-depot viewer, which the visualizer API does not serve."""
 
 
-def clean_cell(text: str) -> str:
-    """One TSV cell: no tab, newline or leading spreadsheet-formula character."""
-    out = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", text or ""))).strip()
+def clean_cell(text: str, *, markup: bool = True, preserve_whitespace: bool = False) -> str:
+    """Formula-safe cell; quoted CSV may opt into verbatim plain-text whitespace."""
+    plain = html.unescape(re.sub(r"<[^>]+>", " ", text or "")) if markup else (text or "")
+    out = plain if preserve_whitespace else re.sub(r"\s+", " ", plain).strip()
     return "'" + out if out[:1] in ("=", "+", "-", "@") else out
 
 
@@ -97,16 +98,11 @@ def parse_table(page: str) -> list[dict]:
 
 def search_table(client, query: str, page: int = 1, per_page: int = 20) -> list[dict]:
     """One results page in table mode, sorted by cote, so the registers of a place come in order."""
-    return parse_table(table_page(client, query, page, per_page))
-
-
-def table_page(client, query: str, page: int, per_page: int) -> str:
-    """Shared request path; catalogue also checks the table's pagination evidence."""
     params = {"q": query, "scope": "archival", "mode": "table", "sort": "referencecode_asc",
               "resultsPerPage": per_page, "page": page}
     r = _get(client, BASE + "/search/results", params=params)
     _ok(r, BASE + "/search/results", ("text/html",))
-    return r.text
+    return parse_table(r.text)
 
 
 def _get(client, url: str, **kw):

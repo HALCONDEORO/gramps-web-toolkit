@@ -51,39 +51,23 @@ gwt_fetch/touraine.py | return "" if text == "'-" else text | return text | the 
 gwt_fetch/touraine.py | if table and given["page"] is not None and given["page"] < 1: | if False: | page 0 or a negative page is sent to the site
 gwt_fetch/touraine.py | wrong = [f"--{k.replace('_', '-')}" for k in other if given[k] is not None] | wrong = [f"--{k.replace('_', '-')}" for k in other if given[k]] | an option of the other mode is accepted when it is given with its default value
 gwt_fetch/touraine.py | rows[: 80 if limit is None else limit] | rows[: limit or 80] | --limit 0 prints 80 rows
-gwt_fetch/touraine_catalogue.py | if not rows: | if len(rows) < per_page: | a short populated page is discarded as terminal without retaining row provenance
-gwt_fetch/touraine_catalogue.py | if not result["complete"] or not rows: | if not rows: | partial pagination certifies uncovered years
-gwt_fetch/touraine_catalogue.py | re.fullmatch(r"([0-9]{4})(?:\s*[-–]\s*([0-9]{4}))?", date.strip()) | re.search(r"([0-9]{4})(?:\s*[-–]\s*([0-9]{4}))?", date.strip()) | uncertain dates silently become exact years
-gwt_fetch/touraine_catalogue.py | len(by_cote[row["cote"]]) > 1 or len(by_ark[row["ark"]]) > 1 | False | conflicting ARKs or metadata lose the conflict flag
-gwt_fetch/touraine_catalogue.py | if len(rows) != expected or len(rows) > per_page: | if False: | an unparsed record becomes an empty terminal table
-gwt_fetch/touraine_catalogue.py | if len(tables) != 1: | if False: | an unrecognised page is not reported incomplete
-gwt_fetch/touraine_catalogue.py | if signature in seen: | if False: | a repeated page does not stop pagination
-gwt_fetch/touraine_catalogue.py | if not rows and signals.next_page: | if False: | an empty table advertising another page loses its explicit incomplete reason
-gwt_fetch/touraine_catalogue.py | sorted(set(range(first, last + 1)) - covered) | [] | the internal uncovered year is hidden
-gwt_fetch/touraine_catalogue.py | for year in years(row["date"])} | for year in [years(row["date"]).start]} | the interior and end of each range disappear and overlaps become gaps
-gwt_fetch/touraine_catalogue.py | row["conflict"] == "yes" | False | conflicts no longer withhold coverage claims
-gwt_fetch/touraine_catalogue.py | or not row["cote"] | or False | rows missing cotes certify uncovered years
-gwt_fetch/touraine_catalogue.py | text = touraine.table_page(client, query, page, per_page) | text = touraine.table_page(client, touraine.clean_cell(query), page, per_page) | a leading equals query is modified as though it were a spreadsheet cell
-gwt_fetch/touraine_catalogue.py | range(first, last + 1) if | range(first, last) if | inclusive range endpoints are lost
-gwt_fetch/touraine_catalogue.py | touraine.clean_cell(str(row[key])) | str(row[key]) | the query is output as a spreadsheet formula
-gwt_fetch/touraine_catalogue.py | not 1 <= max_pages <= MAX_PAGES | False | a zero page ceiling is accepted rather than refused before requesting
-gwt_fetch/touraine_catalogue.py | raise ValueError("unaccounted non-header results row") | continue | an unclassed or unknown data row is silently treated as empty terminal evidence
-gwt_fetch/touraine_catalogue.py | "next" in (attrs.get("rel") or "").lower().split() | (attrs.get("rel") or "").lower() == "next" | a multi-token next relation loses its explicit incomplete reason
-gwt_fetch/touraine_catalogue.py | (attrs.get("rel") or "").lower().split() | (attrs.get("rel") or "").split() | uppercase next tokens are ignored
-gwt_fetch/touraine_catalogue.py | if any("verify you are human" in heading for heading in signals.headings): | if False: | an HTTP200 human challenge loses its refusal reason
-gwt_fetch/touraine_catalogue.py | None in places or len(places) != 1 | False | missing or mixed explicit row places certify a commune and false gaps
-gwt_fetch/touraine_catalogue.py | row.get("place_scope", False) | True | repeated or multiple raw place values collapse into a falsely verified place
-gwt_fetch/touraine_catalogue.py | if re.search(r"[,;/|]|\b(?:et|and|ou|or)\b", identity): | if False: | ambiguous place lists certify coverage
-gwt_fetch/touraine_catalogue.py | result["reason"] = (f"completeness UNKNOWN on page {page}: no captured positive " | result["complete"] = True; result["reason"] = (f"completeness UNKNOWN on page {page}: no captured positive " | empty or challenge tables falsely certify completion without a captured positive terminal contract
-gwt_fetch/variants.py | found = {surname, *configured.get(surname, [])} | found = set(configured.get(surname, [])) | a config list replaces the original spelling
-gwt_fetch/variants.py | if rules: | if True: | rules silently run without explicit opt-in
-gwt_fetch/variants.py | found.update(rule_variants(surname)) | found.update(rule_variants(surname)); found.update(v for s in list(found) for v in rule_variants(s)) | rules recurse into suggestions and configured spellings
-gwt_fetch/variants.py | return sorted(found) | return sorted(found, reverse=True) | output is not sorted in ascending order
-gwt_fetch/variants.py | re.escape(s) for s in | s for s in | surname regex metacharacters become operators
-gwt_fetch/variants.py | {fold(x) for x in spellings} | set(spellings) | regex alternatives retain accents instead of matching folded text
-gwt_fetch/variants.py | if spelling in seen: | if False: | duplicate config spellings do not warn
-gwt_fetch/variants.py | print("gwt-fetch: warning: empty variant ignored", file=sys.stderr) | pass | empty config spellings are silently discarded
-gwt_fetch/variants.py | if not isinstance(value, str) or not value.strip() or len(value) > MAX_LENGTH: | if not isinstance(value, str) or len(value) > MAX_LENGTH: | empty and whitespace surnames are accepted
-gwt_fetch/variants.py | ("ph", "f"), ("f", "ph") | ("ph", "ph"), ("f", "f") | ph and f are not suggested in either direction
-
-gwt_fetch/variants.py | path = os.path.realpath(os.path.abspath(os.path.expanduser(path))) | path = path | local config paths must be normalized before opening
+# Local collateral clues: never promote an uncertain clue or erase its evidence.
+gwt_fetch/leads.py | confidence = 'low' if '(?)' in left + name or role == 'other' else 'high' | confidence = 'low' if role == 'other' else 'high' | a name marked (?) is promoted to high confidence
+gwt_fetch/leads.py | if not excluded_parent and not (subject and fold(name) == fold(subject)): | if True: | the subject and already declared parents leak into clues
+gwt_fetch/leads.py | rows.append(dict(ref=headers['ref'], date=headers['date'], name=name, role=role, | rows.append(dict(ref='SYN-A/001', date=headers['date'], name=name, role=role, | separate acts lose their own references
+gwt_fetch/leads.py | literal = body[start:end] | literal = name | the declared-role evidence is discarded
+gwt_fetch/leads.py | 'posible coincidencia' if surnames & variants else '' | 'es' if surnames & variants else '' | a surname clue is presented as an identification
+gwt_fetch/leads.py | surnames = {fold(' '.join(tokens[i:])) for i in range(1, len(tokens))} | surnames = {fold(t) for t in tokens} | a given name is used as a matching surname
+gwt_fetch/leads.py | 'count': count | 'count': 1 | repeated appearances are not counted
+gwt_fetch/leads.py | raise ValueError('empty transcription') | return [] | empty transcriptions are accepted
+gwt_fetch/leads.py | if not headers.get('ref') or '/' not in headers['ref']: | if False: | an act without a source reference is accepted
+gwt_fetch/leads.py | markup=False, preserve_whitespace=True | markup=False, preserve_whitespace=False | verbatim literal whitespace is lost in TSV
+gwt_fetch/leads.py |                 if _doubtful(clause): |                 if False: | a negated, doubtful or alternative clause is still affirmed as a godparent/high
+gwt_fetch/leads.py |                     role, confidence = 'other', 'low' |                     confidence = 'low' | a doubtful clause keeps its affirmative role
+gwt_fetch/leads.py |                     literal = clause.strip() |                     pass | the negation or alternative is cut out of the evidence literal
+gwt_fetch/leads.py |     r"(?<!\w)n['’]|"  # elided negation: n'est, n'a |     r"(?<!\w)zzz|"  # elided negation: n'est, n'a | n'est pas is not read as a negation
+gwt_fetch/leads.py |     r"(?<!\w)(?:ne|pas|jamais|sans|non|ni|aucune?|"  # negation |     r"(?<!\w)(?:zzz|"  # negation | ne fut pas is not read as a negation
+gwt_fetch/leads.py |     r"probabl\w*|peut[- ]?[eê]tre|vraisemblabl\w*|possibl\w*|suppos\w*|semble\w*|" |     r"zzz|" | probable and peut-être are not read as uncertainty
+gwt_fetch/leads.py |     r"ou|soit)(?!\w)|\?", re.I)  # alternatives |     r"soit)(?!\w)|\?", re.I)  # alternatives | "Paul Beta ou Luc Gamma" affirms the first name alone
+gwt_fetch/leads.py |     return bool(DOUBT.search(clause.replace('(?)', ' '))) |     return bool(DOUBT.search(clause)) | a (?) mark is treated as clause doubt and the role is lost
+gwt_fetch/leads.py |                 clause_end = end + stop.start() |                 clause_end = end | doubt after the name is outside the clause evidence
