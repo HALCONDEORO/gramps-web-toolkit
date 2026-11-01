@@ -8,6 +8,8 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
+- `gwt-check` `date-modifier-note`: read-only contradictions between explicit before/after bounds at the same boundary in event dates and event/citation notes. All conflicting origins remain visible; negated or ambiguous prose is skipped. No exact date, correction or write is inferred.
+
 - `gwt-apply` `merge_source`: merges two sources that are one register entered twice, with Gramps' own merge. The dry run names every citation that moves; a loser whose title, author, publication info or abbreviation differs is a conflict, so no text is lost. It answers `dup-source-ark` findings.
 - `gwt-fetch touraine search --table`: lists the registers of a place in the site's table mode sorted by cote, with the ark and the cote in the same row (20, 40 or 80 rows a page).
 - `gwt-fetch boe search` and `boe fetch` search and download the BOE from 1960 onwards, which `gazeta` does not cover. `gazeta fetch` also reads the PDF link of modern documents. A date with non-ASCII digits or a blank `--text`/`--title` is refused with exit 2, and the form's error box exits 2 instead of printing 0 results.

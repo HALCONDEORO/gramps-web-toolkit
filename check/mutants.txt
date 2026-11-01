@@ -119,3 +119,15 @@ gwt_check/checks.py |         if dt.get("quality") != 1 or not in_scope("events"
 gwt_check/checks.py |         if dt.get("modifier") == 3: |         if dt.get("modifier") in (1, 3): | before and estimated are called about and estimated
 gwt_check/checks.py |         elif v[0]: |         elif v[0] or v[1]: | an estimated date with a month and no day is said to name a day
 gwt_check/checks.py |         elif v[0]: |         elif False: | an estimated date with a day is not reported
+# Focused before/after note guards (offline tests/test_modifier_notes.py).
+gwt_check/modifier_notes.py | _BOUND_NOTE.fullmatch(_fold(text).strip()) | _BOUND_NOTE.search(_fold(text).strip()) | negated or ambiguous prose must not become a positive bound
+gwt_check/modifier_notes.py | 1 if word in _BEFORE else 2 | 2 if word in _BEFORE else 1 | modifier 1 is before and 2 is after
+gwt_check/modifier_notes.py | for handle in event.get("citation_list") or []: | for handle in []: | citation notes must not lose to event notes
+gwt_check/modifier_notes.py | owners = [(event, f"event {eid}")] | owners = [] | event notes must be read as well as citation notes
+gwt_check/modifier_notes.py | if not any(in_scope(t, h) for t, h in related): | if False: | unrelated scope must not produce the finding
+gwt_check/modifier_notes.py | if a[0] != b[0] and a[1] == b[1]: | if a[0] == b[0] and a[1] == b[1]: | matching bounds stay quiet and opposite bounds fire
+gwt_check/modifier_notes.py | if a[0] != b[0] and a[1] == b[1]: | if a[0] != b[0]: | distinct boundaries are outside this focused rule
+gwt_check/modifier_notes.py | assertions.append((bound, f"{origin} note {note.get('gramps_id') or handle}")) | assertions = [(bound, f"{origin} note {note.get('gramps_id') or handle}")] | never silently pick the last note over earlier evidence
+gwt_check/dates.py | or date.get("quality", 0) | or False | estimated and calculated boundaries are not firm comparisons
+gwt_check/dates.py | or span(date) is None: | or False: | invalid or dual-dated boundaries must be rejected by the shared date reader
+gwt_check/modifier_notes.py | if month == "00" or day == "00": | if False: | explicit zero month or day is invalid ISO rather than missing precision

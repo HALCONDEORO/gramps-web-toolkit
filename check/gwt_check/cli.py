@@ -302,7 +302,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("out")
     live_opts(p)
 
-    p = sub.add_parser("check", help="run every check on a dump, or on the live tree")
+    p = sub.add_parser("check", help="run every check on a dump, or on the live tree",
+                       description="Read-only checks, including date-modifier-note: opposite before/after "
+                                   "assertions at the same boundary in event dates and event/citation notes. "
+                                   "No exact dates inferred or corrections made.")
     p.add_argument("tree", nargs="?", help="dump file or gwt-apply snapshot; without it the live tree is read")
     p.add_argument("--since", help="earlier dump, gwt-apply snapshot or .gramps backup: diff, and new objects are the scope")
     p.add_argument("--tag", help="scope is the objects carrying this tag (a run tag)")

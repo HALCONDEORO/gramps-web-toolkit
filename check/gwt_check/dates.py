@@ -125,3 +125,19 @@ def years_between(a: Span, b: Span) -> tuple[float, float]:
 def birth_from_baptism(bapt: Span) -> Span:
     """A baptism bounds a birth from above only: the child was born on that day or up to a year before."""
     return Span(bapt.lo - 366, bapt.hi, False, f"up to a year before baptism {bapt.text}")
+
+
+def modifier_boundary(date: dict | None):
+    """Unqualified Gregorian before/after boundary, preserving its exact precision.
+
+    `span` validates the date, but its conservative intervals intentionally overlap
+    at a boundary. Opposite explicit modifiers at that same boundary disagree even
+    there; this helper identifies the boundary without turning it into an exact date.
+    """
+    if not date or date.get("modifier") not in (1, 2) or date.get("quality", 0) \
+            or date.get("calendar", 0) or span(date) is None:
+        return None
+    dv = list(date.get("dateval") or []) + [0, 0, 0, False]
+    if dv[0] and not dv[1]:
+        return None
+    return date["modifier"], (dv[2], dv[1], dv[0])

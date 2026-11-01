@@ -73,6 +73,8 @@ CHECKS = {
     "dup-citation": "two citations of one source with the same page text, ignoring case and spacing",
     "dup-source-ark": "two sources that name the same archive ark (in the title, abbreviation, publication "
                       "info, a note or an attribute), written as `ark:/NAAN/id` or `ark NAAN/id`",
+    "date-modifier-note": "opposite before/after assertions at the same boundary in an event date or its "
+                          "event/citation notes; review only, no corrections",
     "date-false-precision": "an event date that hedges twice (`about` and `estimated`) or marks a date with a day "
                             "as `estimated`, so it reads as more exact than the source made it",
     "private": "object or sub-reference marked private",
@@ -399,6 +401,8 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
             out.add("dup-citation", ",".join(sorted((c.get("gramps_id") or c["handle"] for c in cs), key=id_order)))
 
     hygiene_checks(T, out, in_scope)
+    from .modifier_notes import check_modifier_notes
+    check_modifier_notes(T, out, in_scope)
 
     # birth and death pointers
     E = T["events"]

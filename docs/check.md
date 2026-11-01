@@ -227,6 +227,7 @@ gwt-check repos dump.json.gz --json                   # repositories with their 
 | `dup-media` | Two media objects with the same checksum: the same file entered twice, often under another name. A media object whose file was never read has no checksum and is left out. A page scanned twice is two different files and is not found |
 | `dup-citation` | For information only. Two or more citations of one source with the same page text, ignoring case and repeated spaces (`folio 12v` and `folio 12` are different pages). Usually one record entered twice; merge them, or keep both with `--known` when they cite different entries on one page |
 | `dup-source-ark` | For information only. Two or more sources that name the same archive ark, in the title, abbreviation, publication info, an attribute or a note, written `ark:/NAAN/id` or `ark NAAN/id` (the id is at least 8 letters or digits; case is ignored). Usually one register entered twice. Check before you create a source for an ark, and merge the copies with an act and a backup; sources made one per act can share a register on purpose, so it is not a failure |
+| `date-modifier-note` | Contradictory explicit `before` / `after` bounds at the same boundary in an event date, an event note or a note of an attached citation. Modifier 1 is before; modifier 2 is after. Every conflicting origin and note ID is shown; neither event nor citation notes take precedence. Matching bounds stay quiet. No corrections or exact dates are proposed |
 | `date-false-precision` | For information only. An event date with the modifier `about` and the quality `estimated` together (it hedges twice), or with the quality `estimated` and a day (an estimate that claims a day nobody read). Both come from a date copied from a table or computed from an age. Say it once: `about` for a round figure, or `estimated` for a guess, and drop the day. `calculated` is a different statement and is left alone. Reports only events in scope |
 | `place-no-coords` | A place that an event uses, without latitude or longitude |
 | `place-vs-description` | For information only. An event whose description names another place of the tree (whole words, accents and case ignored, names under 4 letters skipped) and does not name its own place or one enclosing it. Typical cause: an import that attached the wrong place to a described event. Naming both is fine. A name is not counted when it is a given name or surname of someone on the event (a person who points at it, or either spouse of a family that does), or when it follows words that say where someone is from or lives: «natural de», «vecino del lugar de», «residente en», «domicilié à», «de la commune de», or a clause that opens with «de» after a comma, semicolon, colon, bracket or quote mark («Juan, de Otropueblo»), never after a dot, which may end «parr.» or «Sra.». On a residence those words name the event's own place, so they count there. «Parroquia de Otropueblo», «en la parr. de Otropueblo», «en la casa de Otropueblo» and «murió en su domicilio de Otropueblo» still count. It still reports a place that is only part of the name of someone who is not on the event, such as a parent, grandparent, godparent or priest («hijo de Juan de Otropueblo», a grandmother «María Otropueblo»), a place after «nacido en» or «né à» (on a birth that is where it happened), an origin phrase with other words before the place («residente en San Pedro de Otropueblo»), and one broken by a comma («natural, y también su mujer, de Otropueblo»). It no longer reports a surname or given name of someone on the event that is also where the event happened, and one word of a compound surname is enough («de la Torre» hides a town «Torre»); nor, on a birth, a «natural de» that gives another birthplace for the subject. It reads the description only, never citations or notes. With `--since` or `--tag` it reports only events in scope (new since `OLD`, or carrying the tag), so an old event the run edited is not checked. A description is often a transcription that names relatives, godparents and where they came from, and many surnames are also town names, so most findings on a real tree are not wrong places |
@@ -262,7 +263,7 @@ A year worked out from an age (a marriage index that gives the bride's age) shou
 
 ## Self-test
 
-`gwt-check selftest` builds an invented three-generation tree, checks that it comes out clean (the positive control), then plants 54 errors, one at a time and then all together, and checks that each comes out as its finding. One plant must stay quiet instead: two namesakes whose fathers and mothers have other names must not come out as `dup-person-fuzzy`, and must be listed among the pairs left out. Its counterparts must still fire: the same pair with same-named parents, with only the mother's name or only the father's name in common, and with other-named parents where one side is an adopted child. The test suite also silences each check in turn and requires the self-test to fail, so a check without a planted error cannot slip in.
+`gwt-check selftest` builds an invented three-generation tree, checks that it comes out clean (the positive control), then plants 60 errors, one at a time and then all together, and checks that each comes out as its finding. One plant must stay quiet instead: two namesakes whose fathers and mothers have other names must not come out as `dup-person-fuzzy`, and must be listed among the pairs left out. Its counterparts must still fire: the same pair with same-named parents, with only the mother's name or only the father's name in common, and with other-named parents where one side is an adopted child. The test suite also silences each check in turn and requires the self-test to fail, so a check without a planted error cannot slip in.
 
 ## Speed
 
@@ -372,3 +373,39 @@ gwt-check timeline HANDLE [HANDLE ...] [--limit 200]
 ```
 
 `timeline` asks the server for the events of one or more people (`/api/timelines/people/`) and prints a row for each: the person's Gramps ID, the event's Gramps ID, type, role and date, in the order the server gives them. It never prints a description, a place or a citation, and it never writes to the tree. An event with no date comes back with an empty date.
+
+
+### Before/after note contradictions
+
+`date-modifier-note` is a read-only finding that counts as new (exit 1) unless
+accepted by the normal baseline/known/ignore options. For example, an event with
+modifier 1 and year 1700 (`before 1700`) and an attached note `after1700` disagree;
+modifier 2 with `before1700` also disagrees. A note that agrees stays quiet.
+Contradictory event and citation notes are also reported when the event has no
+readable date. The detail names all conflicting event, citation and note IDs,
+without choosing one reading. A changed event, attached citation or attached note
+puts the comparison in scope.
+
+The parser intentionally accepts only a whole note consisting of `before` or
+`after` and a Gregorian ISO boundary (`YYYY`, `YYYY-MM`, `YYYY-MM-DD`), with
+optional whitespace and a final period. It also accepts Spanish `antes de` /
+`después de` and French `avant` / `après`, using the shared accent/case folding
+and note-text helpers. The shared date reader validates boundaries. Dates must
+have identical boundary precision and value; different boundaries are outside
+this focused rule. Qualified, dual-dated, non-Gregorian or unsupported event
+dates are skipped. This does not change the interval semantics of other checks.
+
+Prose, quotations, uncertain statements and negation such as `not after1700`,
+`possibly after1700` or `after1700?` are left for human reading. A note with
+multiple statements is also skipped, rather than selecting its first date.
+This conservative grammar misses narrative assertions by design. No exact date
+is inferred and no tree writes, correction operations or proposals are made.
+
+Birth/death pointer proposals are a separate follow-up; this check leaves them
+unchanged. That follow-up needs these exact controls: `[Baptism, Birth, Death]`
+with birth pointer 0 and death pointer 2 must propose birth index 1 with empty
+`ruling` and preserve death index 2; two Primary Birth references must list both
+actual indexes and propose neither; a non-Primary Birth must not be selected;
+missing, out-of-range and already-correct pointers need separate controls; the
+same controls must run for Death with the Birth pointer preserved. No first
+candidate may be chosen on ambiguity.

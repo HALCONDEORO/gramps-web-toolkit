@@ -514,8 +514,16 @@ def p_lifespan(d):
     _event(d, p, "E0726", "Death", (1820,))
 
 
+def p_date_modifier_note(d):
+    event = _get(d, "events", "E0001")
+    event["date"] = _date(1700, modifier=1)
+    d["notes"].append(_base("N0800", text={"string": "after1700"}))
+    event["note_list"] = ["hN0800"]
+
+
 # (plant, check that must fire, key it must carry, needs the clean tree as --since and I0001 as root)
 PLANTS = [
+    (p_date_modifier_note, "date-modifier-note", "E0001", False),
     (p_unconnected, "unconnected", "I9001", False),
     (p_orphan_event, "orphan-event", "E0102", False),
     (p_orphan_citation, "orphan-citation", "C0099", False),
