@@ -162,3 +162,19 @@ def test_help_states_scope_and_regex_contract(capsys):
     text = capsys.readouterr().out.lower()
     for word in ["offline", "single", "128", "fold", "case", "identity", "merge"]:
         assert word in text
+
+
+def test_config_path_normalized_before_open(tmp_path, monkeypatch):
+    from gwt_fetch import variants
+    root = tmp_path / 'nested'
+    root.mkdir()
+    target = tmp_path / 'variants.json'
+    target.write_text('{"Alfa":["Alpha"]}')
+    observed = []
+    original = builtins.open
+    def checked(path, *args, **kwargs):
+        observed.append(str(path))
+        return original(path, *args, **kwargs)
+    monkeypatch.setattr(builtins, 'open', checked)
+    assert variants.load(str(root / '..' / target.name)) == {'Alfa': ['Alpha']}
+    assert observed == [str(target.resolve())]

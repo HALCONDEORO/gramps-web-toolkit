@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import re
 import sys
 import unicodedata
@@ -32,6 +34,11 @@ def _unique_keys(pairs):
 
 
 def load(path: str) -> dict[str, list[str]]:
+    # CLI explicitly selects a local file, not a server-controlled base directory.
+    # Normalize aliases before opening and refuse devices/FIFOs/directories.
+    path = os.path.realpath(os.path.abspath(os.path.expanduser(path)))
+    if not stat.S_ISREG(os.stat(path).st_mode):
+        raise ValueError("variants file must be a regular local file")
     with open(path, "rb") as stream:
         raw = stream.read(MAX_FILE_BYTES + 1)
     if len(raw) > MAX_FILE_BYTES:

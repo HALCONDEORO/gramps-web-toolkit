@@ -253,3 +253,5 @@ Lists written for the first public commit of `gwt-apply` behave differently in t
 - `gwt-ledger`: a shared catalogue prefix no longer hides a different search, an unreadable ledger exits 2, and non-Latin and blocked queries are found again.
 - `gwt-gate`: a dead session or a permission refusal is no longer reported as a rate limit.
 - `gwt-leads`, `gwt-rank`, `gwt-import-excel` and `gwt-queue`: fixes to living-person detection, surname-first rows and lease handling.
+
+- Variants: normalize explicit local configuration paths and reject non-regular files before reading.

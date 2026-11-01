@@ -61,3 +61,5 @@ gwt_fetch/variants.py | if spelling in seen: | if False: | duplicate config spel
 gwt_fetch/variants.py | print("gwt-fetch: warning: empty variant ignored", file=sys.stderr) | pass | empty config spellings are silently discarded
 gwt_fetch/variants.py | if not isinstance(value, str) or not value.strip() or len(value) > MAX_LENGTH: | if not isinstance(value, str) or len(value) > MAX_LENGTH: | empty and whitespace surnames are accepted
 gwt_fetch/variants.py | ("ph", "f"), ("f", "ph") | ("ph", "ph"), ("f", "f") | ph and f are not suggested in either direction
+
+gwt_fetch/variants.py | path = os.path.realpath(os.path.abspath(os.path.expanduser(path))) | path = path | local config paths must be normalized before opening
