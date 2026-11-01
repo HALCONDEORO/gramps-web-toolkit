@@ -234,6 +234,19 @@ def source_arks(src: dict, notes: dict) -> set[tuple[str, str]]:
     return {(m[1], m[2].lower()) for m in _ARK.finditer("\n".join(texts))}
 
 
+def source_ark_checks(T: dict, out: Findings, in_scope) -> None:
+    """One register entered as two sources: the same archive ark in both. Sources made one per act can share a
+    register on purpose, so this is for information only."""
+    by_ark: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for src in T["sources"].values():
+        for ark in source_arks(src, T["notes"]):
+            by_ark[ark].append(src)
+    for (naan, name), ss in by_ark.items():
+        if len(ss) > 1 and any(in_scope("sources", x["handle"]) for x in ss):
+            out.add("dup-source-ark", ",".join(sorted((x.get("gramps_id") or x["handle"] for x in ss), key=id_order)),
+                    f"ark {naan}/{name}")
+
+
 def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
                root: str | None = None) -> tuple[list[dict], dict]:
     """Structural checks over the whole tree; duplicate checks need one object of each pair in scope.
@@ -355,16 +368,7 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
         if len(cs) > 1 and any(in_scope("citations", c["handle"]) for c in cs):
             out.add("dup-citation", ",".join(sorted((c.get("gramps_id") or c["handle"] for c in cs), key=id_order)))
 
-    # one register entered as two sources: the same archive ark in both. Sources written one per act can share a
-    # register on purpose, so this is for information only
-    by_ark: dict[tuple[str, str], list[dict]] = defaultdict(list)
-    for src in T["sources"].values():
-        for ark in source_arks(src, T["notes"]):
-            by_ark[ark].append(src)
-    for (naan, name), ss in by_ark.items():
-        if len(ss) > 1 and any(in_scope("sources", x["handle"]) for x in ss):
-            out.add("dup-source-ark", ",".join(sorted((x.get("gramps_id") or x["handle"] for x in ss), key=id_order)),
-                    f"ark {naan}/{name}")
+    source_ark_checks(T, out, in_scope)
 
     # birth and death pointers
     E = T["events"]
