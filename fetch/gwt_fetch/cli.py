@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import digibib, europeana, gazeta, geo, iiif, touraine
+from . import coverage, digibib, europeana, gazeta, geo, iiif, touraine
 from .net import Client
 
 
@@ -78,13 +78,18 @@ def parser() -> argparse.ArgumentParser:
                     help=f"most images one run downloads, 1 to {touraine.MAX_IMAGES} (default {touraine.MAX_IMAGES})")
     tp.add_argument("--out", default=".")
     tp.add_argument("--list", action="store_true", help="print page numbers and uuids, download nothing")
+
+    s = sub.add_parser("coverage", help="which views of a register a sweep read and which it missed; offline")
+    s.add_argument("total", type=int, help="number of views in the register")
+    s.add_argument("--read", action="append", help="views read, e.g. 1-5,9,12-; may be repeated")
+    s.add_argument("--dir", help="a download folder: files named NNNN_label count as that view")
     return p
 
 
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
     client = Client(delay=args.delay)
-    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "europeana": europeana, "geo": geo, "touraine": touraine}[args.cmd]
+    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "europeana": europeana, "geo": geo, "touraine": touraine, "coverage": coverage}[args.cmd]
     try:
         return mod.run(args, client)
     except KeyboardInterrupt:
