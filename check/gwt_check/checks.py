@@ -271,6 +271,12 @@ def date_precision_checks(T: dict, out: Findings, in_scope) -> None:
             out.add("date-false-precision", e.get("gramps_id") or e["handle"], "estimated, yet it names a day")
 
 
+def hygiene_checks(T: dict, out: Findings, in_scope) -> None:
+    """The checks for information only that read sources and dates; one call in `run_checks`."""
+    source_ark_checks(T, out, in_scope)
+    date_precision_checks(T, out, in_scope)
+
+
 def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
                root: str | None = None) -> tuple[list[dict], dict]:
     """Structural checks over the whole tree; duplicate checks need one object of each pair in scope.
@@ -392,9 +398,7 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
         if len(cs) > 1 and any(in_scope("citations", c["handle"]) for c in cs):
             out.add("dup-citation", ",".join(sorted((c.get("gramps_id") or c["handle"] for c in cs), key=id_order)))
 
-    source_ark_checks(T, out, in_scope)
-
-    date_precision_checks(T, out, in_scope)
+    hygiene_checks(T, out, in_scope)
 
     # birth and death pointers
     E = T["events"]
