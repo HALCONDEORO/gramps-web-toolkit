@@ -88,9 +88,9 @@ gwt_fetch/variants.py | ("ph", "f"), ("f", "ph") | ("ph", "ph"), ("f", "f") | ph
 
 gwt_fetch/variants.py | path = os.path.realpath(os.path.abspath(os.path.expanduser(path))) | path = path | local config paths must be normalized before opening
 
-gwt_fetch/leads.py | confidence = 'low' if '(?)' in left + name or role == 'other' else 'high' | confidence = 'low' if role == 'other' else 'high' | a name marked (?) is promoted to high confidence
-gwt_fetch/leads.py | if not excluded_parent and not (subject and fold(name) == fold(subject)): | if True: | the subject and already declared parents leak into clues
-gwt_fetch/leads.py | rows.append(dict(ref=headers['ref'], date=headers['date'], name=name, role=role, | rows.append(dict(ref='SYN-A/001', date=headers['date'], name=name, role=role, | separate acts lose their own references
+gwt_fetch/leads.py |     return 'low' if '(?)' in left + name or role == 'other' else 'high' |     return 'low' if role == 'other' else 'high' | a name marked (?) is promoted to high confidence
+gwt_fetch/leads.py |         if not excluded_parent and not _same_name(name, subject): |         if True: | the subject and already declared parents leak into clues
+gwt_fetch/leads.py |     return dict(ref=headers['ref'], date=headers['date'], name=name, role=role, |     return dict(ref='SYN-A/001', date=headers['date'], name=name, role=role, | separate acts lose their own references
 gwt_fetch/leads.py | literal = body[start:end] | literal = name | the declared-role evidence is discarded
 gwt_fetch/leads.py | 'posible coincidencia' if surnames & variants else '' | 'es' if surnames & variants else '' | a surname clue is presented as an identification
 gwt_fetch/leads.py | surnames = {fold(' '.join(tokens[i:])) for i in range(1, len(tokens))} | surnames = {fold(t) for t in tokens} | a given name is used as a matching surname
@@ -98,12 +98,12 @@ gwt_fetch/leads.py | 'count': count | 'count': 1 | repeated appearances are not 
 gwt_fetch/leads.py | raise ValueError('empty transcription') | return [] | empty transcriptions are accepted
 gwt_fetch/leads.py | if not headers.get('ref') or '/' not in headers['ref']: | if False: | an act without a source reference is accepted
 gwt_fetch/leads.py | markup=False, preserve_whitespace=True | markup=False, preserve_whitespace=False | verbatim literal whitespace is lost in TSV
-gwt_fetch/leads.py |                 if _doubtful(clause): |                 if False: | a negated, doubtful or alternative clause is still affirmed as a godparent/high
-gwt_fetch/leads.py |                     role, confidence = 'other', 'low' |                     confidence = 'low' | a doubtful clause keeps its affirmative role
-gwt_fetch/leads.py |                     literal = clause.strip() |                     pass | the negation or alternative is cut out of the evidence literal
+gwt_fetch/leads.py |     if _doubtful(clause): |     if False: | a negated, doubtful or alternative clause is still affirmed as a godparent/high
+gwt_fetch/leads.py |         role, confidence = 'other', 'low' |         confidence = 'low' | a doubtful clause keeps its affirmative role
+gwt_fetch/leads.py |         literal = clause.strip() |         pass | the negation or alternative is cut out of the evidence literal
 gwt_fetch/leads.py |     r"(?<!\w)n['’]|"  # elided negation: n'est, n'a |     r"(?<!\w)zzz|"  # elided negation: n'est, n'a | n'est pas is not read as a negation
 gwt_fetch/leads.py |     r"(?<!\w)(?:ne|pas|jamais|sans|non|ni|aucune?|"  # negation |     r"(?<!\w)(?:zzz|"  # negation | ne fut pas is not read as a negation
 gwt_fetch/leads.py |     r"probabl\w*|peut[- ]?[eê]tre|vraisemblabl\w*|possibl\w*|suppos\w*|semble\w*|" |     r"zzz|" | probable and peut-être are not read as uncertainty
 gwt_fetch/leads.py |     r"ou|soit)(?!\w)|\?", re.I)  # alternatives |     r"soit)(?!\w)|\?", re.I)  # alternatives | "Paul Beta ou Luc Gamma" affirms the first name alone
 gwt_fetch/leads.py |     return bool(DOUBT.search(clause.replace('(?)', ' '))) |     return bool(DOUBT.search(clause)) | a (?) mark is treated as clause doubt and the role is lost
-gwt_fetch/leads.py |                 clause_end = end + stop.start() |                 clause_end = end | doubt after the name is outside the clause evidence
+gwt_fetch/leads.py |         clause_end = end + stop.start() |         clause_end = end | doubt after the name is outside the clause evidence

@@ -68,62 +68,113 @@ def _blocks(text):
     return blocks
 
 
+PARENT_ROLES = ('parent', 'deceased_parent')
+GAP_BETWEEN_NAMES = re.compile(r'\s*(?:,\s*)?(?:et\s+(?:de\s+)?)?')
+
+
+def _marker_kind(marker):
+    # Explicit resolution: a MARKER match always sets exactly one ROLES group.
+    # Anything else is a grammar/table mismatch and must fail safely, not guess a role.
+    kinds = [k for k in ROLES if marker.group(k) is not None]
+    if not kinds:
+        raise ValueError('leads marker matched without a known role group')
+    return kinds[0]
+
+
+def _same_name(name, subject):
+    return bool(subject) and fold(name) == fold(subject)
+
+
+def _is_principal(left, name, subject):
+    return bool(PRINCIPAL.search(left) or (_same_name(name, subject) and not MARKER.search(left)))
+
+
+def _advance_role(left, previous_end, active, chain):
+    """Return (active role, subject-parent chain) after the text between two names."""
+    markers = list(MARKER.finditer(left))
+    if markers:
+        marker = markers[-1]
+        return (ROLES[_marker_kind(marker)], marker.group(), previous_end + marker.start()), chain
+    if not GAP_BETWEEN_NAMES.fullmatch(left):
+        return None, False
+    return active, chain
+
+
+def _shared_relation(body, role, relation, end):
+    # A collective trailing declaration belongs to each listed witness.
+    if role != 'witness':
+        return relation, end
+    tail = re.split(r'[.;]', body[end:], maxsplit=1)[0]
+    friends = FRIENDS.search(tail)
+    if friends:
+        return friends.group().strip(), end + friends.end()
+    return relation, end
+
+
+def _confidence(left, name, role):
+    return 'low' if '(?)' in left + name or role == 'other' else 'high'
+
+
+def _clause(body, name_start, end):
+    clause_start = max(body.rfind('.', 0, name_start), body.rfind(';', 0, name_start)) + 1
+    clause_end = len(body)
+    stop = re.search(r'[.;]', body[end:])
+    if stop:
+        clause_end = end + stop.start()
+    return body[clause_start:clause_end]
+
+
+def _withdraw_if_doubtful(body, name_start, end, role, confidence, literal):
+    # Negated, doubtful or alternative wording anywhere in the clause
+    # means the role is not declared: keep the whole clause as evidence.
+    clause = _clause(body, name_start, end)
+    if _doubtful(clause):
+        role, confidence = 'other', 'low'
+        literal = clause.strip()
+    return role, confidence, literal
+
+
+def _evidence_row(headers, body, found, left, declared, end):
+    role, relation, start = declared
+    name = found.group()
+    literal = body[start:end]
+    confidence = _confidence(left, name, role)
+    role, confidence, literal = _withdraw_if_doubtful(body, found.start(), end, role, confidence, literal)
+    return dict(ref=headers['ref'], date=headers['date'], name=name, role=role,
+                declared_relation=relation, confidence=confidence,
+                literal=literal)
+
+
+def _extract_block(headers, body, subject):
+    rows = []
+    previous_end = 0
+    active = None
+    chain = False
+    for found in NAME.finditer(body):
+        name = found.group()
+        left = body[previous_end:found.start()]
+        if re.search(r'[.;]', left):
+            active, chain = None, False
+        if _is_principal(left, name, subject):
+            active, chain = None, _same_name(name, subject)
+            previous_end = found.end()
+            continue
+        active, chain = _advance_role(left, previous_end, active, chain)
+        role, relation, start = active or ('other', '', found.start())
+        relation, end = _shared_relation(body, role, relation, found.end())
+        excluded_parent = chain and role in PARENT_ROLES
+        if role not in PARENT_ROLES:
+            chain = False
+        if not excluded_parent and not _same_name(name, subject):
+            rows.append(_evidence_row(headers, body, found, left, (role, relation, start), end))
+        previous_end = found.end()
+    return rows
+
+
 def extract(text, subject=None):
     rows = []
     for headers, body in _blocks(text):
-        previous_end = 0
-        active = None
-        subject_parent_chain = False
-        for found in NAME.finditer(body):
-            name = found.group()
-            left = body[previous_end:found.start()]
-            if re.search(r'[.;]', left):
-                active = None
-                subject_parent_chain = False
-            principal = bool(PRINCIPAL.search(left) or (
-                subject and fold(name) == fold(subject) and not MARKER.search(left)))
-            if principal:
-                active = None
-                subject_parent_chain = bool(subject and fold(name) == fold(subject))
-                previous_end = found.end()
-                continue
-            markers = list(MARKER.finditer(left))
-            if markers:
-                marker = markers[-1]
-                kind = next(k for k in ROLES if marker.group(k) is not None)
-                active = (ROLES[kind], marker.group(), previous_end + marker.start())
-            elif not re.fullmatch(r'\s*(?:,\s*)?(?:et\s+(?:de\s+)?)?', left):
-                active = None
-                subject_parent_chain = False
-            role, relation, start = active or ('other', '', found.start())
-            end = found.end()
-            # A collective trailing declaration belongs to each listed witness.
-            tail = re.split(r'[.;]', body[end:], maxsplit=1)[0]
-            friends = FRIENDS.search(tail)
-            if role == 'witness' and friends:
-                relation = friends.group().strip()
-                end += friends.end()
-            excluded_parent = subject_parent_chain and role in ('parent', 'deceased_parent')
-            if role not in ('parent', 'deceased_parent'):
-                subject_parent_chain = False
-            if not excluded_parent and not (subject and fold(name) == fold(subject)):
-                literal = body[start:end]
-                confidence = 'low' if '(?)' in left + name or role == 'other' else 'high'
-                # Negated, doubtful or alternative wording anywhere in the clause
-                # means the role is not declared: keep the whole clause as evidence.
-                clause_start = max(body.rfind('.', 0, found.start()), body.rfind(';', 0, found.start())) + 1
-                clause_end = len(body)
-                stop = re.search(r'[.;]', body[end:])
-                if stop:
-                    clause_end = end + stop.start()
-                clause = body[clause_start:clause_end]
-                if _doubtful(clause):
-                    role, confidence = 'other', 'low'
-                    literal = clause.strip()
-                rows.append(dict(ref=headers['ref'], date=headers['date'], name=name, role=role,
-                                 declared_relation=relation, confidence=confidence,
-                                 literal=literal))
-            previous_end = found.end()
+        rows.extend(_extract_block(headers, body, subject))
     return rows
 
 
@@ -172,22 +223,32 @@ def add_parser(sub):
     match.add_argument('--format', choices=['tsv', 'json'], default='tsv')
 
 
-def run(args, client=None):
-    if args.action == 'extract':
-        with open(args.input, encoding='utf-8', newline='') as source:
-            rows = extract(source.read(), args.subject)
-        columns = COLUMNS
-        if args.group_by:
-            rows, columns = group_names(rows), ['name', 'count']
-    else:
-        with open(args.leads, encoding='utf-8', newline='') as source:
-            reader = csv.DictReader(source, delimiter='\t')
-            if reader.fieldnames != COLUMNS:
-                raise ValueError('leads TSV must have the ungrouped extract header')
-            rows = list(reader)
-        if any(None in r or any(v is None for v in r.values()) for r in rows):
-            raise ValueError('malformed leads TSV row')
-        catalogue = Path(args.catalogue_names).read_text(encoding='utf-8').splitlines() if args.catalogue_names else []
-        rows, columns = match_names(rows, catalogue), COLUMNS + ['match']
+def _run_extract(args):
+    with open(args.input, encoding='utf-8', newline='') as source:
+        rows = extract(source.read(), args.subject)
+    if args.group_by:
+        return group_names(rows), ['name', 'count']
+    return rows, COLUMNS
+
+
+def _read_leads(path):
+    with open(path, encoding='utf-8', newline='') as source:
+        reader = csv.DictReader(source, delimiter='\t')
+        if reader.fieldnames != COLUMNS:
+            raise ValueError('leads TSV must have the ungrouped extract header')
+        rows = list(reader)
+    if any(None in r or any(v is None for v in r.values()) for r in rows):
+        raise ValueError('malformed leads TSV row')
+    return rows
+
+
+def _run_match(args):
+    rows = _read_leads(args.leads)
+    catalogue = Path(args.catalogue_names).read_text(encoding='utf-8').splitlines() if args.catalogue_names else []
+    return match_names(rows, catalogue), COLUMNS + ['match']
+
+
+def run(args, _client=None):
+    rows, columns = _run_extract(args) if args.action == 'extract' else _run_match(args)
     write_rows(rows, columns, args.format)
     return 0
