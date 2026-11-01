@@ -7,7 +7,7 @@ import re
 import unicodedata
 from collections import defaultdict
 
-from . import dates
+from . import dates, homonyms
 from .tree import Tree
 
 # list of handles -> type they point at
@@ -61,6 +61,8 @@ CHECKS = {
     "empty-family": "family with no father, mother or child",
     "dup-couple": "two families with the same father and mother",
     "dup-couple-names": "two families whose couples have the same two names",
+    "homonym-birth-gap": "two people with the same name whose possible birth dates are more than 10 years apart; "
+                         "not a safe merge candidate",
     "dup-person-birth": "two people with the same name and a birth or baptism in the same year",
     "dup-person-relative": "two people with the same name and a parent, spouse or child of the same name",
     "dup-person-fuzzy": "two people whose names differ by an extra given name or surname, born within 2 years "
@@ -102,7 +104,7 @@ CHECKS = {
 }
 
 # Checks reported without failing: a finding of these is never new, so it never sets the exit code.
-INFO_CHECKS = {"unconnected", "parent-age", "marriage-age", "sibling-spacing", "lifespan", "dup-citation",
+INFO_CHECKS = {"homonym-birth-gap", "unconnected", "parent-age", "marriage-age", "sibling-spacing", "lifespan", "dup-citation",
                "dup-source-ark", "date-false-precision", "place-vs-description", "note-marker-no-tag"}
 
 # words in a note that a tag of the same stem is meant to mark; matched without accents, whole word
@@ -208,8 +210,11 @@ class Findings:
     def __init__(self):
         self.items: list[dict] = []
         self._seen: set[tuple[str, str]] = set()
+        self.duplicate_guard = lambda key: False
 
     def add(self, check: str, key: str, detail: str = "") -> None:
+        if check in {"dup-person-birth", "dup-person-relative"} and self.duplicate_guard(key):
+            return
         if (check, key) not in self._seen:
             self._seen.add((check, key))
             self.items.append({"check": check, "key": key, "detail": detail})
@@ -275,6 +280,7 @@ def hygiene_checks(T: dict, out: Findings, in_scope) -> None:
     """The checks for information only that read sources and dates; one call in `run_checks`."""
     source_ark_checks(T, out, in_scope)
     date_precision_checks(T, out, in_scope)
+    homonyms.install(T, out, in_scope, person_name, id_order)
 
 
 def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,

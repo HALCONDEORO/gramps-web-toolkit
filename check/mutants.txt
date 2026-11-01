@@ -116,6 +116,38 @@ gwt_check/checks.py |         if _ARK_ID.fullmatch(name): |         if _ARK_ID.m
 gwt_check/checks.py |         name = m[2].rstrip(".,;:!?)]}'\"") |         name = m[2] | a closing stop or bracket is kept in the id
 gwt_check/checks.py |         if dt.get("quality") != 1 or not in_scope("events", e["handle"]): |         if dt.get("quality") != 1: | a false-precision date is reported with the event out of scope
 gwt_check/checks.py |         if dt.get("quality") != 1 or not in_scope("events", e["handle"]): |         if dt.get("quality") != 2 or not in_scope("events", e["handle"]): | a calculated date is taken for an estimated one
+gwt_check/actmedia.py | DIRECT = (EVENT, EVENT_CITATION) | DIRECT = (EVENT, EVENT_CITATION, PERSON) | media on the person is never a candidate for the act of an event
+gwt_check/actmedia.py | DIRECT = (EVENT, EVENT_CITATION) | DIRECT = (EVENT, EVENT_CITATION, EVENT_SOURCE) | media on a source is never a candidate for the act of an event
+gwt_check/actmedia.py | if len(direct) > 1: | if len(direct) > 5: | several media on the event or its citations are ambiguous, none chosen
+gwt_check/actmedia.py | direct = {r["media"]["handle"] for r in rows if r["level"] in DIRECT} | direct = {r["via"]["handle"] for r in rows if r["level"] in DIRECT} | the same media on the event and on its citation is one media, not an ambiguity
+gwt_check/actmedia.py | unverified, the image was not read | the image was read | a candidate media is said to be unverified: no image is read
+gwt_check/actmedia.py | NO_MEDIA = "none in this dump (a gap in the dump, not proof that no capture exists)" | NO_MEDIA = "none" | a missing capture is a gap of the dump, not proof that none exists
+gwt_check/actmedia.py | elif o.get("private"): | elif False: | a private object is held back, never reported
+gwt_check/actmedia.py | if kind(n.get("type")) == "transcript": | if True: | an ordinary note is not a transcription
+gwt_check/actmedia.py | return "type-transcript" if text else "type-transcript-empty" | return "type-transcript" | an empty Transcript note is not an available transcription
+gwt_check/actmedia.py | return "text-marker" if any(m in fold(text) for m in MARKERS) else "" | return "" | an untyped note that says it is a literal transcription is surfaced as unverified
+gwt_check/actmedia.py | if level not in (EVENT_CITATION, EVENT_SOURCE): | if False: | a cote or view cited only for the person or a source never names the event's file
+gwt_check/actmedia.py | parsed is not None and parsed.firm | parsed is not None | an about, before or estimated date is unknown in the stem, not written as exact
+gwt_check/actmedia.py | (v[0] and not v[1]) | False | a day without a month, or no year, is unknown in the stem
+gwt_check/actmedia.py | elif cote["status"] == "not found" and ark["status"] == "found": | elif ark["status"] == "found": | a conflicting cote is not replaced by an ark
+gwt_check/actmedia.py | if len(values) > 1: | if False: | two different values for a cote or a view are a conflict, never a pick
+gwt_check/actmedia.py | if vue["status"] == "found" else UNKNOWN | if vue["status"] != "not found" else UNKNOWN | a conflicting view stays unknown in the stem
+gwt_check/actmedia.py | .strip("-")[:cap].rstrip("-") | .strip("-")[:cap] | a capped name never ends in a dash
+gwt_check/actmedia.py | re.sub(r"[^a-z0-9]+", "-" | re.sub(r"[^a-z0-9._]+", "-" | the stem holds letters, digits and dashes only: safe on every file system
+gwt_check/actmedia.py | if kind(r.get("role")) == "primary" and r.get("ref") in E] | if r.get("ref") in E] | a godparent's ref to an event is not the person's own event
+gwt_check/actmedia.py | if missing: | if False: | an event that is not an own event of the named persons is refused
+gwt_check/actmedia.py | if tree.partial: | if False: | a .gramps backup has no media or note details and is refused
+gwt_check/actmedia.py | for r in rep["targets"][:limit]: | for r in rep["targets"]: | --limit caps the printed rows
+gwt_check/cli.py | print_media(rep, args.limit) | print_media(rep, 10**9) | act-media prints only --limit rows
 gwt_check/checks.py |         if dt.get("modifier") == 3: |         if dt.get("modifier") in (1, 3): | before and estimated are called about and estimated
 gwt_check/checks.py |         elif v[0]: |         elif v[0] or v[1]: | an estimated date with a month and no day is said to name a day
 gwt_check/checks.py |         elif v[0]: |         elif False: | an estimated date with a day is not reported
+gwt_check/actmedia.py |             if media_ref.get("private"): |             if False: | private media subreference must not expose public target
+gwt_check/actmedia.py | if r.get("private") else E[r["ref"]] | if False else E[r["ref"]] | private event reference must withhold the event report
+gwt_check/actmedia.py | UNKNOWN if private_name else slug | UNKNOWN if False else slug | private name components must not leak through the filename
+gwt_check/actmedia.py | parsed = span(d) | parsed = span({**d, 'dateval': v[:3] + [False], 'newyear': 0}) | dual year and non January newyear must remain unknown
+
+gwt_check/checks.py | and self.duplicate_guard(key): | and False: | incompatible homonyms never emit a duplicate hint
+gwt_check/homonyms.py |     return anniversary.toordinal() |     return s.hi + 10 * 365.25 | exact civil anniversaries must stay quiet even across leap years
+gwt_check/homonyms.py |             self.gap_count += 1 |             self.gap_count = 1 | summary must count every incompatible scoped pair
+gwt_check/homonyms.py |                 self.witness = (p, q, a, b) |                 self.witness = (p, q, a, b); self.out.add("homonym-birth-gap", f"{p['gramps_id']},{q['gramps_id']}") | informational pair rows must not escape the name-group output bound
