@@ -45,7 +45,7 @@ gwt-ledger add --person ... --source ... --query ... --result denied --next-date
 gwt-ledger due            # rows whose next_date is today or earlier; --on YYYY-MM-DD for another day
 ```
 
-A ledger written with the older 8 columns needs no upgrade: its rows read with an empty `next_date`, and new rows are appended with the ninth column.
+A ledger written with the older 8 columns needs no manual upgrade: its rows read with an empty `next_date`. A write upgrades its header and preserves its rows.
 
 `add` records the lane from `--agent` (default `$GWT_AGENT`) and the date from `--date` (default today).
 
@@ -98,7 +98,13 @@ Exit 0 from `--exact` already leaves out `blocked` and `denied` rows and rows wh
 
 ## Concurrency
 
-`add` takes an exclusive `flock` on the ledger file, writes the header if the file is empty, appends one line, and calls `fsync` before it unlocks. Tabs and newlines inside values become spaces, so a row is always exactly one line. The test suite starts 16 processes that append 25 rows each at the same moment, then checks that all 400 rows are present and well formed.
+`add` and `mark` resolve directory aliases to one canonical real path for the ledger and its `<canonical-ledger-path>.lock`. File symlinks (including dangling links), hardlinked ledgers and non-regular files are refused without changing the ledger or link. Hardlinks cannot safely share this replacement protocol because replacing one name separates its inode from the other names.
+
+Writers check the schema before creating a sidecar, then take an exclusive `flock` and check it again before reading the current rows. They accept the legacy eight- and nine-column search layouts and the full reading layout. Unknown headers, additional columns (even if empty), duplicate columns and incompatible row widths are refused with exit 2; extended values such as `extra=KEEP` remain untouched. Reading an unfamiliar header does not imply that writing it is supported.
+
+Writers write all rows to a unique temporary file in the same directory, flush and `fsync` it, then atomically replace the ledger with `os.replace` before unlocking. Existing owner, group, exact permission bits and extended attributes (including POSIX ACLs) are copied and verified before replacement. Failure to inspect, copy or verify these metadata refuses the write and leaves the original file intact; permissions are never widened beyond the original. Platforms without extended-attribute inspection cannot rewrite existing ledgers. New ledgers use mode `0600`. Metadata and replacement errors remove the temporary file. Readers see a complete old or new file. Search values still use the shared tab/newline cleaning helper.
+
+Keep the sidecar lock file: deleting it while writers run would break coordination. Stop **all writers**, upgrade them together, then resume them; old versions lock the ledger inode and cannot coordinate with this replacement protocol. Mixed old/new writers are unsafe. Earlier sidecar writers that did not canonicalize directory aliases also need this coordinated upgrade. Each write rewrites the file, so its cost grows with the ledger. The tests retain the 16-process, 400-search-row check and add concurrent mixed search/reading writes and directory-alias writes. The protocol assumes cooperating writers on a stable filesystem namespace; do not change links or directories while writes run.
 
 `flock` works between processes on one machine. Agents on several machines need the file on one host, or a separate ledger per host merged afterwards.
 
@@ -110,8 +116,37 @@ When the ledger lives in git and several lanes commit to the same repository, on
 export GWT_LEDGER=research/buscado.tsv GWT_LEDGER_DIR=research/ledger.d GWT_AGENT=lane-7
 ```
 
+## Shared reading index (offline)
+
+Use `gwt-ledger mark|query` (also `gwt ledger mark|query`) for images read in a source. This extends the existing ledger instead of introducing a separate Touraine ledger: reading coverage applies to any source, uses the same path/environment settings, lane discovery, TSV helpers and writer lock, and makes no network requests. The ark is an exact opaque identifier; it is never fetched or normalized. References are stored without opening them.
+
+`mark` records `ark`, `image_from`, `image_to`, `reader`, `date`, `result` and `ref`. Image numbers are positive, inclusive integers. Results are `negative`, `found` or `partial`; all three record images read, without claiming that the source search is complete. Date defaults to today, or accepts `--date YYYY-MM-DD`. A reversed range, zero/negative image, invalid result/date or blank required value exits 2 before any file changes. Reader identities compare exactly; use a consistent spelling.
+
+The first mark extends the TSV header with `ark`, `image_from`, `image_to`, `reader`, `ref`, reusing `date` and `result`. Search rows have empty reading fields and reading rows have empty search fields. Existing 8/9-column search files remain readable and keep their rows when upgraded. Search `check`, `list`, `due`, `stats` and the `find` API ignore reading marks; reading `query` ignores search rows. `read_rows` returns both kinds.
+
+All identifiers in this example are invented:
+
+```sh
+gwt-ledger --ledger research/shared.tsv mark --ark ark:/fake/register-A \
+  --image-from 1 --image-to 15 --reader ReaderA --date 2026-11-01 \
+  --result negative --ref invented-notes.txt
+gwt-ledger --ledger research/shared.tsv mark --ark ark:/fake/register-A \
+  --image-from 17 --image-to 19 --reader ReaderB --date 2026-11-01 \
+  --result found --ref invented-notes.txt
+gwt-ledger --ledger research/shared.tsv query --ark ark:/fake/register-A --total 30
+```
+
+`query` prints JSON with the exact `ark`, all original reading `rows`, merged inclusive `covered` ranges, `unread` ranges, `double_read` ranges, `total` and `unknown_tail`. The example has `covered: [[1,15],[17,19]]` and `unread: [[16,16],[20,30]]`. ReaderA on 5–10 and ReaderB on 8–12 remain separate rows, with `double_read: [[8,10]]`. Repeated marks by one reader remain recorded but do not count as independent double reading. Interval calculations use range endpoints rather than allocating one entry per image.
+
+With no `--total`, `total` is null and `unknown_tail` is true. Only gaps from image 1 through the highest logged image can be listed: the example then reports image 16 unread, with the tail after 19 unknown. An empty index has no known gaps and an unknown tail. Supply `--total 30` to report 1–30 unread on an empty index. A total below a logged image is an error (exit 2), so it cannot hide coverage. A successful query exits 0 even when gaps remain; usage and read/write errors exit 2.
+
+With `--ledger-dir`, marks write `<dir>/<key(reader)>.tsv` using the existing lane slug helper and query reads the shared ledger plus all lane TSV files. Read commands include each resolved path once, even when the shared ledger is inside the lane directory or reached through a directory alias. Identical rows in separate files remain separate records. Separate reading rows and overlapping readers are preserved even if their names select the same lane filename. Each file is atomic; querying several lane files is not a single transaction across them. Locks coordinate processes on one host, as for search rows.
+
 ## Tests
 
 ```sh
 python3 -m unittest discover -s ledger
+python3 .github/scripts/run_tests.py --mutants --only ledger
 ```
+
+Concurrent ledger writing is supported only for processes running under the same OS UID as the ledger owner. Group/ACL write sharing across UIDs is not supported, even when ledger permissions allow it. Foreign-owned ledgers/sidecars are refused without replacement. Sidecars remain stable, never delete them. Preserve ledger permissions/ACLs for existing readers; deploy all writers together.

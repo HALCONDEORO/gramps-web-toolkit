@@ -135,7 +135,8 @@ class LedgerTest(unittest.TestCase):
         for agent, query in (('Lane A', 'Ana Peiro bautismo 1850'), ('lane-b', 'Ana Peiro boda 1875')):
             self.assertEqual(run('--ledger', self.path, '--ledger-dir', lanes, 'add', '--person', 'Ana Peiro Toledo',
                                  '--source', 'FamilySearch', '--query', query, '--result', 'none', '--agent', agent)[0], 0)
-        self.assertEqual(sorted(os.listdir(lanes)), ['lane-a.tsv', 'lane-b.tsv'])
+        self.assertEqual(sorted(os.listdir(lanes)), ['lane-a.tsv', 'lane-a.tsv.lock',
+                                                     'lane-b.tsv', 'lane-b.tsv.lock'])
         with open(self.path) as f:
             self.assertEqual(len(f.read().splitlines()), 2)  # the shared file got no new rows
         for query in ('Ana Peiro bautismo 1850', 'Ana Peiro boda 1875', 'Ana Peiro defuncion 1890'):
@@ -156,10 +157,10 @@ class LedgerTest(unittest.TestCase):
     def test_cli_launcher(self):
         self.add()
         p = subprocess.run([sys.executable, CLI, '--ledger', self.path, 'check', '--query', 'ana peiro bautismo 1850 1860'],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, check=False)
         self.assertEqual(p.returncode, 0, p.stderr)
         env = dict(os.environ, GWT_LEDGER=self.path)
-        p = subprocess.run([sys.executable, CLI, 'stats'], capture_output=True, text=True, env=env)
+        p = subprocess.run([sys.executable, CLI, 'stats'], capture_output=True, text=True, env=env, check=False)
         self.assertIn('rows\t1', p.stdout)
 
     def test_blocked_and_denied_rows_are_listed_but_not_done(self):
