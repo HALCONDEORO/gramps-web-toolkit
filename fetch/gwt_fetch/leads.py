@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import datetime
 import json
+import os
 import re
 import sys
 from collections import Counter
@@ -224,7 +225,8 @@ def add_parser(sub):
 
 
 def _run_extract(args):
-    with open(args.input, encoding='utf-8', newline='') as source:
+    path = os.path.realpath(os.path.abspath(os.path.expanduser(args.input)))
+    with open(path, encoding='utf-8', newline='') as source:
         rows = extract(source.read(), args.subject)
     if args.group_by:
         return group_names(rows), ['name', 'count']
@@ -232,6 +234,7 @@ def _run_extract(args):
 
 
 def _read_leads(path):
+    path = os.path.realpath(os.path.abspath(os.path.expanduser(path)))
     with open(path, encoding='utf-8', newline='') as source:
         reader = csv.DictReader(source, delimiter='\t')
         if reader.fieldnames != COLUMNS:
