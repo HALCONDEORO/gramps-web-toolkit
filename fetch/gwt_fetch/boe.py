@@ -18,12 +18,20 @@ from .gazeta import BASE, HITS, _text
 SEARCH = BASE + "/buscar/boe.php"
 COLUMNS = ["ref", "date", "number", "department", "title", "doc_url"]
 MAX_LIMIT = HITS[-1]
-ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
+ISO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")  # ASCII digits only: \d also reads Arabic-Indic digits, which the form refuses
+REFUSED = re.compile(r"valores de b[uú]squeda enviados son incorrectos", re.I)
+
+
+class SearchRefused(RuntimeError):
+    """The search form answered 200 with its error box: no result, and not an empty result."""
 
 
 def problem(args) -> str:
     """What is wrong with the arguments of a search, or an empty string. The form rejects a date that is not
     YYYY-MM-DD and quietly returns nothing, so a bad date is refused here instead of read as no result."""
+    for flag, value in (("--text", args.text), ("--title", args.title)):
+        if value is not None and not value.strip():
+            return f"{flag} is empty"
     if not (args.text or args.title):
         return "boe search needs --text or --title"
     for flag, value in (("--from", args.date_from), ("--to", args.date_to)):
@@ -87,6 +95,8 @@ def parse_results(page: str) -> list[dict]:
 def search(client, **kw) -> list[dict]:
     page = client.get(SEARCH, params=search_params(**kw))
     page.raise_for_status()
+    if REFUSED.search(page.text):
+        raise SearchRefused("boe.es refused the search values (its error box), so this is not a result of 0")
     return parse_results(page.text)[: kw.get("limit") or None]
 
 
@@ -96,8 +106,12 @@ def run(args, client) -> int:
         if bad:
             print(f"gwt-fetch: {bad}", file=sys.stderr)
             return 2
-        rows = search(client, text=args.text, title=args.title, date_from=args.date_from,
-                      date_to=args.date_to, limit=args.limit)
+        try:
+            rows = search(client, text=args.text, title=args.title, date_from=args.date_from,
+                          date_to=args.date_to, limit=args.limit)
+        except SearchRefused as e:
+            print(f"gwt-fetch: {e}", file=sys.stderr)
+            return 2
         print("\t".join(COLUMNS))
         for r in rows:
             print("\t".join(cell(r[c]) for c in COLUMNS))

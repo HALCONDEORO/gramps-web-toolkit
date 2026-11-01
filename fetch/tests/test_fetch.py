@@ -318,7 +318,8 @@ def _boe_args(**kw):
 
 @pytest.mark.parametrize("kw", [dict(text=None), dict(date_from="1979-13-01"), dict(date_to="01/02/1980"),
                                 dict(date_from="19790101"), dict(date_from="1979-W01-1"), dict(date_from="1980-01-02", date_to="1980-01-01"),
-                                dict(limit=0), dict(limit=2001)])
+                                dict(limit=0), dict(limit=2001), dict(date_from="١٩٧٩-١٠-٠١"),
+                                dict(text="   "), dict(text="x", title=" "), dict(text=None, title="\t")])
 def test_boe_search_refuses_bad_arguments_with_exit_2_and_asks_nothing(kw, capsys):
     assert boe.run(_boe_args(**kw), FakeClient({})) == 2
     assert "gwt-fetch:" in capsys.readouterr().err
@@ -586,3 +587,19 @@ def test_touraine_the_end_message_counts_only_with_status_400(tmp_path, status, 
     c = FakeClient({touraine.BASE + "/visualizer/api": end})
     assert touraine.run(_targs(tmp_path, list=True), c) == 1
     assert "stopped" in capsys.readouterr().err
+
+
+ERROR_BOX = "<html><div class='mensabox'>Los valores de b\u00fasqueda enviados son incorrectos</div></html>"
+
+
+def test_boe_search_error_box_is_an_error_and_not_zero_results(capsys):
+    c = FakeClient({boe.SEARCH: Resp(ERROR_BOX)})
+    assert boe.run(_boe_args(), c) == 2
+    cap = capsys.readouterr()
+    assert "refused" in cap.err and "result(s)" not in cap.err and cap.out == ""
+
+
+def test_boe_search_page_without_results_and_without_the_box_is_still_zero(capsys):
+    assert boe.run(_boe_args(), FakeClient({boe.SEARCH: Resp("<html>nada</html>")})) == 0
+    assert "0 result(s)" in capsys.readouterr().err
+
