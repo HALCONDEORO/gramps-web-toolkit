@@ -8,6 +8,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
+- `gwt-fetch touraine search --table`: lists the registers of a place in the site's table mode sorted by cote, with the ark and the cote in the same row (20, 40 or 80 rows a page).
 - `gwt-fetch boe search` and `boe fetch` search and download the BOE from 1960 onwards, which `gazeta` does not cover. `gazeta fetch` also reads the PDF link of modern documents. A date with non-ASCII digits or a blank `--text`/`--title` is refused with exit 2, and the form's error box exits 2 instead of printing 0 results.
 - `gwt-fetch names` looks a person up in the Gaceta and the BOE under every spelling and both name orders, saves each item and prints the words around the match. Bad arguments (person, dates, limit, spelling) exit 2 before any request; for people confirmed dead.
 - `gwt-check` `date-false-precision` (for information only): an event date that is `about` and `estimated` together, or `estimated` with a day.

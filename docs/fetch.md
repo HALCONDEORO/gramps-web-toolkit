@@ -62,10 +62,12 @@ Antenati traps from real downloads (two Italian birth registers of the 1850s and
 
 ```
 gwt-fetch touraine search "Commune 1793-1802"      # ark, title, dates, cote (80 results a page, --start for the next)
+gwt-fetch touraine search --table "Commune naissances" --page 1   # table mode sorted by cote: ark, cote, date, place, kind, medias, title
 gwt-fetch touraine pages ARK --list                # page number, page URL, page uuid
 gwt-fetch touraine pages ARK --pages 40-44 --out /tmp/reg
 ```
 
+- `search --table` asks for the site's table mode sorted by cote (`mode=table`, `sort=referencecode_asc`), 20, 40 or 80 rows a page (`--per-page`, `--page` from 1; the stderr line names the next page). The ark and the cote stand in the same row, so the registers of one place are listed in cote order without opening each record. The site's own `-` for an empty cell becomes an empty cell; any other cell starting with `=`, `+`, `-` or `@` gets a leading quote. `--start` and `--limit` belong to the list mode and are refused with `--table`, as are `--page` and `--per-page` without it (exit 2, before any request). A result count above 10 000 is shown as such by the site, so narrow the query.
 - The search mixes every fonds. Keep the rows whose title and cote are civil registration (births, marriages, deaths, `6NUM`) and ignore the rest.
 - `pages` asks the site's visualizer API for 100 pages at a time. For a range past the end it answers HTTP 400 with an error string, and the tool finds the last page by bisection. Checked live on one register of 23 pages.
 - A download is a JPEG of about 1200 px from `/images/UUID.jpg`, one manifest row per file, resumable, never overwritten. One run selects at most 30 images: `--max` can lower that number, not raise it, and a larger `--pages` selection is refused. It is meant for the pages around an act. Region and size parameters on the IIIF URL returned an HTML error page in our tests, so it does not use them.

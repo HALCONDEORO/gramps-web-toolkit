@@ -750,3 +750,60 @@ def test_names_context_takes_the_earlier_of_the_two_orders():
     assert names.context(text, ["Ejemplo Uno"], "Juan", width=10).startswith("Ejemplo Uno, Juan")
     later = "Juan Ejemplo Uno " + "x " * 200 + "Ejemplo Uno, Juan"
     assert names.context(later, ["Ejemplo Uno"], "Juan", width=10).startswith("Juan Ejemplo Uno")
+
+
+def _table_row(ark, cote, date, place, kind, medias, title):
+    link = f"https://archives.touraine.fr/ark:/{touraine.NAAN}/{ark}"
+    return f"""<tr class="result record"><td><span class="sr-only">Résultat n°</span>1</td>
+<td><div class="img image-thumbnail"><a href="/ark:/{touraine.NAAN}/{ark}/a560695b-2fdd-4b95-9fe9-1b8bd7616d98" title="Visualiser le media">
+<img alt="x"></a><p class="info-list-picture"> {medias} </p></div></td>
+<td><div class="ellipsis"><a href="{link}" title="Voir la notice"><h2><span>{title}</span></h2></a></div></td>
+<td><span class="label">Cote</span><div class="ellipsis" title="{cote} (Cote)">{cote} (Cote)</div></td>
+<td><span class="label">Date</span><div class="ellipsis" title="{date}">{date}</div></td>
+<td><span class="label">Lieu</span>{place}</td>
+<td><span class="label">Type de document</span><div class="ellipsis" title="{kind}">{kind}</div></td></tr>
+<tr class="context" data-row="1"><td colspan="2"></td><td colspan="5"><ul class="context"><li>ctx</li></ul></td></tr>"""
+
+
+TOUR_TABLE = ("<table class=\"results-table\"><tbody>"
+              + _table_row("abc123def", "6NUM9/001", "1793-1802", "Exampleville", "état civil", "206 medias", "Naissances")
+              + _table_row("ghi456jkl", "=2C9", "1803 (3 mai)", "-", "-", "1 media", "Registre &amp; co")
+              + "</tbody></table>")
+
+
+def test_touraine_parse_table_keeps_cote_and_ark_of_every_row_and_skips_context_rows():
+    rows = touraine.parse_table(TOUR_TABLE)
+    assert rows[0] == {"ark": "abc123def", "cote": "6NUM9/001", "date": "1793-1802", "place": "Exampleville",
+                       "kind": "état civil", "medias": "206", "title": "Naissances"}
+    assert rows[1]["cote"] == "'=2C9" and rows[1]["place"] == "" and rows[1]["kind"] == "" and rows[1]["medias"] == "1"  # formula neutralised
+    assert rows[1]["title"] == "Registre & co" and len(rows) == 2
+
+
+def test_touraine_search_table_asks_for_table_mode_sorted_by_cote():
+    c = FakeClient({touraine.BASE + "/search/results": Resp(TOUR_TABLE)})
+    assert len(touraine.search_table(c, "Exampleville", page=3, per_page=40)) == 2
+    params = c.calls[0][2]
+    assert params == {"q": "Exampleville", "scope": "archival", "mode": "table", "sort": "referencecode_asc",
+                      "resultsPerPage": 40, "page": 3}
+
+
+def _tour_args(**kw):
+    base = dict(action="search", query="Exampleville", start=0, limit=80, table=True, page=1, per_page=20)
+    return argparse.Namespace(**{**base, **kw})
+
+
+def test_touraine_search_table_prints_tsv_and_names_the_next_page(capsys):
+    c = FakeClient({touraine.BASE + "/search/results": Resp(TOUR_TABLE)})
+    assert touraine.run(_tour_args(page=2), c) == 0
+    cap = capsys.readouterr()
+    lines = cap.out.splitlines()
+    assert lines[0] == "\t".join(touraine.TABLE_COLUMNS) and lines[1].split("\t")[:2] == ["abc123def", "6NUM9/001"]
+    assert all(len(l.split("\t")) == 7 for l in lines) and "--page 3" in cap.err
+
+
+@pytest.mark.parametrize("kw", [dict(page=0), dict(page=-2), dict(table=False, page=2), dict(table=False, per_page=40),
+                                dict(start=80), dict(limit=10)])
+def test_touraine_search_refuses_bad_options_with_exit_2_and_asks_nothing(kw, capsys):
+    c = FakeClient({})
+    assert touraine.run(_tour_args(**kw), c) == 2 and c.calls == []
+    assert "gwt-fetch:" in capsys.readouterr().err
