@@ -192,6 +192,12 @@ def p_dup_citation(d):
     _get(d, "events", "E0002")["citation_list"].append("hC0098")
 
 
+def p_dup_source_ark(d):
+    d["sources"][0]["title"] += " (ark:/12345/abcd1234efgh)"
+    d["sources"].append({**copy.deepcopy(d["sources"][0]), "handle": "hS0098", "gramps_id": "S0098",
+                         "title": "Same register, ark 12345/ABCD1234EFGH"})
+
+
 def p_dangling_child(d):
     _get(d, "families", "F0002")["child_ref_list"].append(_ref("ghost-person", frel="Birth", mrel="Birth"))
 
@@ -513,6 +519,7 @@ PLANTS = [
     (p_dup_repository, "dup-repository", "R0001,R0098", False),
     (p_dup_media, "dup-media", "O0097,O0098", False),
     (p_dup_citation, "dup-citation", "C0001,C0098", False),
+    (p_dup_source_ark, "dup-source-ark", "S0001,S0098", False),
     (p_dangling_child, "dangling-ref", "F0002 child_ref_list -> people ghost-person", False),
     (p_dangling_subref, "dangling-ref", "F0003 child_ref_list[I0003].note_list -> notes ghost-note", False),
     (p_place_not_place, "place-not-place", "E0201 place", False),

@@ -1884,3 +1884,82 @@ def test_a_person_born_more_than_100_years_ago_with_no_death_is_presumed_dead():
     assert possibly_living(*person(1925), 2026) is False  # over 100: presumed dead
     assert possibly_living({"event_ref_list": []}, {}, 2026) is True   # never dated: still possibly living
     assert possibly_living({"event_ref_list": []}, {}, 2026, undated=False) is False
+
+
+# -- dup-source-ark --------------------------------------------------------------------------------
+
+def _src(d, gid, title="", note="", attr=""):
+    obj = {**copy.deepcopy(d["sources"][0]), "handle": "h" + gid, "gramps_id": gid, "title": title,
+           "abbrev": "", "pubinfo": "", "note_list": [], "attribute_list": []}
+    if note:
+        d["notes"].append(selftest._base("N" + gid, text={"string": note}, format=0, tag_list=[]))
+        obj["note_list"] = ["hN" + gid]
+    if attr:
+        obj["attribute_list"] = [{"type": "Url", "value": attr}]
+    d["sources"].append(obj)
+
+
+def _ark_findings(d, scope=None):
+    findings, _ = checks.run_checks(Tree(copy.deepcopy(d)), scope)
+    return sorted((f["key"], f["detail"]) for f in findings if f["check"] == "dup-source-ark")
+
+
+def test_dup_source_ark_reads_title_note_and_attribute_in_both_spellings():
+    d = selftest.clean_tree()
+    d["sources"][0]["title"] = "no ark here"
+    _src(d, "S0090", title="Register 12, ark 12345/ABCD1234EFGH")
+    _src(d, "S0091", note="see https://example.test/ark:/12345/abcd1234efgh/view")
+    _src(d, "S0092", attr="https://example.test/ark:/12345/abcd1234efgh")
+    assert _ark_findings(d) == [("S0090,S0091,S0092", "ark 12345/abcd1234efgh")]
+
+
+def test_dup_source_ark_ignores_other_arks_short_ids_and_one_source():
+    d = selftest.clean_tree()
+    _src(d, "S0090", title="ark 12345/abcd1234efgh")
+    _src(d, "S0091", title="ark 12345/zzzz1234efgh")  # another ark
+    _src(d, "S0092", title="ark 99999/abcd1234efgh")  # another authority
+    _src(d, "S0093", title="ark 12345/abcd")  # too short to be an ark id
+    _src(d, "S0094", title="ark 12345/abcd")
+    _src(d, "S0095", title="ark 12345/abcd1234efgh, ark:/12345/abcd1234efgh")  # twice in one source
+    assert _ark_findings(d) == [("S0090,S0095", "ark 12345/abcd1234efgh")]
+
+
+def test_dup_source_ark_is_info_and_needs_one_side_in_scope(tmp_path, capsys):
+    d = selftest.clean_tree()
+    _src(d, "S0090", title="ark 12345/abcd1234efgh")
+    _src(d, "S0091", title="ark 12345/abcd1234efgh")
+    assert _ark_findings(d, {("sources", "hS0091")}) == [("S0090,S0091", "ark 12345/abcd1234efgh")]
+    assert _ark_findings(d, {("people", "hI0001")}) == []
+    dump = tmp_path / "t.json"
+    dump.write_text(json.dumps(d), encoding="utf-8")
+    assert main(["check", str(dump)]) == 0
+    assert "info dup-source-ark" in capsys.readouterr().out
+
+
+def test_dup_source_ark_keeps_the_whole_id_and_does_not_cut_it_at_a_mark():
+    d = selftest.clean_tree()
+    _src(d, "S0090", title="ark 12345/abcdefgh-one")
+    _src(d, "S0091", title="ark 12345/abcdefgh-two")  # not the same ark as the first
+    _src(d, "S0092", title="ark 12345/abcdefgh")  # nor this
+    _src(d, "S0093", title="ark:/12345/abcdefgh-one, see also ark 12345/abcdefgh.")  # the final stop is not part of it
+    _src(d, "S0095", title="ark 12345/abcdefgh-one-more")  # a longer id is another ark
+    _src(d, "S0096", title="ark 12345/abcdefgh-one-less")
+    _src(d, "S0097", title="ark 12345/abcdefgh-one-more")  # the same long id twice is the same ark
+    _src(d, "S0094", title="ark:/12345/ABCDEFGH-ONE/view/3")  # a view path is not part of it
+    assert _ark_findings(d) == [("S0090,S0093,S0094", "ark 12345/abcdefgh-one"),
+                                ("S0092,S0093", "ark 12345/abcdefgh"),
+                                ("S0095,S0097", "ark 12345/abcdefgh-one-more")]
+
+
+def test_dup_source_ark_rejects_an_id_it_cannot_read_whole_and_never_cuts_it_to_a_prefix():
+    d = selftest.clean_tree()
+    _src(d, "S0090", title="ark 12345/abcdefgh--one")
+    _src(d, "S0091", title="ark 12345/abcdefgh--two")
+    _src(d, "S0092", title="ark 12345/abcdefgh%2Done")
+    _src(d, "S0093", title="ark 12345/abcdefgh%2Dtwo")
+    _src(d, "S0094", title="ark 12345/abcdefgh-")  # a dash at the end is not a closing stop: not read
+    _src(d, "S0095", title="(ark 12345/abcdefgh)")  # a closing bracket is not part of the id
+    _src(d, "S0096", title="ark 12345/abcdefgh_")
+    _src(d, "S0097", title="ark 12345/abcdefgh.")  # nor is a full stop
+    assert _ark_findings(d) == [("S0095,S0097", "ark 12345/abcdefgh")]
+    assert checks.source_arks({"title": "ark 12345/abcdefgh--one"}, {}) == set()

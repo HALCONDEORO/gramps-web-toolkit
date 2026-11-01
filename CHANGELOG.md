@@ -8,6 +8,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
+- `gwt-check` `dup-source-ark` (for information only): two sources that name the same archive ark, so a register entered twice is found before a third copy is made.
 - `gwt-fetch coverage`: offline report of which views of a register a sweep read and which it missed, with a warning for a sweep of alternate views (a double-page viewer read at every second view reads half of the register). Exit 1 when views are missing.
 - `gwt-acts check`: checks act cards offline (source, literal filiation, zoom mark, Republican date by calculation, "bef" for an issue date) and, with a tree dump, says whether the person is already in the tree, with spelling notes and conflicts reported, never replaced.
 - `gwt-acts` accepts `type = matricule` cards (class and register number required, matched to a person, compared with no event). Docs: "Military records", a guide to the public sources.

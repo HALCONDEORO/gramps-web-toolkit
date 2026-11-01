@@ -71,6 +71,8 @@ CHECKS = {
     "dup-repository": "two repositories with the same name, compared like people's names",
     "dup-media": "two media objects with the same file: the same checksum",
     "dup-citation": "two citations of one source with the same page text, ignoring case and spacing",
+    "dup-source-ark": "two sources that name the same archive ark (in the title, abbreviation, publication "
+                      "info, a note or an attribute), written as `ark:/NAAN/id` or `ark NAAN/id`",
     "private": "object or sub-reference marked private",
     "place-no-coords": "place used by an event without coordinates",
     "place-vs-description": "an event whose description names another place of the tree and not its own place "
@@ -98,7 +100,7 @@ CHECKS = {
 }
 
 # Checks reported without failing: a finding of these is never new, so it never sets the exit code.
-INFO_CHECKS = {"unconnected", "parent-age", "marriage-age", "sibling-spacing", "lifespan", "dup-citation",
+INFO_CHECKS = {"unconnected", "parent-age", "marriage-age", "sibling-spacing", "lifespan", "dup-citation", "dup-source-ark",
                "place-vs-description", "note-marker-no-tag"}
 
 # words in a note that a tag of the same stem is meant to mark; matched without accents, whole word
@@ -215,6 +217,42 @@ def id_order(gid: str) -> tuple:
     """Gramps IDs in numeric order: I9001 before I10000. The ID itself breaks a tie (O01 and O001), so a finding key
     does not depend on the order the dump lists the objects in."""
     return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", gid)], gid
+
+
+# `ark:/12345/abc123` or the written-out `ark 12345/abc123`. The id is the whole run of characters up to a space or a
+# `/` (a view or a path follows a `/`), less a closing stop or bracket. It is taken only when it is at least 8 letters
+# or digits, joined by single `-`, `.`, `_`, `=`, `~`, `*`, `+`, `@` or `$`. Anything else (`--`, `%2D`, a stray mark)
+# is not read as an ark at all, and is never cut down to a prefix that could match another ark.
+_ARK = re.compile(r"\bark(?::/?|\s+)(\d{4,9})/([^\s/]+)", re.I)
+_ARK_ID = re.compile(r"[A-Za-z0-9]{8,}(?:[-._=~*+@$][A-Za-z0-9]+)*")
+
+
+def source_arks(src: dict, notes: dict) -> set[tuple[str, str]]:
+    """The archive arks a source names, by its own text, its attributes and its notes."""
+    texts = [src.get("title") or "", src.get("abbrev") or "", src.get("pubinfo") or ""]
+    texts += [str(a.get("value") or "") for a in src.get("attribute_list", [])]
+    for h in src.get("note_list", []):
+        t = (notes.get(h) or {}).get("text")
+        texts.append(t.get("string", "") if isinstance(t, dict) else str(t or ""))
+    out = set()
+    for m in _ARK.finditer("\n".join(texts)):
+        name = m[2].rstrip(".,;:!?)]}'\"")
+        if _ARK_ID.fullmatch(name):
+            out.add((m[1], name.lower()))
+    return out
+
+
+def source_ark_checks(T: dict, out: Findings, in_scope) -> None:
+    """One register entered as two sources: the same archive ark in both. Sources made one per act can share a
+    register on purpose, so this is for information only."""
+    by_ark: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for src in T["sources"].values():
+        for ark in source_arks(src, T["notes"]):
+            by_ark[ark].append(src)
+    for (naan, name), ss in by_ark.items():
+        if len(ss) > 1 and any(in_scope("sources", x["handle"]) for x in ss):
+            out.add("dup-source-ark", ",".join(sorted((x.get("gramps_id") or x["handle"] for x in ss), key=id_order)),
+                    f"ark {naan}/{name}")
 
 
 def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
@@ -337,6 +375,8 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
     for cs in by_page.values():
         if len(cs) > 1 and any(in_scope("citations", c["handle"]) for c in cs):
             out.add("dup-citation", ",".join(sorted((c.get("gramps_id") or c["handle"] for c in cs), key=id_order)))
+
+    source_ark_checks(T, out, in_scope)
 
     # birth and death pointers
     E = T["events"]
