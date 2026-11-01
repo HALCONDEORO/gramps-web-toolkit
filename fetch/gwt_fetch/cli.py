@@ -4,8 +4,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, names, touraine
-from .net import Client
+from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, names, touraine, variants
 
 
 def _max_images(text: str) -> int:
@@ -112,6 +111,18 @@ def parser() -> argparse.ArgumentParser:
     tp.add_argument("--out", default=".")
     tp.add_argument("--list", action="store_true", help="print page numbers and uuids, download nothing")
 
+    s = sub.add_parser(
+        "variants", help="offline surname search suggestions",
+        description="Offline search suggestions only; never identity or merge evidence. "
+                    "Print unique sorted spellings, preserving the original (1-128 characters).")
+    s.add_argument("--surname", required=True, help="literal surname, including apostrophes or regex punctuation")
+    s.add_argument("--file", help="local JSON object mapping exact surnames to lists of spellings; no default file")
+    s.add_argument("--rules", action="store_true",
+                   help="single edits of the original only: s/z, c/s, ph/f, y/i, double ASCII consonants; no recursion")
+    s.add_argument("--regex", action="store_true",
+                   help="one escaped Python regex with case-insensitive (?i); fold input accents with "
+                        "gwt_fetch.names.fold (NFKD, lowercase, remove combining marks) before matching")
+
     s = sub.add_parser("coverage", help="which views of a register a sweep read and which it missed; offline")
     s.add_argument("total", type=int, help="number of views in the register")
     s.add_argument("--read", action="append", help="views read, e.g. 1-5,9,12-; may be repeated")
@@ -121,6 +132,10 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
+    if args.cmd == "variants":
+        return variants.run(args)
+    from .net import Client
+
     client = Client(delay=args.delay)
     if args.cmd == "names" and not args.source:
         args.source = ["gazeta", "boe"]

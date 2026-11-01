@@ -75,3 +75,15 @@ gwt_fetch/touraine_catalogue.py | None in places or len(places) != 1 | False | m
 gwt_fetch/touraine_catalogue.py | row.get("place_scope", False) | True | repeated or multiple raw place values collapse into a falsely verified place
 gwt_fetch/touraine_catalogue.py | if re.search(r"[,;/|]|\b(?:et|and|ou|or)\b", identity): | if False: | ambiguous place lists certify coverage
 gwt_fetch/touraine_catalogue.py | result["reason"] = (f"completeness UNKNOWN on page {page}: no captured positive " | result["complete"] = True; result["reason"] = (f"completeness UNKNOWN on page {page}: no captured positive " | empty or challenge tables falsely certify completion without a captured positive terminal contract
+gwt_fetch/variants.py | found = {surname, *configured.get(surname, [])} | found = set(configured.get(surname, [])) | a config list replaces the original spelling
+gwt_fetch/variants.py | if rules: | if True: | rules silently run without explicit opt-in
+gwt_fetch/variants.py | found.update(rule_variants(surname)) | found.update(rule_variants(surname)); found.update(v for s in list(found) for v in rule_variants(s)) | rules recurse into suggestions and configured spellings
+gwt_fetch/variants.py | return sorted(found) | return sorted(found, reverse=True) | output is not sorted in ascending order
+gwt_fetch/variants.py | re.escape(s) for s in | s for s in | surname regex metacharacters become operators
+gwt_fetch/variants.py | {fold(x) for x in spellings} | set(spellings) | regex alternatives retain accents instead of matching folded text
+gwt_fetch/variants.py | if spelling in seen: | if False: | duplicate config spellings do not warn
+gwt_fetch/variants.py | print("gwt-fetch: warning: empty variant ignored", file=sys.stderr) | pass | empty config spellings are silently discarded
+gwt_fetch/variants.py | if not isinstance(value, str) or not value.strip() or len(value) > MAX_LENGTH: | if not isinstance(value, str) or len(value) > MAX_LENGTH: | empty and whitespace surnames are accepted
+gwt_fetch/variants.py | ("ph", "f"), ("f", "ph") | ("ph", "ph"), ("f", "f") | ph and f are not suggested in either direction
+
+gwt_fetch/variants.py | path = os.path.realpath(os.path.abspath(os.path.expanduser(path))) | path = path | local config paths must be normalized before opening
