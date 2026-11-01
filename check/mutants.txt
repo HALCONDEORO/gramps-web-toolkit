@@ -119,3 +119,8 @@ gwt_check/checks.py |         if dt.get("quality") != 1 or not in_scope("events"
 gwt_check/checks.py |         if dt.get("modifier") == 3: |         if dt.get("modifier") in (1, 3): | before and estimated are called about and estimated
 gwt_check/checks.py |         elif v[0]: |         elif v[0] or v[1]: | an estimated date with a month and no day is said to name a day
 gwt_check/checks.py |         elif v[0]: |         elif False: | an estimated date with a day is not reported
+
+gwt_check/checks.py | and self.duplicate_guard(key): | and False: | incompatible homonyms never emit a duplicate hint
+gwt_check/homonyms.py |     return anniversary.toordinal() |     return s.hi + 10 * 365.25 | exact civil anniversaries must stay quiet even across leap years
+gwt_check/homonyms.py |             self.gap_count += 1 |             self.gap_count = 1 | summary must count every incompatible scoped pair
+gwt_check/homonyms.py |                 self.witness = (p, q, a, b) |                 self.witness = (p, q, a, b); self.out.add("homonym-birth-gap", f"{p['gramps_id']},{q['gramps_id']}") | informational pair rows must not escape the name-group output bound
