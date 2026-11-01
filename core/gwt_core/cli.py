@@ -8,6 +8,7 @@ from pathlib import Path
 from .version import version
 
 TOOLS = {  # name: (module with main(argv), one line)
+    "surname-clusters": ("gwt_fetch.surname_clusters", "offline human-maintained surname suggestions, never identity evidence"),
     "apply": ("gwt_apply.cli", "apply a JSON Lines change list to a tree, dry-run until --apply"),
     "check": ("gwt_check.cli", "read-only checks of a whole tree, with a self-test"),
     "fetch": ("gwt_fetch.cli", "download archive images and text without a browser"),

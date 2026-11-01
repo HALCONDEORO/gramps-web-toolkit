@@ -148,6 +148,7 @@ nav:
       - gwt-access: access.md
       - gwt-batch: batch.md
       - gwt-fetch: fetch.md
+      - Surname clusters: surname-clusters.md
       - gwt-mh: myheritage.md
       - gwt-read: read.md
       - gwt-rawstore: rawstore.md
