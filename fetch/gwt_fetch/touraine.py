@@ -97,11 +97,16 @@ def parse_table(page: str) -> list[dict]:
 
 def search_table(client, query: str, page: int = 1, per_page: int = 20) -> list[dict]:
     """One results page in table mode, sorted by cote, so the registers of a place come in order."""
+    return parse_table(table_page(client, query, page, per_page))
+
+
+def table_page(client, query: str, page: int, per_page: int) -> str:
+    """Shared request path; catalogue also checks the table's pagination evidence."""
     params = {"q": query, "scope": "archival", "mode": "table", "sort": "referencecode_asc",
               "resultsPerPage": per_page, "page": page}
     r = _get(client, BASE + "/search/results", params=params)
     _ok(r, BASE + "/search/results", ("text/html",))
-    return parse_table(r.text)
+    return r.text
 
 
 def _get(client, url: str, **kw):

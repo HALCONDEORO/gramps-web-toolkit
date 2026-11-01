@@ -66,6 +66,30 @@ gwt_fetch/surname_clusters.py | **a} for a in cluster["aliases"] | "spelling": f
 gwt_fetch/surname_clusters.py | **a} for a in cluster["aliases"] | "spelling": a["spelling"]} for a in cluster["aliases"] | provenance must survive in each search suggestion
 gwt_fetch/surname_clusters.py | raise ValueError(f"duplicate JSON field: {key!r}") | pass | duplicate JSON fields must not become last wins
 gwt_fetch/surname_clusters.py | return 1 if result["status"] == "ambiguous" else 0 | return 0 | CLI must signal ambiguous input
+gwt_fetch/touraine_catalogue.py | if not rows: | if len(rows) < per_page: | a short populated page is discarded as terminal without retaining row provenance
+gwt_fetch/touraine_catalogue.py | if not result["complete"] or not rows: | if not rows: | partial pagination certifies uncovered years
+gwt_fetch/touraine_catalogue.py | re.fullmatch(r"([0-9]{4})(?:\s*[-–]\s*([0-9]{4}))?", date.strip()) | re.search(r"([0-9]{4})(?:\s*[-–]\s*([0-9]{4}))?", date.strip()) | uncertain dates silently become exact years
+gwt_fetch/touraine_catalogue.py | len(by_cote[row["cote"]]) > 1 or len(by_ark[row["ark"]]) > 1 | False | conflicting ARKs or metadata lose the conflict flag
+gwt_fetch/touraine_catalogue.py | if len(rows) != expected or len(rows) > per_page: | if False: | an unparsed record becomes an empty terminal table
+gwt_fetch/touraine_catalogue.py | if len(tables) != 1: | if False: | an unrecognised page is not reported incomplete
+gwt_fetch/touraine_catalogue.py | if signature in seen: | if False: | a repeated page does not stop pagination
+gwt_fetch/touraine_catalogue.py | if not rows and signals.next_page: | if False: | an empty table advertising another page loses its explicit incomplete reason
+gwt_fetch/touraine_catalogue.py | sorted(set(range(first, last + 1)) - covered) | [] | the internal uncovered year is hidden
+gwt_fetch/touraine_catalogue.py | for year in years(row["date"])} | for year in [years(row["date"]).start]} | the interior and end of each range disappear and overlaps become gaps
+gwt_fetch/touraine_catalogue.py | row["conflict"] == "yes" | False | conflicts no longer withhold coverage claims
+gwt_fetch/touraine_catalogue.py | or not row["cote"] | or False | rows missing cotes certify uncovered years
+gwt_fetch/touraine_catalogue.py | text = touraine.table_page(client, query, page, per_page) | text = touraine.table_page(client, touraine.clean_cell(query), page, per_page) | a leading equals query is modified as though it were a spreadsheet cell
+gwt_fetch/touraine_catalogue.py | range(first, last + 1) if | range(first, last) if | inclusive range endpoints are lost
+gwt_fetch/touraine_catalogue.py | touraine.clean_cell(str(row[key])) | str(row[key]) | the query is output as a spreadsheet formula
+gwt_fetch/touraine_catalogue.py | not 1 <= max_pages <= MAX_PAGES | False | a zero page ceiling is accepted rather than refused before requesting
+gwt_fetch/touraine_catalogue.py | raise ValueError("unaccounted non-header results row") | continue | an unclassed or unknown data row is silently treated as empty terminal evidence
+gwt_fetch/touraine_catalogue.py | "next" in (attrs.get("rel") or "").lower().split() | (attrs.get("rel") or "").lower() == "next" | a multi-token next relation loses its explicit incomplete reason
+gwt_fetch/touraine_catalogue.py | (attrs.get("rel") or "").lower().split() | (attrs.get("rel") or "").split() | uppercase next tokens are ignored
+gwt_fetch/touraine_catalogue.py | if any("verify you are human" in heading for heading in signals.headings): | if False: | an HTTP200 human challenge loses its refusal reason
+gwt_fetch/touraine_catalogue.py | None in places or len(places) != 1 | False | missing or mixed explicit row places certify a commune and false gaps
+gwt_fetch/touraine_catalogue.py | row.get("place_scope", False) | True | repeated or multiple raw place values collapse into a falsely verified place
+gwt_fetch/touraine_catalogue.py | if re.search(r"[,;/|]|\b(?:et|and|ou|or)\b", identity): | if False: | ambiguous place lists certify coverage
+gwt_fetch/touraine_catalogue.py | result["reason"] = (f"completeness UNKNOWN on page {page}: no captured positive " | result["complete"] = True; result["reason"] = (f"completeness UNKNOWN on page {page}: no captured positive " | empty or challenge tables falsely certify completion without a captured positive terminal contract
 gwt_fetch/variants.py | found = {surname, *configured.get(surname, [])} | found = set(configured.get(surname, [])) | a config list replaces the original spelling
 gwt_fetch/variants.py | if rules: | if True: | rules silently run without explicit opt-in
 gwt_fetch/variants.py | found.update(rule_variants(surname)) | found.update(rule_variants(surname)); found.update(v for s in list(found) for v in rule_variants(s)) | rules recurse into suggestions and configured spellings
