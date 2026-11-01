@@ -8,6 +8,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
+- `gwt-fetch notarial-plan`: offline candidate research chains for a locality and inclusive year period from user-supplied public catalogue JSON. Preserves office identities and references, reports catalogue gaps, overlaps and unknown dates, and never infers a found contract or kinship. Offline fetch commands bypass the network client.
 - `gwt-surname-clusters`: offline suggestions from human-maintained cluster IDs and aliases, preserving spelling and provenance. Shared folded aliases are ambiguous and require human review; no identity proof, automatic clustering or merges. Uses existing names folding; variants integration is deferred.
 - `gwt-check` `date-modifier-note`: read-only contradictions between explicit before/after bounds at the same boundary in event dates and event/citation notes. All conflicting origins remain visible; negated or ambiguous prose is skipped. No exact date, correction or write is inferred.
 - `gwt-check act-media`: for the persons (and events) you name in a local dump or snapshot, reports apart the media references found (event, event citation, person, person citation and source kept as separate levels; only the first two are candidates, all unverified), the Transcript notes available, and a proposed file name `person_event_date_cote-or-ark_vue` with unknown parts left unknown. Read only: it never renames, uploads or writes, and never fails for a gap.
@@ -261,5 +262,6 @@ Lists written for the first public commit of `gwt-apply` behave differently in t
 - `gwt-gate`: a dead session or a permission refusal is no longer reported as a rate limit.
 - `gwt-leads`, `gwt-rank`, `gwt-import-excel` and `gwt-queue`: fixes to living-person detection, surname-first rows and lease handling.
 
+- Notarial planner rejects duplicate JSON keys and non-JSON constants before planning.
 - Isolate homonym reporting behind the existing hygiene hook and a shared duplicate-finding guard; keep inherited run_checks unchanged.
 - Variants: normalize explicit local configuration paths and reject non-regular files before reading.
