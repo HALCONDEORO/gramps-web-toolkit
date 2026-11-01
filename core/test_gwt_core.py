@@ -88,3 +88,13 @@ class Dispatcher(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_surname_clusters_unified_command_is_registered_and_invocable(capsys):
+    from gwt_core.cli import TOOLS, main
+    assert TOOLS['surname-clusters'][0] == 'gwt_fetch.surname_clusters'
+    try:
+        main(['surname-clusters', '--help'])
+    except SystemExit as exc:
+        assert exc.code == 0
+    assert 'gwt-surname-clusters' in capsys.readouterr().out
