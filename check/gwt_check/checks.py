@@ -287,6 +287,32 @@ def hygiene_checks(T: dict, out: Findings, in_scope) -> None:
     homonyms.install(T, out, in_scope, person_name, id_order)
 
 
+def check_vital_pointers(T, out):
+    # birth and death pointers
+    E = T["events"]
+    for p in T["people"].values():
+        erl = p.get("event_ref_list", [])
+        for field, typ in (("birth_ref_index", "Birth"), ("death_ref_index", "Death")):
+            i = p.get(field, -1)
+            primaries = [r for r in erl if r.get("role") == "Primary" and E.get(r.get("ref"), {}).get("type") == typ]
+            gid = p.get("gramps_id")
+            if i == -1:
+                if primaries:
+                    out.add("birth-death-pointer", f"{gid} {field}", f"Primary {typ} but the pointer is -1")
+            elif not 0 <= i < len(erl):
+                out.add("birth-death-pointer", f"{gid} {field}", f"{i} is out of range")
+            else:
+                r = erl[i]
+                e = E.get(r.get("ref"))
+                fallbacks = ({"Baptism", "Christening", "Stillbirth"} if typ == "Birth" else
+                             {"Burial", "Cremation", "Cause Of Death", "Probate", "Stillbirth"})
+                accepted = {typ} if primaries else {typ}.union(fallbacks)
+                if not e or e.get("type") not in accepted or r.get("role") != "Primary":
+                    got = f"{e.get('gramps_id')} {e.get('type')} {r.get('role')}" if e else "a missing event"
+                    out.add("birth-death-pointer", f"{gid} {field}", f"points at {got}")
+
+
+
 def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
                root: str | None = None) -> tuple[list[dict], dict]:
     """Structural checks over the whole tree; duplicate checks need one object of each pair in scope.
@@ -414,28 +440,8 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
     from .modifier_notes import check_modifier_notes
     check_modifier_notes(T, out, in_scope)
 
-    # birth and death pointers
+    check_vital_pointers(T, out)
     E = T["events"]
-    for p in T["people"].values():
-        erl = p.get("event_ref_list", [])
-        for field, typ in (("birth_ref_index", "Birth"), ("death_ref_index", "Death")):
-            i = p.get(field, -1)
-            primaries = [r for r in erl if r.get("role") == "Primary" and E.get(r.get("ref"), {}).get("type") == typ]
-            gid = p.get("gramps_id")
-            if i == -1:
-                if primaries:
-                    out.add("birth-death-pointer", f"{gid} {field}", f"Primary {typ} but the pointer is -1")
-            elif not 0 <= i < len(erl):
-                out.add("birth-death-pointer", f"{gid} {field}", f"{i} is out of range")
-            else:
-                r = erl[i]
-                e = E.get(r.get("ref"))
-                fallbacks = ({"Baptism", "Christening", "Stillbirth"} if typ == "Birth" else
-                             {"Burial", "Cremation", "Cause Of Death", "Probate", "Stillbirth"})
-                accepted = {typ} if primaries else {typ}.union(fallbacks)
-                if not e or e.get("type") not in accepted or r.get("role") != "Primary":
-                    got = f"{e.get('gramps_id')} {e.get('type')} {r.get('role')}" if e else "a missing event"
-                    out.add("birth-death-pointer", f"{gid} {field}", f"points at {got}")
 
     # person <-> family, both ways
     P, F = T["people"], T["families"]

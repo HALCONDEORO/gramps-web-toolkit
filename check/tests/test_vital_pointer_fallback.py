@@ -14,9 +14,11 @@ def pointer_rows(data):
 
 def fallback_data(field, event_type):
     data = selftest.clean_tree()
-    person = next(p for p in data['people'] if p['gramps_id'] == 'I0004')
+    person = next((p for p in data['people'] if p['gramps_id'] == 'I0004'), None)
+    assert person is not None
     ref = person['event_ref_list'][person[field]]
-    event = next(e for e in data['events'] if e['handle'] == ref['ref'])
+    event = next((e for e in data['events'] if e['handle'] == ref['ref']), None)
+    assert event is not None
     event['type'] = event_type
     return data, person, ref, event
 
