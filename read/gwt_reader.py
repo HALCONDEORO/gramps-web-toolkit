@@ -204,13 +204,12 @@ LOGIN_MARKERS = ('type="password"', "type='password'", 'sign in to familysearch'
                  'sign in', '/auth/', 'ident.familysearch.org')
 
 
-def classify_answer(status, headers, body, expect=None, page=None):
+def classify_answer(status, _headers, body, expect=None, page=None):
     """'ok', 'blocked' (HTTP 403: the site refused the account or the IP), 'wall' (HTTP 429, a rate page or a
     captcha), 'dead' (signed out), 'empty' (an empty frame: no body or a page with no readable answer, read as
     a block), 'unexpected' (JSON of the wrong shape) or 'http' (any other non-2xx). A JSON reader passes
     `expect(parsed) -> bool`; a page reader passes `page(html) -> bool`, true only when the page carries the
     record text it asked for, so any other page (an empty frame, an error page) is a STOP."""
-    del headers  # Classification uses status and body; keep the public call signature.
     if status == 403:
         return 'blocked'
     if status == 429:
