@@ -279,3 +279,7 @@ Lists written for the first public commit of `gwt-apply` behave differently in t
 - Variants: normalize explicit local configuration paths and reject non-regular files before reading.
 
 - Report same-person event and citation duplicate candidates without selecting a survivor or changing the tree.
+
+### Offline evidence review tools
+
+- Act evidence packets, transcription contrast, pagination audits and Genae-to-act checklists. All are offline, preserve uncertainty and never verify or write an act automatically.

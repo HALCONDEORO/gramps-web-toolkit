@@ -55,6 +55,11 @@ gwt-mh = "gwt_core.cli:mh"
 gwt-read = "gwt_read:main"
 gwt-report = "gwt_report:main"
 
+gwt-act-packet = "gwt_act_packet:main"
+gwt-pagination-audit = "gwt_pagination_audit:main"
+gwt-genae-act-link = "gwt_genae_act_link:main"
+gwt-transcription-review = "gwt_transcription_review:main"
+
 # The version comes from the git tag: `v0.2.0` builds 0.2.0; a commit after it builds 0.2.1.devN+g<sha>.
 [tool.hatch.version]
 source = "vcs"
@@ -66,6 +71,10 @@ dev-mode-dirs = ["apply", "check", "fetch", "core", "ledger", "gate", "fscache",
                  "access", "cross", "batch", "importxl", "rawstore", "myheritage", "read", "books", "dates", "acts", "report"]
 
 [tool.hatch.build.targets.wheel.force-include]
+"acts/gwt_act_packet.py" = "gwt_act_packet.py"
+"read/gwt_pagination_audit.py" = "gwt_pagination_audit.py"
+"read/gwt_genae_act_link.py" = "gwt_genae_act_link.py"
+"acts/gwt_transcription_review.py" = "gwt_transcription_review.py"
 "ledger/gwt_ledger.py" = "gwt_ledger.py"
 "books/gwt_books.py" = "gwt_books.py"
 "dates/gwt_dates.py" = "gwt_dates.py"

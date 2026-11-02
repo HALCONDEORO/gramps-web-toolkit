@@ -97,3 +97,10 @@ The toolkit works for genealogy in any country. `gwt-spanish-poller` and some `g
 ## License
 
 gramps-web-toolkit is released under the [GPL-3.0-or-later](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/LICENSE) license, the same as the original [GeiserX/gramps-web-toolkit](https://github.com/GeiserX/gramps-web-toolkit), whose authors keep their copyright. This fork's changes are under the same license.
+
+## Offline evidence review
+
+- [act-packet](act-packet.md): review-only evidence and completeness checks; no network or tree writes.
+- [pagination-audit](pagination-audit.md): review-only evidence and completeness checks; no network or tree writes.
+- [genae-act-link](genae-act-link.md): review-only evidence and completeness checks; no network or tree writes.
+- [transcription-review](transcription-review.md): review-only evidence and completeness checks; no network or tree writes.

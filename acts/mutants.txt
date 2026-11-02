@@ -29,3 +29,29 @@ gwt_acts.py | if source in ('decennial-table', 'margin') and get('state') == 've
 gwt_acts.py |         if value and not split_date(value): |         if False: | ambiguous or invalid secondary date is accepted
 gwt_acts.py |         if other_date and other_date != actual: |         if False: | table and margin date conflicts disappear
 gwt_acts.py |         if other_name and dates.fold(other_name) != dates.fold(name): |         if False: | table and margin name conflicts disappear
+
+gwt_act_packet.py |         'status': STATUS, |         'status': review or STATUS, | an approved review promotes the act out of pending_review
+gwt_act_packet.py | 'auto_promoted': 0, | 'auto_promoted': len(records), | the manifest counts every act as auto promoted
+gwt_act_packet.py |     m = DATE_RE.fullmatch(s) |     m = DATE_RE.match(s) | a date with trailing characters is accepted
+gwt_act_packet.py |         datetime.date(int(m.group(1)), int(m.group(2) or 1), int(m.group(3) or 1)) |         datetime.date(int(m.group(1)), 1, 1) | month 13 or 30 February is accepted as a date
+gwt_act_packet.py |     if r1.casefold() == r2.casefold(): |     if r1 == r2: | the same reader in another letter case counts as independent
+gwt_act_packet.py |     if reviewer.casefold() in (r1.casefold(), r2.casefold()): |     if reviewer in (r1, r2): | a reviewer who differs from a reader only in letter case is accepted
+gwt_act_packet.py |         key = (person, typ, date, img, crop) |         key = (person, typ, date, row['image'], row['crop']) | the same evidence under another spelling is not a duplicate
+gwt_act_packet.py | 'image_sha256': img_hash, | 'image_sha256': crop_hash, | the image record carries the hash of the crop
+gwt_act_packet.py |         if os.path.commonpath([real_root, real]) == real_root: |         if False: | an output file may be created inside the evidence root
+gwt_act_packet.py | and os.path.samefile(real, real_in)): | and False): | a hard link to the input is accepted as an output
+gwt_act_packet.py | os.path.exists(b) and os.path.samefile(a, b)): | os.path.exists(b) and False): | two output names for one file (hard link) are accepted
+gwt_act_packet.py |             _discard(t) |             pass | a failed swap leaves a staged temp file behind
+gwt_transcription_review.py | "auto_verified": False, | "auto_verified": True, | a packet is reported as automatically verified
+gwt_transcription_review.py | raise PermissionError(REFUSAL) | return _packet | auto_verify no longer refuses
+gwt_transcription_review.py | if (ea, ra) == (eb, rb): | if False: | same engine and reader is not warned as non independent
+gwt_transcription_review.py | elif ra == rb and ra not in NO_IDENTITY: | elif False: | a shared human reader is not warned as non independent
+gwt_transcription_review.py | s = "".join(c for c in s if unicodedata.category(c) != "Cf") | s = s | an invisible character spoofs a different reader
+gwt_transcription_review.py | if unc["a"] or unc["b"]: | if False: | identical illegible markers are called a match
+gwt_transcription_review.py | not SHA256_RE.fullmatch(sha) | not SHA256_RE.match(sha) | an image hash with a trailing newline is accepted
+gwt_transcription_review.py | if args.out and _same_file(args.input, args.out): | if False: | the output may overwrite the input file
+gwt_transcription_review.py | return os.path.exists(a) and os.path.exists(b) and os.path.samefile(a, b) | return False | a hardlink or symlink to the input is accepted as output
+gwt_transcription_review.py | if len(value.split()) > MAX_FIELD_TOKENS: | if len(value.split()) >= MAX_FIELD_TOKENS: | a field at the token limit is rejected
+gwt_transcription_review.py | if len(value) > limit: | if len(value) >= limit: | text exactly at the character limit is rejected
+gwt_transcription_review.py | if len(text) > MAX_INPUT_CHARS: | if len(text) >= MAX_INPUT_CHARS: | an input file exactly at the size limit is rejected
+gwt_transcription_review.py | os.link(tmp, path) | os.replace(tmp, path) | an existing output file is overwritten without --overwrite

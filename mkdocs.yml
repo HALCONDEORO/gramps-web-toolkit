@@ -142,6 +142,10 @@ nav:
       - gwt-books: books.md
       - gwt-dates: dates.md
       - gwt-acts: acts.md
+      - act-packet: act-packet.md
+      - pagination-audit: pagination-audit.md
+      - genae-act-link: genae-act-link.md
+      - transcription-review: transcription-review.md
       - Military records: military.md
       - Finding church and civil registers: finding-registers.md
       - FamilySearch viewer notes: familysearch-viewer.md
