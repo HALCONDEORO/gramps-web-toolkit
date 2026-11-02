@@ -141,3 +141,8 @@ gwt_fetch/leads.py |     return bool(DOUBT.search(clause.replace('(?)', ' '))) |
 gwt_fetch/leads.py |         clause_end = end + stop.start() |         clause_end = end | doubt after the name is outside the clause evidence
 gwt_fetch/leads.py | and not _doubtful(_clause(body, found.start(), end)) | and True | subject filtering silently drops negated or doubtful parent clues
 gwt_fetch/notarial.py | if not math.isfinite(number): | if False: | overflowing JSON exponents must not produce Infinity in preserved metadata
+gwt_fetch/geo_fr.py |     lng, lat = xy |     lat, lng = xy | GeoJSON longitude/latitude must not be swapped in output
+gwt_fetch/geo_fr.py | 'matched' if len(exact) == 1 and len(rows) == 1 else | 'matched' if rows else | ambiguous fuzzy results must not be selected
+gwt_fetch/geo_fr.py | r['department'] == department | True | exact department filter is applied even if API returns extra rows
+gwt_fetch/geo_fr.py | r['insee_code'] == code | False | exact code selection must preserve its candidate
+gwt_fetch/geo_fr.py | r['requires_human_review'] = True | r['requires_human_review'] = False | every coordinate suggestion requires human review
