@@ -9,7 +9,6 @@ Python 3.11 or newer with `requests` for downloads. The offline `coverage` and `
 ```
 gwt-fetch iiif URL [--pages 1-5,9] [--labels REGEX] [--native] [--out DIR] [--list]
 gwt-fetch iiif --image-base URL/info.json [--pages 1-20] [--out DIR] [--list]
-gwt-fetch crop IMG [...] (--box x,y,w,h [--from-size WxH] | --grid 2x3 [--overlap 10%] | --half left|right) [--max 1600] [--out DIR]
 gwt-fetch digibib URL [--pages ...] [--out DIR] [--list]
 gwt-fetch touraine search QUERY [--start N] [--limit N]
 gwt-fetch touraine catalogue "<place>" [--per-page 20|40|80] [--max-pages N]
