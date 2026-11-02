@@ -513,3 +513,9 @@ leads: they prove neither viewed images nor confirmed people. A confirmed claim
 requires an actual act citation supporting that claim; an unverified hypothesis
 link without an act must remain explicitly marked **hypothesis — no act**.
 Restricted resources remain restricted; retain the custodian's requirements.
+
+## `geo-fr`: current French commune candidates, read-only
+
+`gwt-fetch geo-fr "Vouvray" --department 37` queries the [official commune API](https://geo.api.gouv.fr/decoupage-administratif/communes). `--insee-code` selects an exact current administrative code; `--limit` is1..30. No token, Gramps credentials, apply option or tree write. This command only prints a dry-run candidate table, as `geo` does for Spain.
+
+The API centre is a current commune centre in WGS84, not an act's address or proof that a historical place was this commune. Coordinates are read as longitude/latitude and printed latitude/longitude. Homonyms and fuzzy results stay ambiguous; population is never used to choose a winner. Department filters are exact. Truncation is explicit, never a complete-result claim. Every candidate requires human review. Old/merged communes such as Chemillé may need historical administrative evidence and a current code, not the first fuzzy hit. Compare department, spelling and source act before a separate writer proposes a small backed-up place edit.
