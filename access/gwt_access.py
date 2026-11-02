@@ -185,7 +185,7 @@ def corpus(a):
     return 0
 
 
-def main(argv=None):
+def parse_arguments(argv):
     p = argparse.ArgumentParser(prog="gwt-access", description=__doc__.split("\n\n")[0])
     p.add_argument("--map", default=os.environ.get("GWT_ACCESS", "access.tsv"))
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -214,15 +214,23 @@ def main(argv=None):
     cv.add_argument("--type", dest="record_type", required=True, help="exact record_type text")
     cv.add_argument("--year-from", required=True, type=coverage_year)
     cv.add_argument("--year-to", required=True, type=coverage_year)
-    a = p.parse_args(argv)
+    return p, p.parse_args(argv)
+
+
+def coverage_command(a):
+    try:
+        report = coverage_report(a.tsv, a.parish, a.record_type, a.year_from, a.year_to)
+    except (OSError, ValueError, csv.Error) as e:
+        print(f"gwt-access: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2))
+    return 0
+
+
+def main(argv=None):
+    p, a = parse_arguments(argv)
     if a.cmd == "coverage":
-        try:
-            report = coverage_report(a.tsv, a.parish, a.record_type, a.year_from, a.year_to)
-        except (OSError, ValueError, csv.Error) as e:
-            print(f"gwt-access: {e}", file=sys.stderr)
-            return 2
-        print(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2))
-        return 0
+        return coverage_command(a)
     if a.cmd == "corpus":
         return corpus(a)
     rows = load(a.map)
@@ -252,6 +260,10 @@ def main(argv=None):
             if all(getattr(a, f) in (None, r.get(f)) for f in ("captcha", "viewer", "download", "writes", "index")):
                 print("\t".join(r.get(c, "") for c in COLS[:8]))
         return 0
+    return plan_command(p, a, rows)
+
+
+def plan_command(p, a, rows):
     names = [n.strip() for n in a.archives.split(",") if n.strip()]
     if not names:
         p.error("plan needs at least one archive")
