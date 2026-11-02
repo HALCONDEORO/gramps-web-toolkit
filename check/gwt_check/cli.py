@@ -79,16 +79,7 @@ def live_dump(args, settled=None, seed: Tree | None = None) -> dict:
         else:
             since = None
             if seed is not None:
-                if seed.tree_id != client.tree:
-                    what = f"a dump of tree {seed.tree_id!r}" if seed.tree_id else "a file that records no tree"
-                    raise BadInput(f"--from {seed.source}: {what}, but the login is in tree {client.tree!r}")
-                if seed.read_started is None:
-                    raise BadInput(f"--from {seed.source}: says nowhere when it was read "
-                                   "(no read_started, dumped_at or taken)")
-                if seed.read_started_guessed:
-                    print(f"gwt-check: --from {seed.source} has no read_started; taking its read to have started "
-                          f"{READ_MARGIN // 60} min before it was written, and reading again what changed since",
-                          file=sys.stderr)
+                _validate_seed(seed, client)
                 objs = {t: dict(rows) for t, rows in seed.objs.items()}
                 since = seed.read_started - STAMP_SLACK
             else:
@@ -106,14 +97,31 @@ def live_dump(args, settled=None, seed: Tree | None = None) -> dict:
             else:
                 raise BadInput(f"the tree kept changing: {moved} object(s) still moving after {PASSES} passes")
             data["passes"] = n
-        if hasattr(args, "download"):  # check and dump; links, cites, fill-places and repos never use it
-            data[media.STATUS] = media.annotate(client, data["objects"], seed.media_status if seed else None,
-                                                download=args.download, workers=args.workers)
+        _annotate_media(args, client, data, seed)
     except ApiError as exc:
         raise BadInput(str(exc)) from exc
     print(f"read tree {client.tree} in {time.monotonic() - t0:.0f} s, {client.requests} requests",
           file=sys.stderr)
     return data
+
+
+def _annotate_media(args, client, data, seed):
+    if hasattr(args, "download"):  # check and dump; links, cites, fill-places and repos never use it
+        data[media.STATUS] = media.annotate(client, data["objects"], seed.media_status if seed else None,
+                                            download=args.download, workers=args.workers)
+
+
+def _validate_seed(seed, client):
+    if seed.tree_id != client.tree:
+        what = f"a dump of tree {seed.tree_id!r}" if seed.tree_id else "a file that records no tree"
+        raise BadInput(f"--from {seed.source}: {what}, but the login is in tree {client.tree!r}")
+    if seed.read_started is None:
+        raise BadInput(f"--from {seed.source}: says nowhere when it was read "
+                       "(no read_started, dumped_at or taken)")
+    if seed.read_started_guessed:
+        print(f"gwt-check: --from {seed.source} has no read_started; taking its read to have started "
+              f"{READ_MARGIN // 60} min before it was written, and reading again what changed since",
+              file=sys.stderr)
 
 
 def load_known(path: str) -> dict[tuple[str, str], str]:

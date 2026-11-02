@@ -162,7 +162,7 @@ def _download_thumbnails(client, media, status, workers):
     return status
 
 
-def media_checks(T: dict, status: dict, out, in_scope, info: dict, label) -> None:
+def media_checks(T: dict, status: dict, out, in_scope, info: dict, label, id_order) -> None:
     """The media kinds, on the tree's media objects and what the server said about them (`status`). Single-object
     kinds report media in scope; a same-page pair needs one side in scope."""
     M = T["media"]
@@ -179,7 +179,7 @@ def media_checks(T: dict, status: dict, out, in_scope, info: dict, label) -> Non
         info["media files not checked"] = unchecked
     if unread:  # asked with --download, and the server would not give it or Pillow could not read it
         info["media thumbnails not read"] = unread
-    _duplicate_media_checks(T, M, S, out, in_scope, label)
+    _duplicate_media_checks(T, M, S, out, in_scope, label, id_order)
 
 
 def _single_media_checks(o, got, h, out):
@@ -200,15 +200,15 @@ def _single_media_checks(o, got, h, out):
                                       "replace it, or detach it")
 
 
-def _duplicate_media_checks(T, M, S, out, in_scope, label):
+def _duplicate_media_checks(T, M, S, out, in_scope, label, id_order):
     # the same page twice on one citation: near thumbnails, different files (the same file is dup-media)
     for c in T["citations"].values():
         refs = [r.get("ref") for r in c.get("media_list") or [] if isinstance(r, dict)]
         hashed = [(h, _hash(S[h])) for h in dict.fromkeys(refs) if h in M and _hash(S[h]) is not None]
-        _compare_pages(c, hashed, M, out, in_scope, label)
+        _compare_pages(c, hashed, M, out, in_scope, label, id_order)
 
 
-def _compare_pages(c, hashed, M, out, in_scope, label):
+def _compare_pages(c, hashed, M, out, in_scope, label, id_order):
     for i, (a, ha) in enumerate(hashed):
         for b, hb in hashed[i + 1:]:
             if M[a].get("checksum") and M[a].get("checksum") == M[b].get("checksum"):
@@ -217,15 +217,10 @@ def _compare_pages(c, hashed, M, out, in_scope, label):
                 continue
             bits = hamming(ha, hb)
             if bits <= DUP_BITS:
-                pair = ",".join(sorted((label("media", a), label("media", b)), key=_id_order))
+                pair = ",".join(sorted((label("media", a), label("media", b)), key=id_order))
                 out.add("media-dup-page", f"{c.get('gramps_id') or c['handle']} {pair}",
                         f"{bits} of {HASH_SIDE * HASH_SIDE} bits apart: may be the same page twice, though pages "
                         "of one printed form can look alike; compare them before detaching one")
-
-
-def _id_order(gid: str):
-    from .checks import id_order
-    return id_order(gid)
 
 
 def print_media_info(info: dict) -> None:
