@@ -272,3 +272,5 @@ Lists written for the first public commit of `gwt-apply` behave differently in t
 - Notarial planner rejects duplicate JSON keys and non-JSON constants before planning.
 - Isolate homonym reporting behind the existing hygiene hook and a shared duplicate-finding guard; keep inherited run_checks unchanged.
 - Variants: normalize explicit local configuration paths and reject non-regular files before reading.
+
+- Report same-person event and citation duplicate candidates without selecting a survivor or changing the tree.
