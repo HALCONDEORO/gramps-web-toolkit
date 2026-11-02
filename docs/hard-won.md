@@ -356,3 +356,21 @@ Format: what happened, why, and the rule.
 **Why.** The client retried 429 and 5xx answers but not network errors, so one page that timed out ended a 15-minute read. It is the read side of lesson 48.
 
 **Rule.** Every request of a long read retries network errors with a growing wait, the same as a 5xx; `gwt-check` tries each request 6 times. On a loaded server, read with small pages and one request at a time (`--pagesize 100 --workers 1`), save the dump, and run the checks on the file.
+
+
+### 54. Separate research passes posted the same person more than once
+
+**What happened.** Repeated creates left distinct people with the same individual
+act, sometimes under a one-letter surname variant; another repeated create left
+two burial objects on one person. A triple person entry was not fixed by finding
+only the first pair.
+
+**Why.** A later pass checked a name but not the exact event/citation already
+stored, or retried a POST without reading whether it had landed.
+
+**Rule.** Before creating or retrying, compare current people, events and cited
+acts. Run `same-act-person` across the tree for exact individual-act review pairs
+and the existing same-person reports for repeated objects on one owner. Do not
+merge a couple because both are named in a marriage or a child's act. Keep
+same-name people with different records separate. Review originals and take a
+verified restorable backup plus checkpoint before a separately approved merge.

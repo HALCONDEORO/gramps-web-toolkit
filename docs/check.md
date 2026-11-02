@@ -455,3 +455,43 @@ media, citation confidence, privacy flags and evidence before deciding. No survi
 is selected and no API write, merge, unlink or delete is performed. Any later cleanup
 needs a verified checkpoint and its own reviewed change list. An anniversary screen
 alone cannot establish that two underlying objects are duplicates.
+
+
+## Same-act person candidates
+
+`same-act-person` reports distinct people whose compatible primary names are
+supported by the same Primary individual act: exact event type, complete
+unqualified Gregorian day, place handle, source handle and literal nonempty
+citation page/image reference. Birth, baptism, death and burial are separate
+types. Event-level citations are required: a citation only on a person does not
+say which event it supports. Duplicate citation objects can match by their
+source and literal page even when their handles differ. Missing or uncertain
+fields, alternate source handles, page spelling and folio recto/verso remain
+distinct. This deliberately misses some duplicates rather than guessing.
+
+Given names must match after case/accent/space folding. Corresponding primary
+surnames must match or differ by at most one insertion, deletion or substitution;
+the one-edit allowance requires at least five characters in both surnames.
+This is spelling compatibility, not a learned alias or proof that two people
+are the same. Different known genders, parent/child pairs and partners in an
+existing family are excluded. Family events, marriages and non-Primary roles
+are excluded, so parents or witnesses named in one act are not treated as its
+subject. Existing relationships may still be wrong; exclusions err toward
+manual review. A copied or misattached act, twins, or a page containing several
+acts can still produce a false candidate. Read the complete act and compare
+parents, spouses, other records and private notes.
+
+The report is information-only and cannot fail the check exit code. It chooses
+no survivor, performs no merge and changes nothing. A triple entry yields three
+review pairs; it is not a recommendation to merge all three. `--since`/`--tag`
+scope requires at least one of the two people in scope. A changed event or
+citation alone does not put the pair in scope; use a whole-tree check for that.
+A double burial on one person remains the separate `same-person-event` report.
+
+Repeated POSTs in separate research passes can create both duplicate people and
+duplicate events. After an interrupted or uncertain POST, read current state
+before retrying. Before **any** later merge, take and verify a restorable backup
+and a checkpoint of both people, family links, events, citations, notes, media
+and privacy; review the full record and a separate change list. Re-read the
+survivor and references after cleanup. This report neither authorizes a merge
+nor supplies or verifies the backup/checkpoint.
