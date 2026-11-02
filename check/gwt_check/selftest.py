@@ -528,7 +528,27 @@ def p_date_modifier_note(d):
 
 
 # (plant, check that must fire, key it must carry, needs the clean tree as --since and I0001 as root)
+def p_same_person_event(d):
+    person = _new_person(d, "I0900", "Prueba", "Duplicados")
+    _event(d, person, "E0900", "Baptism", (1800, 1, 1))
+    event = copy.deepcopy(_get(d, "events", "E0900"))
+    event.update(handle="hE0901", gramps_id="E0901")
+    d["events"].append(event)
+    person["event_ref_list"].append(_ref("hE0901", role="Primary"))
+
+
+def p_same_person_citation(d):
+    person = _new_person(d, "I0902", "Prueba", "Citas")
+    for gid in ("C0900", "C0901"):
+        citation = copy.deepcopy(_get(d, "citations", "C0001"))
+        citation.update(handle="h" + gid, gramps_id=gid, page="Prueba aislada")
+        d["citations"].append(citation)
+    person["citation_list"] = ["hC0900", "hC0901"]
+
+
 PLANTS = [
+    (p_same_person_event, "same-person-event", "I0900 E0900,E0901", False),
+    (p_same_person_citation, "same-person-citation", "I0902 I0902 C0900,C0901", False),
     (p_date_modifier_note, "date-modifier-note", "E0001", False),
     (p_unconnected, "unconnected", "I9001", False),
     (p_orphan_event, "orphan-event", "E0102", False),

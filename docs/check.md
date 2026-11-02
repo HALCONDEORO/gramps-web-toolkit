@@ -435,3 +435,23 @@ same controls must run for Death with the Birth pointer preserved. No first
 candidate may be chosen on ambiguity.
 Act-media also respects privacy on MediaRef and EventRef, and does not build a person filename component from a private primary name or surname. Private attributes and repository references do not feed filename reference proposals. Dual-year and non-January newyear dates remain unknown through the shared date reader. This command covers only a person's own Primary events, not family events.
 The homonym rule registers through the existing hygiene hook; the inherited whole-tree checker is unchanged. Findings checks duplicate evidence with the same full-interval guard, without retaining a quadratic pair set.
+
+## Same-person duplicate candidates
+
+`same-person-event` is an information-only report for distinct event objects linked to
+one person with the same stored type, complete date object, place handle and role.
+Unknown dates or places are not identities. Date precision, calendar, before/after
+modifiers and quality remain distinct. Birth is never compared with baptism; death
+is never compared with burial. A repeated reference to one event is handled by the
+existing `repeated-ref` check, not counted as two event objects.
+
+`same-person-citation` reports distinct citations on the same person or one of that
+person's event objects, with the same source handle, literal nonempty page and stored
+date. It does not collapse citations attached to different events. The broader
+`dup-citation` and `dup-vital-event` reports remain available.
+
+These are review hints, not permission to merge or delete. Read descriptions, notes,
+media, citation confidence, privacy flags and evidence before deciding. No survivor
+is selected and no API write, merge, unlink or delete is performed. Any later cleanup
+needs a verified checkpoint and its own reviewed change list. An anniversary screen
+alone cannot establish that two underlying objects are duplicates.
