@@ -1,0 +1,3 @@
+#!/usr/bin/env python3
+from gwt_access import main
+raise SystemExit(main())
