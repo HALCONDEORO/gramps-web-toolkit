@@ -132,8 +132,7 @@ def _pack_checks(add, state, version, max_packs):
         add('multi-pack-index', 'warn', f'no multi-pack-index over {len(packs)} packs', 'git multi-pack-index write')
     else:
         add('multi-pack-index', 'ok', 'present' if midx else f'not needed for {len(packs)} packs')
-    add('maintenance', 'info', 'gc.auto=%s maintenance.auto=%s' % (config['gc.auto'] or 'unset',
-                                                                   config['maintenance.auto'] or 'unset'))
+    add('maintenance', 'info', f"gc.auto={config['gc.auto'] or 'unset'} maintenance.auto={config['maintenance.auto'] or 'unset'}")
 
 
 
@@ -150,7 +149,7 @@ def _lazy_checks(add, partial, filters, environ):
 
 
 def _binary_checks(add, top, max_binary_gb):
-    from gwt_rawstore import is_binary_name
+    from gwt_rawstore_kinds import is_binary_name
     # ---- binaries tracked in git: index only, sizes from the work tree
     by_folder = {}
     for path in git(top, 'ls-files', '-z')[1].split('\0'):
@@ -232,8 +231,7 @@ def _time_machine_checks(add, top, sized, max_tmp_gb, platform):
                     ' ; '.join(f'tmutil addexclusion {p}' for p in included) +
                     '   (for .git, only once the remote has every commit)')
             else:
-                add('time-machine', 'ok', f'{len(big)} big folder(s), all excluded' if big else 'no folder over %s'
-                    % gb(max_tmp_gb * GB))
+                add('time-machine', 'ok', f'{len(big)} big folder(s), all excluded' if big else f'no folder over {gb(max_tmp_gb * GB)}')
 
 
 
@@ -250,8 +248,7 @@ def main(a, out=None):
     if a.json:
         out(json.dumps(rep, indent=2))
     else:
-        out('gwt-rawstore doctor: %s (git %s%s)' % (rep['repo'], rep['git'], ', partial clone' if rep['partial_clone']
-                                                     else ''))
+        out(f"gwt-rawstore doctor: {rep['repo']} (git {rep['git']}{', partial clone' if rep['partial_clone'] else ''})")
         for c in rep['checks']:
             out(f"{c['level']:5} {c['check']}: {c['message']}")
             if c['fix']:

@@ -20,12 +20,11 @@ AWS SigV4 and use path-style addressing, which Garage and MinIO need. Standard l
 """
 import argparse, concurrent.futures, datetime, fnmatch, hashlib, hmac, http.client, os, re, shutil, subprocess, \
     sys, tempfile, time, urllib.error, urllib.parse, urllib.request, xml.etree.ElementTree as ET
+from gwt_rawstore_kinds import BINARY_EXT, is_binary_name
 import gwt_rawstore_doctor   # imported here so a wheel without it fails on any run, not only on `doctor`
 
 MANIFEST = 'rawstore.tsv'
 COLUMNS = ('sha256', 'size', 'key', 'path')
-BINARY_EXT = {'.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.webp', '.bmp', '.heic', '.jp2', '.pdf',
-              '.zip', '.tar', '.gz', '.tgz', '.7z', '.mp3', '.m4a', '.ogg', '.wav', '.mp4', '.mov', '.djvu'}
 EMPTY_SHA = hashlib.sha256(b'').hexdigest()
 CHUNK = 1 << 20
 TRIES, WAIT = 3, 2.0   # put: attempts per file, and seconds before the first retry (doubled each time)
@@ -44,8 +43,6 @@ def object_key(sha, name, prefix=''):
     return '%s%s/%s/%s' % (prefix, sha[:2], sha, name)
 
 
-def is_binary_name(path):
-    return os.path.splitext(path)[1].lower() in BINARY_EXT
 
 
 # ---------------------------------------------------------------- config
@@ -473,6 +470,10 @@ def main(argv=None, store=None):
     if a.cmd == 'doctor':
         return gwt_rawstore_doctor.main(a)
 
+    return _dispatch(a, store)
+
+
+def _dispatch(a, store):
     cfg = load_config()
     if a.cmd == 'check-staged':
         max_kb = a.max_kb if a.max_kb is not None else int(cfg.get('GWT_RAWSTORE_MAX_KB', '256'))
@@ -482,15 +483,19 @@ def main(argv=None, store=None):
     if a.cmd == 'put':
         return 1 if put(store, expand(a.paths, a.all), prefix, a.remove, a.jobs) else 0
     if a.cmd == 'get':
-        if len(a.refs) > 1 and a.output and not os.path.isdir(a.output):
-            raise SystemExit('gwt-rawstore: -o must be an existing directory when several refs are given')
-        for ref in a.refs:
-            print(get(store, ref, cache, a.output, prefix))
-        return 0
+        return _get_refs(a, store, cache, prefix)
     if a.cmd == 'verify':
         return 1 if verify(store, a.roots, a.deep) else 0
     if a.cmd == 'migrate':
         return 1 if migrate(store, a.folder, prefix, a.remove, a.jobs) else 0
+
+
+def _get_refs(a, store, cache, prefix):
+    if len(a.refs) > 1 and a.output and not os.path.isdir(a.output):
+        raise SystemExit('gwt-rawstore: -o must be an existing directory when several refs are given')
+    for ref in a.refs:
+        print(get(store, ref, cache, a.output, prefix))
+    return 0
 
 
 if __name__ == '__main__':

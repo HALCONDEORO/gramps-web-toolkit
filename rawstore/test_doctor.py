@@ -33,7 +33,7 @@ def by_check(rep):
     return out
 
 
-class Base(unittest.TestCase):
+class Base:
     def setUp(self):
         self.t = tempfile.TemporaryDirectory()
         self.addCleanup(self.t.cleanup)
@@ -55,7 +55,7 @@ class Base(unittest.TestCase):
             sh(self.repo, 'pack-objects', '-q', '.git/objects/pack/pack', inp=oid + '\n')
 
 
-class Clean(Base):
+class Clean(Base, unittest.TestCase):
     def test_clean_repo_has_no_findings(self):
         rep = self.doctor()
         self.assertEqual(rep['findings'], 0, rep)
@@ -91,7 +91,7 @@ class Clean(Base):
             self.assertIn(R.main(['doctor', '--repo', self.repo, '--json']), (0, 1))
 
 
-class Findings(Base):
+class Findings(Base, unittest.TestCase):
     def test_too_many_packs(self):
         self.add_packs(4)
         n = len(packs(self.repo))
@@ -138,14 +138,15 @@ class Findings(Base):
         self.assertTrue(any('tools/.cache' in m for m in msgs))
 
 
-class TimeMachine(Base):
-    def fake_tmutil(self, answer):
+class TimeMachine(Base, unittest.TestCase):
+    @staticmethod
+    def fake_tmutil(answer):
         calls, real = [], D.run
 
         def run(args, cwd, timeout=120):
             if args[0] == 'tmutil':
                 calls.append(args)
-                return subprocess.CompletedProcess(args, 0, '[%s]    %s\n' % (answer, args[-1]), '')
+                return subprocess.CompletedProcess(args, 0, f'[{answer}]    {args[-1]}\n', '')
             return real(args, cwd, timeout)
         return calls, mock.patch.object(D, 'run', run)
 
@@ -163,7 +164,7 @@ class TimeMachine(Base):
         with patch:
             c = by_check(self.doctor(platform='darwin', max_tmp_gb=TINY))['time-machine'][0]
         self.assertEqual(c['level'], 'warn')
-        self.assertIn('tmutil addexclusion %s' % os.path.join(self.repo, 'tmp'), c['fix'])
+        self.assertIn(f"tmutil addexclusion {os.path.join(self.repo, 'tmp')}", c['fix'])
         self.assertIn(['tmutil', 'isexcluded'], [list(a[:2]) for a in calls])
 
     def test_excluded_big_folders_are_fine(self):
@@ -212,7 +213,7 @@ class PartialClone(unittest.TestCase):
         def record(args, **kw):
             calls.append((tuple(args), kw.get('env') or {}))
             if args[0] == 'tmutil':
-                return subprocess.CompletedProcess(args, 0, '[Included]    %s\n' % args[-1], '')
+                return subprocess.CompletedProcess(args, 0, f'[Included]    {args[-1]}\n', '')
             return real(args, **kw)
         with mock.patch.object(D.subprocess, 'run', record):
             rep = D.doctor(self.repo, max_packs=0, max_tmp_gb=0, max_binary_gb=0, environ={}, platform='darwin')
