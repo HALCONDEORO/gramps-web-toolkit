@@ -135,6 +135,7 @@ nav:
       - gwt-check: check.md
       - gwt-import-excel: import-excel.md
       - gwt-leads: leads.md
+      - Access coverage: access-coverage.md
   - Research tools:
       - gwt-queue: queue.md
       - gwt-ledger: ledger.md
