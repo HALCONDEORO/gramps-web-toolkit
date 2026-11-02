@@ -416,7 +416,8 @@ class ReviewRegressionTest(unittest.TestCase):
         self.assertFalse(os.path.exists(b))
         self.assertEqual(sorted(os.listdir(self.dir.name)), ['a.json'])
 
-    def _flaky_with_failing_restore(self, a, b):
+    @staticmethod
+    def _flaky_with_failing_restore(a, b):
         real = os.replace
 
         def flaky(src, dst):

@@ -247,9 +247,9 @@ def check_stale(row, now, stale_days):
     if row['status'] == 'done' and row['result'] in ('blocked', 'denied'):
         age = age_days(row['done_at'], now)
         if age is None or age >= stale_days:
+            detail = 'undated' if age is None else f'unattended for {int(age)} days'
             out.append(finding('stale-blocked', 'warning', row,
-                               'done as %s and %s' % (row['result'], 'undated' if age is None
-                                                      else 'unattended for %d days' % age)))
+                               f"done as {row['result']} and {detail}"))
     if row['status'] == 'claimed':
         try:
             end = Q.lease_end(row)
