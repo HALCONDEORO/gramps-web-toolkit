@@ -258,10 +258,10 @@ def set_command(p, a, rows):
 def show_command(a, rows):
     r = find(rows, a.archive)
     if not r:
-        print("no row for %s" % a.archive, file=sys.stderr)
+        print(f"no row for {a.archive}", file=sys.stderr)
         return 1
     for c in COLS:
-        print("%s: %s" % (c, r.get(c, "")))
+        print(f"{c}: {r.get(c, '')}")
     return 0
 
 
