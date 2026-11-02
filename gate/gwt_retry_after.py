@@ -6,6 +6,7 @@ passes an explicit scratch path.
 """
 from __future__ import annotations
 
+from pathlib import Path
 import json
 import math
 import os
@@ -216,7 +217,7 @@ def read_revision(path: str) -> Optional[str]:
     """Revision token of the scratch file, or None if it does not exist."""
     _check_plain(path)
     try:
-        with open(path, "rb") as fh:
+        with Path(path).open("rb") as fh:
             return _revision(fh.read())
     except FileNotFoundError:
         return None
@@ -320,7 +321,7 @@ def _finite_float(text: str) -> float:
     try:
         x = float(text)
     except ValueError:
-        raise argparse.ArgumentTypeError("not a number: %r" % text) from None
+        raise argparse.ArgumentTypeError(f"not a number: {text!r}") from None
     if not _is_num(x):
         raise argparse.ArgumentTypeError("must be finite")
     return x
@@ -365,9 +366,9 @@ def load_proposal(scratch_path: str) -> Optional[BlockProposal]:
     """
     _check_plain(scratch_path)
     try:
-        with open(scratch_path, "r", encoding="utf-8") as fh:
+        with Path(scratch_path).open("r", encoding="utf-8") as fh:
             return _validate_fields(BlockProposal(**json.load(fh)))
     except FileNotFoundError:
         return None
-    except (ValueError, TypeError, OverflowError, RetryAfterError) as exc:
+    except (ValueError, TypeError, OverflowError) as exc:
         raise RetryAfterError("corrupt scratch file") from exc

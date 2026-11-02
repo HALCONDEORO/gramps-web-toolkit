@@ -30,7 +30,8 @@ class AuditTest(unittest.TestCase):
             f.write('\n'.join([head, *lines]) + '\n')
         return A.audit_file(self.path, now=NOW, stale_days=stale_days)
 
-    def codes(self, report):
+    @staticmethod
+    def codes(report):
         return [f['code'] for f in report['findings']]
 
     def test_clean_queue_has_no_findings(self):
@@ -179,7 +180,8 @@ class AuditTest(unittest.TestCase):
         for line in lines:
             self.assertEqual(len(line.split('\t')), len(A.TSV_COLUMNS))
 
-    def run_cli(self, *argv):
+    @staticmethod
+    def run_cli(*argv):
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
             code = A.main(list(argv))
@@ -209,12 +211,15 @@ class AuditTest(unittest.TestCase):
 class MutationGuardTest(unittest.TestCase):
     """Boundary and safety cases that pin one rule each (see mutants-queue-audit.txt)."""
 
-    setUp, tearDown, audit, codes = (AuditTest.setUp, AuditTest.tearDown, AuditTest.audit, AuditTest.codes)
+    setUp, tearDown, audit = (AuditTest.setUp, AuditTest.tearDown, AuditTest.audit)
+    codes = staticmethod(AuditTest.codes)
 
-    def messages(self, rep, code):
+    @staticmethod
+    def messages(rep, code):
         return [f['message'] for f in rep['findings'] if f['code'] == code]
 
-    def live(self, **kw):
+    @staticmethod
+    def live(**kw):
         base = dict(status='claimed', lane='l', token='t', claimed_at='2026-11-01T00:00:00Z', tries='1',
                     lease_until='2026-11-03T00:00:00Z')
         base.update(kw)
@@ -285,7 +290,8 @@ class MutationGuardTest(unittest.TestCase):
 class ReviewRegressionTest(unittest.TestCase):
     """One case per item of contributions/reviews/queueaudit-final.md."""
 
-    setUp, tearDown, audit, codes = (AuditTest.setUp, AuditTest.tearDown, AuditTest.audit, AuditTest.codes)
+    setUp, tearDown, audit = (AuditTest.setUp, AuditTest.tearDown, AuditTest.audit)
+    codes = staticmethod(AuditTest.codes)
     run_cli = AuditTest.run_cli
 
     def p(self, name):

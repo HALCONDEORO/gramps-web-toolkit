@@ -98,12 +98,11 @@ def read_raw(path):
     """(header_parts_or_None, [(line_number, parts)]) read without touching the file."""
     if os.path.getsize(path) > MAX_QUEUE_BYTES:
         raise ValueError(f'queue file is larger than {int(MAX_QUEUE_BYTES)} bytes')
-    with open(path, 'rb') as f:  # bytes, so the cap holds even if the file grew after the size check
+    with Path(path).open('rb') as f:  # bytes, so the cap holds even if the file grew after the size check
         data = f.read(MAX_QUEUE_BYTES + 1)
     if len(data) > MAX_QUEUE_BYTES:
         raise ValueError(f'queue file is larger than {int(MAX_QUEUE_BYTES)} bytes')
     text = data.decode('utf-8')
-    del data
     header, lines = None, []
     for n, line in enumerate(text.splitlines(), 1):
         if not line.strip():
@@ -476,7 +475,7 @@ def bad_outputs(queue, outs):
 def snapshot(path):
     """Current bytes of path, or None when it does not exist (an unreadable file raises OSError)."""
     try:
-        with open(path, 'rb') as f:
+        with Path(path).open('rb') as f:
             return f.read()
     except FileNotFoundError:
         return None

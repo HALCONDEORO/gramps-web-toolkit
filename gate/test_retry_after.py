@@ -360,7 +360,7 @@ class AdversarialTests(unittest.TestCase):
         d.update(over)
         import json
         with open(self.path, "w") as fh:
-            fh.write(json.dumps(d))
+            json.dump(d, fh)
 
     def test_load_huge_int_is_corrupt(self):
         with open(self.path, "w") as fh:
@@ -419,7 +419,8 @@ class AdversarialTests(unittest.TestCase):
 
 
 class CliTests(unittest.TestCase):
-    def run_cli(self, *argv):
+    @staticmethod
+    def run_cli(*argv):
         import contextlib
         import io
         out, err = io.StringIO(), io.StringIO()
@@ -430,7 +431,8 @@ class CliTests(unittest.TestCase):
                 code = exc.code
         return code, out.getvalue(), err.getvalue()
 
-    def base(self, value="120", **over):
+    @staticmethod
+    def base(value="120", **over):
         a = {"--value": value, "--now": str(NOW), "--host": "Example.com",
              "--scope": "api"}
         a.update(over)
