@@ -90,3 +90,36 @@ This tool makes **no claim about handwriting recognition accuracy** for any
 engine or reader, and none has been measured here. It surfaces disagreement and
 uncertainty for a human writer to resolve against the image. Tests use
 synthetic fixtures only.
+
+## Demonstration
+
+`acts/demo_transcription_review.py` runs the real module on one invented
+two-reading fixture (all data synthetic, offline, nothing persisted; temp files
+are removed on exit):
+
+```
+python3 acts/demo_transcription_review.py
+```
+
+Expected result for the base fixture: packet status `needs-writer-review`,
+`auto_verified` false, and status counts of **4 disagree, 1 match, 1 uncertain**
+(`given_names`, `surname`, `date`, `father` disagree; `act_type` matches;
+`mother` is uncertain because both sides carry `[illegible]`). One warning is
+raised: the two readers are the same after case/space normalisation of reader
+identity.
+
+The demo also checks **5 variants** of that fixture:
+
+1. Same engine and reader on both sides: shared engine/reader warning.
+2. Both readers `unknown`: two "not identified" warnings, no "same reader" claim.
+3. Reader differing only by an invisible zero-width character: same-reader warning.
+4. Identical fields on both sides: identical-transcriptions warning; everything
+   matches except the uncertain `mother`.
+5. Same text in NFC and decomposed form: no differences, `nfc_recomposed`
+   flagged on one side only.
+
+It also exercises the CLI in a temp directory (JSON and `--text` output,
+refusal to overwrite, refusal of a symlink alias of the input or a dangling
+symlink as `--out`), and asserts the rejections on captured stderr. The demo
+shows tool behaviour only; it makes no claim about which reading is correct and
+reports no accuracy figure.
