@@ -1,0 +1,4 @@
+#!/usr/bin/env python3
+from gwt_queue_audit import main
+import sys
+sys.exit(main())

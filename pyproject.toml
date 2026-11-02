@@ -54,6 +54,9 @@ gwt-rawstore = "gwt_rawstore:main"
 gwt-mh = "gwt_core.cli:mh"
 gwt-read = "gwt_read:main"
 gwt-report = "gwt_report:main"
+gwt-queue-audit = "gwt_queue_audit:main"
+gwt-install-doctor = "gwt_install_doctor:main"
+gwt-retry-after = "gwt_retry_after:main"
 
 gwt-act-packet = "gwt_act_packet:main"
 gwt-pagination-audit = "gwt_pagination_audit:main"
@@ -68,9 +71,12 @@ source = "vcs"
 packages = ["apply/gwt_apply", "check/gwt_check", "fetch/gwt_fetch", "core/gwt_core"]
 # `pip install -e .` puts these folders on sys.path instead of copying files
 dev-mode-dirs = ["apply", "check", "fetch", "core", "ledger", "gate", "fscache", "queue", "leads", "rank",
-                 "access", "cross", "batch", "importxl", "rawstore", "myheritage", "read", "books", "dates", "acts", "report"]
+                 "access", "cross", "batch", "importxl", "rawstore", "myheritage", "read", "books", "dates", "acts", "report", "doctor"]
 
 [tool.hatch.build.targets.wheel.force-include]
+"queue/gwt_queue_audit.py" = "gwt_queue_audit.py"
+"doctor/gwt_install_doctor.py" = "gwt_install_doctor.py"
+"gate/gwt_retry_after.py" = "gwt_retry_after.py"
 "acts/gwt_act_packet.py" = "gwt_act_packet.py"
 "read/gwt_pagination_audit.py" = "gwt_pagination_audit.py"
 "read/gwt_genae_act_link.py" = "gwt_genae_act_link.py"
