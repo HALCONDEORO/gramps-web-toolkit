@@ -194,16 +194,20 @@ def run(args, client) -> int:
     title = _label(manifest.get("label"))
     print(f"gwt-fetch: {title or manifest_url}: {len(cs)} canvas(es) selected", file=sys.stderr)
     if args.list:
-        for c in cs:
-            url = f"{c.service}/info.json" if getattr(args, "native", False) and c.service else \
-                (candidates(c) or [""])[0]
-            print(f"{c.index}\t{c.label}\t{url}")
+        _list_canvases(args, cs)
         return 0
     store = Store(args.out)
     failed = sum(not _fetch_canvas(args, client, store, c, manifest_url, referer) for c in cs)
     if store.manifest.exists():
         print(f"gwt-fetch: manifest rows in {store.manifest}", file=sys.stderr)
     return 1 if failed else 0
+
+
+def _list_canvases(args, cs):
+    for c in cs:
+        url = f"{c.service}/info.json" if getattr(args, "native", False) and c.service else \
+            (candidates(c) or [""])[0]
+        print(f"{c.index}\t{c.label}\t{url}")
 
 
 def _fetch_canvas(args, client, store, c, manifest_url, referer):
