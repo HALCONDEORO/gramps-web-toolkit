@@ -148,6 +148,7 @@ nav:
       - gwt-rank: rank.md
       - gwt-cross: cross.md
       - gwt-access: access.md
+      - Parish/year coverage: access-coverage.md
       - gwt-batch: batch.md
       - gwt-fetch: fetch.md
       - Surname clusters: surname-clusters.md
