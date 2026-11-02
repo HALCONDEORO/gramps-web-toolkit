@@ -1,6 +1,4 @@
-import argparse
 import copy
-import math
 import pytest
 from gwt_fetch import geo_fr, cli
 

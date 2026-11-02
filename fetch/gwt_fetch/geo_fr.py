@@ -48,14 +48,16 @@ def candidate(row, query):
             'lat': lat, 'lng': lng, 'source': API + '/' + code}
 
 
-def geocode(client, query, department=None, code=None, limit=10):
-    query = text(query, 'query')
+def _validate_options(department, code, limit):
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 30:
         raise ValueError('limit must be 1..30')
     if department is not None and not re.fullmatch(r'(?:\d{2,3}|2[AB])', department):
         raise ValueError('invalid department')
     if code is not None and not re.fullmatch(r'[0-9AB]{5}', code):
         raise ValueError('invalid INSEE code')
+
+
+def _communes(client, query, department, code):
     params = {'fields': 'nom,code,codeDepartement,centre', 'format': 'json', 'geometry': 'centre'}
     if department:
         params['codeDepartement'] = department
@@ -66,6 +68,10 @@ def geocode(client, query, department=None, code=None, limit=10):
     data = [data] if code and isinstance(data, dict) else data
     if not isinstance(data, list):
         raise ValueError('expected commune list')
+    return data
+
+
+def _review_candidates(data, query, department, code, limit):
     rows = [candidate(r, query) for r in data]
     rows = [r for r in rows if (not department or r['department'] == department) and (not code or r['insee_code'] == code)]
     rows.sort(key=lambda r: (r['insee_code'], r['name']))
@@ -79,6 +85,13 @@ def geocode(client, query, department=None, code=None, limit=10):
         r['current_commune_only'] = True
         r['candidate_count'] = len(rows)
     return rows[:limit]
+
+
+def geocode(client, query, department=None, code=None, limit=10):
+    query = text(query, 'query')
+    _validate_options(department, code, limit)
+    data = _communes(client, query, department, code)
+    return _review_candidates(data, query, department, code, limit)
 
 
 def run(args, client):
