@@ -87,3 +87,16 @@ triggers a STOP.
 Unique-id counts depend on the manifest being accurate. A `complete` verdict
 means the manifest is internally consistent, not that the source is complete.
 Tests use synthetic fixtures only: `python3 -m unittest read/test_pagination_audit.py`.
+
+## Demonstration
+
+`read/demo_pagination_audit.py` runs the audit against built-in synthetic
+manifests only. It makes no accuracy claim about the auditor or any real
+source; it only shows the documented STOP and `complete` behaviors on
+invented data.
+
+```
+python3 read/demo_pagination_audit.py
+```
+
+Expected result: `27/27` demonstration cases pass.

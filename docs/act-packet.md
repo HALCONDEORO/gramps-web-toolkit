@@ -83,3 +83,23 @@ of a file. Arbitrary bytes under an image extension are not rejected; they are f
 - Agreement is textual. Two readings that differ in spelling are a conflict, and two that agree can both be wrong.
 - Any rejected row blocks the whole run, so a partial packet is never written.
 - No real records have been read with it.
+
+## Demonstration run
+
+`acts/demo_act_packet.py` is a demonstration runner, not a test suite and not a real run. Everything it uses is
+explicitly synthetic: invented people (`I0001`...), invented readers (`alice`, `bob`, `carol`) and readings, and
+dummy "image" bytes. It creates its inputs in one temporary directory, which is deleted on exit. It uses the
+standard library only, no network, and reads no real records.
+
+```bash
+python3 acts/demo_act_packet.py
+```
+
+It runs six scenarios through `gwt_act_packet` (rollback also patches private restore internals): a normal act, an uncertain reading, a
+conflict, path blocks, rollback and writer handoff. Each check compares against an exact expected safety outcome.
+On success it prints one line (`demo_act_packet OK: 6 scenarios, 130 checks; all synthetic, nothing promoted or
+verified, nothing persisted`) and exits `0`. On an assertion failure it names the scenario on stderr and exits `1`. Unexpected errors produce a traceback. The
+last recorded run passed 6 scenarios and 130 checks. Passing shows only that the invented cases behave as
+specified. It says nothing about real records or real images.
+
+On systems without symlink support, that variant is skipped and the check count is lower.
