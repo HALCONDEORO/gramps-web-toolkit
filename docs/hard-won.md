@@ -356,3 +356,22 @@ Format: what happened, why, and the rule.
 **Why.** The client retried 429 and 5xx answers but not network errors, so one page that timed out ended a 15-minute read. It is the read side of lesson 48.
 
 **Rule.** Every request of a long read retries network errors with a growing wait, the same as a 5xx; `gwt-check` tries each request 6 times. On a loaded server, read with small pages and one request at a time (`--pagesize 100 --workers 1`), save the dump, and run the checks on the file.
+
+
+### 53. A blocked image or an empty index became a whole-branch negative
+
+**What happened.** Parallel searches produced similar-looking empty results from
+very different causes: an index did not cover the requested years, an image could
+not be opened, a filtered query silently behaved like a global query, and a
+surname match belonged to someone else. A book title also looked like proof that
+a whole period had been searched.
+
+**Why.** Access, coverage, query behaviour and identity were collapsed into one
+word: "negative". An OCR result also hid whether the original page was read.
+
+**Rule.** Use `gwt-ledger assess` before logging: preserve the collection, period,
+section, variants, inspected image ranges and evidence reference. Blocked access
+is unresolved; partial coverage cannot answer the full scope; OCR/index negatives
+need a known positive control and checked filters. Even a hit does not prove
+identity or kinship. The assessment is advisory and offline, not authentication
+of its caller's evidence. Existing ledger callers remain unchanged.

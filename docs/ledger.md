@@ -142,6 +142,85 @@ With no `--total`, `total` is null and `unknown_tail` is true. Only gaps from im
 
 With `--ledger-dir`, marks write `<dir>/<key(reader)>.tsv` using the existing lane slug helper and query reads the shared ledger plus all lane TSV files. Read commands include each resolved path once, even when the shared ledger is inside the lane directory or reached through a directory alias. Identical rows in separate files remain separate records. Separate reading rows and overlapping readers are preserved even if their names select the same lane filename. Each file is atomic; querying several lane files is not a single transaction across them. Locks coordinate processes on one host, as for search rows.
 
+## Assess a result before logging it
+
+`assess` is an offline advisory step. It prints JSON and exits 0 when valid input
+was assessed, even if its recommended ledger `result` is `blocked` or `partial`.
+It does not read or write the ledger, fetch a reference, authenticate evidence,
+or prove that the supplied scope or flags are true. Existing `add` and `check`
+behaviour and the TSV schema are unchanged; this is not a gate on old callers.
+
+All identifiers here are invented:
+
+```sh
+gwt-ledger assess --method ocr --outcome none --access open --coverage full \
+  --scope 'Invented collection; births 1800-1801; parish A; query Ana Alfa / Alpha' \
+  --ref invented-query-evidence.txt --control-verified --filters-verified
+```
+
+Methods are `ocr`, `index`, `images` and `catalog`. Outcomes are `hit` or `none`.
+Access must be explicitly `open`; `restricted`, `captcha`, `load-error`,
+`maintenance` and `unknown` recommend `blocked`, including for a claimed hit.
+Coverage describes the **entire stated scope**, not a site's headline percentage:
+`partial`, `outside` and `unknown` recommend `partial` when access is open. Only
+`full` can retain the requested outcome. For `ocr` and `index`, both
+`--control-verified` and `--filters-verified` are also needed; otherwise the result
+is `partial`. These flags are assertions from an actual check, not switches to
+make a negative pass. A known positive query checks that the route works; inspect
+the response to verify that the requested place, dates and film filters applied.
+An unchanged global count is a warning, not proof that a particular film is absent
+or untranscribed.
+
+`scope` and `ref` must be non-blank and are preserved verbatim in the JSON. Put
+collection, parish/municipality, event type, years, spelling variants and reviewed
+image ranges in the scope. The report distinguishes an OCR/index query returning
+no match, no entry found in inspected images, and no description found in an
+inspected catalogue. None of these says the person or act does not exist.
+A `hit` remains a candidate: `kinship_proven` is always false. Check the actual
+record and identity separately before proposing any relationship.
+
+After reviewing the assessment, record its result with `add` and the same
+recoverable evidence reference. For images, also `mark` the precise range read;
+a title date range or a few sampled pages does not mean every image was read.
+Do not log an image that failed to load as a negative reading.
+
+## Source and identity checklist
+
+- **Index versus original:** retain place, record type, date type, book, folio,
+  identifier and source URL. An index without parents is a lead, not missing
+  parentage to fill by inference. A folio is not a viewer image number. Verify
+  the book's actual contents, not just its title range.
+- **Population registers:** first locate the right volume, district and section;
+  build image/folio/place landmarks before a long sweep. A household's presence,
+  address and ages alone do not prove parentage. A relationship column can supply
+  evidence, but read its header and the complete household context.
+- **Namesakes and spellings:** search documented variants, retaining the literal
+  reading and source. Shared names, nearby dates or a named child in a parent's
+  death act do not identify that child with a same-name person elsewhere.
+  Keep candidates separate until a record or documented chain establishes the
+  identity. Before creating a person, check both spouses, children and dates.
+- **Event dates:** baptism is not birth; burial is not death. Record each explicit
+  date separately. An age-derived birth year is estimated, not exact. A marginal
+  annotation may belong to a later event, not the main act's year.
+- **Press and prison records:** search extracts can truncate before the surname.
+  Read the full page, record and final disposition. A cover date is not necessarily
+  the record date; imprisonment alone does not establish a political conviction.
+  Same-name coverage without identifying details remains an unassigned candidate.
+- **Blocked routes:** distinguish contract restrictions, access requirements,
+  loading errors and maintenance from absent images. Stop at a captcha,
+  throttling or access warning; do not use alternate image hosts to evade it.
+  Metadata access does not grant image access. A signed-out empty response is
+  unresolved, not an empty collection. See [FamilySearch viewer notes](familysearch-viewer.md).
+- **Requests and costs:** check existing requests and replies before contacting
+  the custodian. A municipal cemetery request is not a request for a parish
+  marriage book. Verify custody, ask for availability and price before paid work,
+  and do not assume a centre or subscription unlocks a restricted image. See
+  [Archive requests](archive-requests.md).
+- **Writes and interrupted runs:** inspect current objects and sources before
+  writing. After an uncertain write, read the resulting state before retrying.
+  Keep unsupported relationship hypotheses as research notes, not family links.
+  Do not publish images or private records without the required rights and consent.
+
 ## Tests
 
 ```sh
