@@ -28,6 +28,34 @@ def _selection(value):
     return (_text(value["spelling"]), _text(value["provenance"], provenance=True))
 
 
+def _selections(original, selected):
+    first = _selection(original)
+    if not isinstance(selected, list) or len(selected) > MAX_SELECTED:
+        raise ValueError("selected must be a list of at most eight explicit selections")
+    return [first, *sorted({_selection(row) for row in selected} - {first})]
+
+
+def _sources(sources):
+    if (not isinstance(sources, list) or not 1 <= len(sources) <= len(SOURCES)
+            or any(not isinstance(s, str) or s not in SOURCES for s in sources)
+            or len(set(sources)) != len(sources)):
+        raise ValueError("sources must be distinct gazeta/boe selections")
+    return [source for source in SOURCES if source in sources]
+
+
+def _source_entries(source, selections, query_sets):
+    grouped = {}
+    for spelling, provenance in selections:
+        for query in query_sets[spelling]:
+            key = names.fold(query)
+            row = grouped.setdefault(key, {
+                "source": source, "query": query, "normalized_query": key,
+                "status": "planned", "coverage_status": "unknown", "contributions": []})
+            row["contributions"].append({"spelling": spelling, "provenance": provenance,
+                                          "query": query})
+    return list(grouped.values())
+
+
 def build(given: str, original: dict, selected: list, sources: list) -> dict:
     """Plan two name orders for explicitly selected *complete* surname strings.
 
@@ -38,34 +66,17 @@ def build(given: str, original: dict, selected: list, sources: list) -> dict:
     Folding merges planned requests, retaining every exact contributing query.
     """
     given = _text(given)
-    first = _selection(original)
-    if not isinstance(selected, list) or len(selected) > MAX_SELECTED:
-        raise ValueError("selected must be a list of at most eight explicit selections")
-    selections = [first, *sorted({_selection(row) for row in selected} - {first})]
-    if (not isinstance(sources, list) or not 1 <= len(sources) <= len(SOURCES)
-            or any(not isinstance(s, str) or s not in SOURCES for s in sources)
-            or len(set(sources)) != len(sources)):
-        raise ValueError("sources must be distinct gazeta/boe selections")
+    selections = _selections(original, selected)
+    sources = _sources(sources)
+    first = selections[0]
 
     # Reuse explicit suggestion semantics with rules disabled. Full surnames are
     # passed without spellings to names.queries: it must not split a compound
     # surname and replace only its first word.
     spellings = variants.suggest(first[0], {first[0]: [s for s, _ in selections]}, rules=False)
     query_sets = {s: names.queries(given, s) for s in spellings}
-    entries = []
-    for source in SOURCES:
-        if source not in sources:
-            continue
-        grouped = {}
-        for spelling, provenance in selections:
-            for query in query_sets[spelling]:
-                key = names.fold(query)
-                row = grouped.setdefault(key, {
-                    "source": source, "query": query, "normalized_query": key,
-                    "status": "planned", "coverage_status": "unknown", "contributions": []})
-                row["contributions"].append({"spelling": spelling, "provenance": provenance,
-                                              "query": query})
-        entries.extend(grouped.values())
+    entries = [entry for source in sources
+               for entry in _source_entries(source, selections, query_sets)]
     if len(entries) > MAX_ENTRIES:
         raise ValueError("plan exceeds 36 logical source/query entries")
     return {"schema_version": 1, "status": "planned", "executed": False,
