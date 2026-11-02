@@ -19,28 +19,26 @@ def _inside(applier, place, other):
     return False
 
 
-def _check_merge(applier, winner, loser):
-    from .ops import Conflict, fold
+def _check_merge(applier, winner, loser, conflict, fold):
     if winner['handle'] == loser['handle']:
-        raise Conflict('winner and loser are the same place')
+        raise conflict('winner and loser are the same place')
     types = {fold(str(o.get('place_type') or '')) for o in (winner, loser)} - {'', 'unknown'}
     if len(types) > 1:
-        raise Conflict('places have different types; review them before merging')
+        raise conflict('places have different types; review them before merging')
     if _inside(applier, winner, loser) or _inside(applier, loser, winner):
-        raise Conflict('one place encloses the other; merging would create a loop')
+        raise conflict('one place encloses the other; merging would create a loop')
     if _parents(winner) != _parents(loser):
-        raise Conflict('places have different parent sets; review their hierarchy before merging')
+        raise conflict('places have different parent sets; review their hierarchy before merging')
     # The merge keeps the winner's scalar fields. Refuse to drop a fact or weaken privacy.
     for key in ('lat', 'long', 'code', 'private'):
         if loser.get(key) not in (None, '') and winner.get(key) != loser[key]:
-            raise Conflict(f'places differ in {key}; review before merging')
+            raise conflict(f'places differ in {key}; review before merging')
 
 
-def _moving(applier, loser):
-    from .ops import Conflict
-    holders = sorted(applier._referrers('Place', loser['handle']))
+def _moving(loser, conflict, referrers):
+    holders = sorted(referrers('Place', loser['handle']))
     if any(kind.lower() not in ('event', 'place') for kind, _ in holders):
-        raise Conflict('place has an unsupported reference kind; review before merging')
+        raise conflict('place has an unsupported reference kind; review before merging')
     return holders
 
 
@@ -62,20 +60,20 @@ def _simulate(applier, winner, loser, holders):
         applier.c.pending[(cls, handle)] = obj
 
 
-def merge_place(applier, op):
-    if applier._merge_done('Place', op):
+def merge_place(applier, op, conflict, fold, referrers, merge_done, merge_note, show_merge):
+    if merge_done('Place', op):
         return
     winner = copy.deepcopy(applier.obj('Place', op['winner']))
     loser = copy.deepcopy(applier.obj('Place', op['loser']))
-    _check_merge(applier, winner, loser)
-    holders = _moving(applier, loser)
+    _check_merge(applier, winner, loser, conflict, fold)
+    holders = _moving(loser, conflict, referrers)
     # Keep the whole loser record in the research note, not only its display name.
     record = {k: v for k, v in loser.items() if k not in ('_read', '_snap', 'backlinks', 'extended', 'profile')}
-    applier._merge_note(op, 'Place', f'Place {applier.label(loser)}: {json.dumps(record, ensure_ascii=False)}')
+    merge_note(op, 'Place', f'Place {applier.label(loser)}: {json.dumps(record, ensure_ascii=False)}')
     winner = applier.obj('Place', op['winner'])
     winner.setdefault('_class', 'Place')
     loser.setdefault('_class', 'Place')
-    applier._show_merge(winner, loser)
+    show_merge(winner, loser)
     applier.actions.extend(f'  {kind} {handle}: place {applier.label(loser)} -> {applier.label(winner)}'
                            for kind, handle in holders)
     # Simulate the server's rewritten references for every following dry-run operation.
@@ -85,15 +83,14 @@ def merge_place(applier, op):
     applier.wrote = True
 
 
-def delete_place(applier, op):
-    from .ops import Conflict, stable_handle
+def delete_place(applier, op, conflict, stable_handle, referrers):
     ref = op['place']
     handle = applier.keymap.get(ref[4:]) or stable_handle(ref[4:]) if ref.startswith('key:') else \
         applier.c.handle_for_gramps_id('Place', ref)
     if handle is None or not applier.c.exists('Place', handle):
-        raise Conflict(f'no Place {ref}; deletion is not silently assumed complete')
+        raise conflict(f'no Place {ref}; deletion is not silently assumed complete')
     obj = applier.c.get('Place', handle)
-    held = _moving(applier, obj)
+    held = _moving(obj, conflict, referrers)
     # Live backlinks can still name a reference removed by an earlier planned update.
     for kind, h in held:
         cls = 'Event' if kind.lower() == 'event' else 'Place'
@@ -101,7 +98,7 @@ def delete_place(applier, op):
             continue
         current = applier.c.pending.get((cls, h))
         if current is None or json.dumps(handle) in json.dumps(current):
-            raise Conflict(f'Place {ref} is still referenced by {kind} {h}; nothing deleted')
+            raise conflict(f'Place {ref} is still referenced by {kind} {h}; nothing deleted')
     applier.actions.append(f'delete Place {ref}: {json.dumps(obj, ensure_ascii=False)}')
     applier.reasons.append(f'missing: delete Place {ref}')
     applier.c.remove('Place', handle)

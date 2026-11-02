@@ -251,6 +251,11 @@ def _check_coords(f: dict) -> None:
         raise ValueError("lat/long out of range")
 
 
+def _place_intent(name, op):
+    if name == "delete_place" and op.get("expect_unreferenced") is not True:
+        raise ValueError("delete_place needs expect_unreferenced: true")
+
+
 def validate(ops: list[dict]) -> list[str]:
     """Every problem with the change list, found before anything is read or written."""
     errors = []
@@ -374,8 +379,7 @@ def validate(ops: list[dict]) -> list[str]:
                     raise ValueError("person and target are the same")
                 if not isinstance(op.get("relation"), str) or not op["relation"].strip():
                     raise ValueError("relation is a non-empty text, e.g. DNA")
-            if name == "delete_place" and op.get("expect_unreferenced") is not True:
-                raise ValueError("delete_place needs expect_unreferenced: true")
+            _place_intent(name, op)
             if name.startswith("merge_") and op.get("winner") == op.get("loser"):
                 raise ValueError("winner and loser are the same")
             if name == "merge_person" and set(op.get("use_loser") or []) - set(USE_LOSER):
@@ -2123,11 +2127,11 @@ class Applier:
 
     def merge_place(self, op):
         from .place_ops import merge_place
-        merge_place(self, op)
+        merge_place(self, op, Conflict, fold, self._referrers, self._merge_done, self._merge_note, self._show_merge)
 
     def delete_place(self, op):
         from .place_ops import delete_place
-        delete_place(self, op)
+        delete_place(self, op, Conflict, stable_handle, self._referrers)
 
     def merge_source(self, op):
         """Two sources that are one register entered twice: the loser's citations cite the winner, then the loser goes.
