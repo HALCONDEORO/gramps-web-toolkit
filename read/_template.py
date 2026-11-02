@@ -70,11 +70,11 @@ def add_search_args(sp):
 
 def search(a, R):
     url = search_url(a.given, a.surname)
-    status, rh, body, cached = R.get(url, {'accept': ACCEPT}, refresh=a.refresh, page=gwt_reader.page_check(SPEC))
+    _status, _rh, body, cached = R.get(url, {'accept': ACCEPT}, refresh=a.refresh, page=gwt_reader.page_check(SPEC))
     page = body.decode('utf-8', 'replace')
     cands = candidates(page)
     env = gwt_reader.envelope(url, None, text=text(page), verdict=gwt_reader.classify(page, SPEC), from_cache=cached)
     base = gwt_reader.write_search(a.out, gwt_reader.search_key(url, [SOURCE, a.given, a.surname]), env, cands)
     gwt_reader.print_paths(SOURCE, base, print)
-    print('results\t%d read%s' % (len(cands), ' (cache)' if cached else ''), flush=True)
+    print(f"results\t{len(cands)} read{' (cache)' if cached else ''}", flush=True)
     return gwt_reader.EXIT_OK if cands else gwt_reader.EXIT_EMPTY
