@@ -54,7 +54,7 @@ Format: what happened, why, and the rule.
 
 **Why.** In a partial clone, any command that reads many blobs that are not on disk (`git grep <rev>`, `git log -S`, `git log -G`, `git log -p`) turns into one network fetch per object.
 
-**Rule.** Grep the working tree (`rg`, or `git grep` with no revision). For files outside the sparse checkout, use the server's code search or a full clone on a server. `git show HEAD:<path>` for one known file is one fetch; thousands of them are thousands of packs (lesson 56). If load spikes, look for `index-pack --promisor` in `ps` and check `packs:` in `git count-objects -v`.
+**Rule.** Grep the working tree (`rg`, or `git grep` with no revision). For files outside the sparse checkout, use the server's code search or a full clone on a server. `git show HEAD:<path>` for one known file is one fetch; thousands of them are thousands of packs (lesson 57). If load spikes, look for `index-pack --promisor` in `ps` and check `packs:` in `git count-objects -v`.
 
 ### 8. Git auto-maintenance repacks filled the disk
 
@@ -76,15 +76,15 @@ Format: what happened, why, and the rule.
 
 **Rule.** Every lane uses its own scratch directory (`mktemp -d`, or a path with the lane name).
 
-### 55. Lazy fetching turned one-off commands into gigabyte downloads
+### 56. Lazy fetching turned one-off commands into gigabyte downloads
 
 **What happened.** In the same partial clone, a few `git grep <rev>`, `git archive` and `git log -p` runs each fetched most of the tree's history, and each left a pack of several gigabytes. Gigabyte-sized log files committed to the repo made every such fetch bigger.
 
 **Why.** Git fetches a missing object the moment a command needs it, unless lazy fetching is off. Turning it off makes those commands fail at once instead (`GIT_NO_LAZY_FETCH`, git 2.45: https://github.com/git/git/blob/ebdc087dc99d68bb340c282b2ba5f722def28d19/Documentation/git.adoc).
 
-**Rule.** Export `GIT_NO_LAZY_FETCH=1` in every agent's environment, and fetch on purpose (lesson 56). `gwt-rawstore doctor` reports a partial clone where it is not set ([rawstore.md](rawstore.md#repo-health-doctor)).
+**Rule.** Export `GIT_NO_LAZY_FETCH=1` in every agent's environment, and fetch on purpose (lesson 57). `gwt-rawstore doctor` reports a partial clone where it is not set ([rawstore.md](rawstore.md#repo-health-doctor)).
 
-### 56. Reading fresh files one `git show` at a time made a pack per read
+### 57. Reading fresh files one `git show` at a time made a pack per read
 
 **What happened.** Lanes never pulled. To read the latest version of a shared file they ran `git show origin/main:<path>`, many times an hour, in many lanes. The repo gained over a thousand packs a day, most holding a single blob, and the endpoint security agent scanned every new file (each pack is four: pack, index, reverse index and promisor marker).
 
@@ -99,7 +99,7 @@ git ls-tree -r origin/main -- <paths> | awk '{print $3}' |
       --recurse-submodules=no --filter=blob:none --stdin
 ```
 
-### 57. Merge packs with `repack --geometric`, never with a multi-pack-index repack
+### 58. Merge packs with `repack --geometric`, never with a multi-pack-index repack
 
 **What happened.** With thousands of packs and no multi-pack-index, looking up one missing object took tens of seconds on a cold disk, and every lazy fetch starts with such a lookup. The cleanup, one big merge of every pack, ran next to a Time Machine backup on a nearly full disk and froze the laptop.
 
