@@ -84,6 +84,7 @@ def blocked(memory, op):
         applier.merge_person(op)
     assert "I1" in str(exc.value) and "I2" in str(exc.value)
     assert "review" in str(exc.value).lower()
+    assert "does not establish distinct identities" in str(exc.value)
     assert not any(private in str(exc.value) for private in ("Néral", "Cloudfern", "act 0", "Daven"))
     assert memory.data == before
     assert memory.calls == []  # no note, save or merge
@@ -93,19 +94,15 @@ def blocked(memory, op):
 @pytest.mark.parametrize("kind", ["Birth", "Baptism"])
 @pytest.mark.parametrize("parents,acts", [(False, False), (True, False), (False, True), (True, True)])
 @pytest.mark.parametrize("reverse", [False, True])
-def test_four_cases(kind, parents, acts, reverse):
+def test_same_day_with_or_without_contradictions(kind, parents, acts, reverse):
     memory, a, b, op = fixture(kind, parents, acts)
     if reverse:
         op["winner"], op["loser"] = op["loser"], op["winner"]
-    if parents or acts:
-        blocked(memory, op)
-    else:
-        Probe(memory).merge_person(op)
-        assert memory.calls == ["note", "merge"]
+    blocked(memory, op)
 
 
 def test_reason_vitals_and_direct_namesake_waiver_cannot_bypass():
-    memory, a, b, op = fixture(parents=True)
+    memory, a, b, op = fixture()
     op.update(reason="same person", use_loser=["birth"], allow_namesake=True,
               namesake_reason="same person", namesake_of=["I1"])
     blocked(memory, op)
@@ -121,57 +118,40 @@ def test_partial_mother_conflict_with_shared_father():
     blocked(memory, op)
 
 
-@pytest.mark.parametrize("relation", [None, "Adopted", "Foster", "Unknown"])
-def test_only_explicit_birth_relation_counts(relation):
-    memory, a, b, op = fixture(parents=True)
-    for fam in memory.data["Family"].values():
-        ref = fam["child_ref_list"][0]
-        ref.pop("frel")
-        if relation is not None:
-            ref["frel"] = relation
-    Probe(memory).merge_person(op)
-    assert memory.calls == ["note", "merge"]
-
-
-@pytest.mark.parametrize("reverse", [False, True])
-def test_all_alternate_families_and_parent_names(reverse):
-    memory, a, b, op = fixture(parents=True)
-    # A common alternative biological father removes disjointness, regardless of order.
-    family(memory, b, "alternate", father="3")
-    if reverse:
-        b["parent_family_list"].reverse()
-    Probe(memory).merge_person(op)
-    assert memory.calls == ["note", "merge"]
-    memory, a, b, op = fixture(parents=True)
-    memory.data["Person"]["4"]["primary_name"] = deepcopy(memory.data["Person"]["3"]["primary_name"])
-    Probe(memory).merge_person(op)
-    assert memory.calls == ["note", "merge"]
-
-
-def test_missing_parent_names_do_not_supply_conflict():
-    memory, a, b, op = fixture(parents=True)
-    memory.data["Person"]["3"].pop("primary_name")
-    Probe(memory).merge_person(op)
-    assert memory.calls == ["note", "merge"]
-
-
-def test_conflict_in_alternate_family_and_explicit_child_ref_required():
-    memory, a, b, op = fixture()
-    person(memory, "3", "Dad A")
-    person(memory, "4", "Dad B")
-    family(memory, a, "empty")
-    family(memory, b, "empty2")
-    family(memory, a, "alternate", father="3")
-    family(memory, b, "alternate2", father="4")
+@pytest.mark.parametrize("kind", ["Birth", "Baptism"])
+@pytest.mark.parametrize("context", ["absent", "empty", "one_parent", "shared_parent",
+                                     "same_page", "same_parent_name", "missing_parent_name", "nonbiological",
+                                     "missing_child_ref", "alternate_shared_parent"])
+def test_same_day_no_contradictory_evidence_still_holds(kind, context):
+    memory, a, b, op = fixture(kind)
+    if context == "empty":
+        a["parent_family_list"] = []
+        b["parent_family_list"] = []
+    elif context == "same_page":
+        event(memory, a, "same1", kind, pages=[("source", "same")])
+        event(memory, b, "same2", kind, pages=[("source", "same")])
+    elif context != "absent":
+        person(memory, "3", "Shared father")
+        family(memory, a, "fa", father="3")
+        if context != "one_parent":
+            person(memory, "4", "Shared father")
+            family(memory, b, "fb", father="4" if context in
+                   ("same_parent_name", "missing_parent_name") else "3")
+        if context == "missing_parent_name":
+            memory.data["Person"]["4"].pop("primary_name")
+        elif context == "nonbiological":
+            memory.data["Family"]["fa"]["child_ref_list"][0]["frel"] = "Adopted"
+        elif context == "missing_child_ref":
+            memory.data["Family"]["fa"]["child_ref_list"] = []
+        elif context == "alternate_shared_parent":
+            person(memory, "5", "Other father")
+            family(memory, b, "alternate", father="5")
     blocked(memory, op)
-    memory.data["Family"]["alternate"]["child_ref_list"] = []
-    Probe(memory).merge_person(op)
-    assert memory.calls == ["note", "merge"]
 
 
 @pytest.mark.parametrize("date", ["abt 1888-04-12", "est 1888-04-12", "calc 1888-04-12",
                                 "bet 1888-04-12 and 1888-04-12", "from 1888-04-12 to 1888-04-13",
-                                "1888", "1888-04", "1900-04-12"])
+                                "1888", "1888-04", "1888-04-13", "1900-04-12"])
 def test_uncertain_partial_or_distant_dates_are_outside_guard(date):
     memory, a, b, op = fixture(parents=True)
     memory.data["Event"]["e1"]["date"] = parse_date(date)
@@ -180,7 +160,7 @@ def test_uncertain_partial_or_distant_dates_are_outside_guard(date):
 
 
 @pytest.mark.parametrize("patch", [dict(dateval=[31, 2, 1888, False]), dict(calendar=99),
-                                  dict(calendar=None), dict(dateval=[12, 4, 1888, True]),
+                                  dict(calendar=None), dict(dateval=[0, 0, 0, False]), dict(dateval=[12, 4, 1888, True]),
                                   dict(newyear=1), dict(dateval=[12, 4, 1888, False, 13, 4, 1888, False])])
 def test_invalid_unknown_or_non_civil_dates(patch):
     memory, a, b, op = fixture(parents=True)
@@ -219,32 +199,28 @@ def test_shared_act_additional_pages_and_missing_evidence(left, right):
     memory, a, b, op = fixture()
     event(memory, a, "left", pages=left)
     event(memory, b, "right", pages=right)
-    Probe(memory).merge_person(op)
-    assert memory.calls == ["note", "merge"]
+    blocked(memory, op)
 
 
-def test_other_event_type_citations_do_not_conflict():
+def test_other_event_type_citations_do_not_bypass_hold():
     memory, a, b, op = fixture()
     event(memory, a, "death1", "Death", pages=[("source", "one")])
     event(memory, b, "death2", "Death", pages=[("source", "two")])
-    Probe(memory).merge_person(op)
-    assert memory.calls == ["note", "merge"]
+    blocked(memory, op)
 
 
-def test_other_days_do_not_supply_act_conflicts():
+def test_other_days_do_not_bypass_matching_day_hold():
     memory, a, b, op = fixture()
     event(memory, a, "later1", date="1900-04-12", pages=[("source", "one")])
     event(memory, b, "later2", date="1910-04-12", pages=[("source", "two")])
-    Probe(memory).merge_person(op)
-    assert memory.calls == ["note", "merge"]
+    blocked(memory, op)
 
 
 def test_shared_act_across_multiple_same_day_events():
     memory, a, b, op = fixture(acts=True)
     event(memory, a, "extra1", pages=[("source", "shared")])
     event(memory, b, "extra2", pages=[("source", "shared")])
-    Probe(memory).merge_person(op)
-    assert memory.calls == ["note", "merge"]
+    blocked(memory, op)
 
 
 def test_common_source_disjointness_even_with_other_sources():
@@ -256,6 +232,7 @@ def test_common_source_disjointness_even_with_other_sources():
 
 def test_completed_merge_rerun_is_first_and_unchanged():
     memory, a, b, op = fixture()
+    memory.data["Event"]["e1"]["date"] = parse_date("1888-04-13")
     applier = Probe(memory)
     applier.merge_person(op)
     # After completion even conflicting new evidence must not change the rerun path.
