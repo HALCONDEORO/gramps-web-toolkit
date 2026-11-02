@@ -694,7 +694,8 @@ class LeadsTest(unittest.TestCase):
             f.write('\n'.join((header,) + rows) + '\n')
         return path
 
-    def wheres(self, T, path, root=None):
+    @staticmethod
+    def wheres(T, path, root=None):
         rows = L.leads(T, root, L.DEFAULT_KINDS, 1925, archives=L.load_archives(path))[0]
         return {(r['person'], r['gap']): r.get('where') for r in rows}
 
