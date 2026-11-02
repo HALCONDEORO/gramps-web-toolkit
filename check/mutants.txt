@@ -168,7 +168,7 @@ gwt_check/media.py | return sum(hist[max(0, top - TONE_WINDOW):top + TONE_WINDOW
 gwt_check/media.py | (a > b) | (a < b) | the dHash bit is set where the left neighbour is brighter
 gwt_check/media.py | got["file_missing"] = o["handle"] in missing | got["file_missing"] = False | a file the server lists as missing is marked missing
 gwt_check/media.py | todo = [o for o in media if is_image(o) and not status[o["handle"]].get("file_missing")] | todo = list(media) | no thumbnail is asked for a missing file or one that is not an image
-gwt_check/media.py | if not in_scope("media", h): | if False: | a run is not blamed for old media
+gwt_check/media.py | if in_scope("media", h): | if True: | a run is not blamed for old media
 gwt_check/media.py | if "file_missing" not in got: | if False: | media the server was never asked about are counted
 gwt_check/media.py | max(got["w"], got["h"]) < MIN_SIDE: | min(got["w"], got["h"]) < MIN_SIDE: | tiny is the longer side, so a long thin strip is not tiny
 gwt_check/media.py | got["h"]) < MIN_SIDE: | got["h"]) <= MIN_SIDE: | an image of exactly MIN_SIDE px is not tiny

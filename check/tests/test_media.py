@@ -27,7 +27,9 @@ def _tree(*extra, citation="C0001"):
         m = {**copy.deepcopy(d["media"][0]), "handle": f"hO00{n}", "gramps_id": f"O00{n}",
              "checksum": f"{n:032x}", **fields}
         d["media"].append(m)
-        next(c for c in d["citations"] if c["gramps_id"] == citation)["media_list"].append({"ref": m["handle"], "rect": []})
+        target = next((c for c in d["citations"] if c["gramps_id"] == citation), None)
+        assert target is not None
+        target["media_list"].append({"ref": m["handle"], "rect": []})
     return d
 
 
@@ -92,14 +94,14 @@ def test_a_text_file_is_non_viewable_and_suggests_a_transcript():
     assert found == {("media-non-viewable", "O0050")}
     d = _tree({"mime": "text/plain", "path": "ejemplo/acta.txt"})
     findings, _ = checks.run_checks(Tree(d, media_status=d[media.STATUS]))
-    assert "add_transcription" in next(f["detail"] for f in findings if f["check"] == "media-non-viewable")
+    assert "add_transcription" in next((f["detail"] for f in findings if f["check"] == "media-non-viewable"), None)
 
 
 @pytest.mark.parametrize("mime,path", [("application/x-tar", "ejemplo/fotos.tar"), ("application/json", "ejemplo/a.json")])
 def test_an_archive_or_json_file_is_not_told_to_become_a_transcript(mime, path):
     d = _tree({"mime": mime, "path": path})
     findings, _ = checks.run_checks(Tree(d, media_status=d[media.STATUS]))
-    detail = next(f["detail"] for f in findings if f["check"] == "media-non-viewable")
+    detail = next((f["detail"] for f in findings if f["check"] == "media-non-viewable"), None)
     assert "add_transcription" not in detail and "unpack or convert" in detail
 
 
@@ -162,7 +164,7 @@ def test_a_same_page_pair_asks_to_compare_before_detaching():
     # pages of one printed register or form can hash alike, so the finding is a lead, not a verdict
     d = _tree(_measured(dhash="0f" * 32))
     findings, _ = checks.run_checks(Tree(d, media_status=d[media.STATUS]))
-    detail = next(f["detail"] for f in findings if f["check"] == "media-dup-page")
+    detail = next((f["detail"] for f in findings if f["check"] == "media-dup-page"), None)
     assert "may be the same page" in detail and "compare them" in detail
 
 
@@ -223,7 +225,9 @@ def test_each_missing_file_list_is_a_new_request_to_the_server_cache():
     client = FakeClient()
     media.annotate(client, _bare())
     media.annotate(client, _bare())
-    (_, first), (_, second) = client.calls
+    assert len(client.calls) == 2
+    first = client.calls[0][1]
+    second = client.calls[1][1]
     assert first["pagesize"] != second["pagesize"]
 
 

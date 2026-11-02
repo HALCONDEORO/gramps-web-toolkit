@@ -134,6 +134,10 @@ def annotate(client, objects: dict, status: dict | None = None, *, download: boo
         print("gwt-check: --download needs Pillow (pipx inject gramps-web-toolkit pillow, or pip install pillow "
               "beside gwt-check); media-tiny, media-uniform and media-dup-page skipped", file=sys.stderr)
         return status
+    return _download_thumbnails(client, media, status, workers)
+
+
+def _download_thumbnails(client, media, status, workers):
     todo = [o for o in media if is_image(o) and not status[o["handle"]].get("file_missing")]
     def one(o):
         got = status[o["handle"]]
@@ -169,27 +173,34 @@ def media_checks(T: dict, status: dict, out, in_scope, info: dict, label) -> Non
         if "file_missing" not in got:
             unchecked += 1
         unread += bool(got.get("unread"))
-        if not in_scope("media", h):
-            continue
-        gid = o.get("gramps_id") or h
-        mime = non_viewable(o)
-        if mime:
-            fix = ("put its text in a Transcript note (gwt-apply add_transcription), then detach it"
-                   if mime.startswith(NON_VIEWABLE_PREFIXES) else
-                   "unpack or convert it to an image or PDF, or detach it")
-            out.add("media-non-viewable", gid, f"{mime}: shown as an icon; {fix}")
-        if got.get("file_missing"):
-            out.add("media-file-missing", gid, f"no file on the server for {o.get('path') or 'its path'}: "
-                                               "upload it again, or detach it")
-        if isinstance(got.get("w"), int) and isinstance(got.get("h"), int) and max(got["w"], got["h"]) < MIN_SIDE:
-            out.add("media-tiny", gid, f"{got['w']}x{got['h']} px: replace it with the full image, or detach it")
-        if isinstance(got.get("tone"), (int, float)) and got["tone"] >= UNIFORM_SHARE:
-            out.add("media-uniform", gid, f"{got['tone']:.0%} of it is one tone: a blank, grey or failed image; "
-                                          "replace it, or detach it")
+        if in_scope("media", h):
+            _single_media_checks(o, got, h, out)
     if unchecked:
         info["media files not checked"] = unchecked
     if unread:  # asked with --download, and the server would not give it or Pillow could not read it
         info["media thumbnails not read"] = unread
+    _duplicate_media_checks(T, M, S, out, in_scope, label)
+
+
+def _single_media_checks(o, got, h, out):
+    gid = o.get("gramps_id") or h
+    mime = non_viewable(o)
+    if mime:
+        fix = ("put its text in a Transcript note (gwt-apply add_transcription), then detach it"
+               if mime.startswith(NON_VIEWABLE_PREFIXES) else
+               "unpack or convert it to an image or PDF, or detach it")
+        out.add("media-non-viewable", gid, f"{mime}: shown as an icon; {fix}")
+    if got.get("file_missing"):
+        out.add("media-file-missing", gid, f"no file on the server for {o.get('path') or 'its path'}: "
+                                           "upload it again, or detach it")
+    if isinstance(got.get("w"), int) and isinstance(got.get("h"), int) and max(got["w"], got["h"]) < MIN_SIDE:
+        out.add("media-tiny", gid, f"{got['w']}x{got['h']} px: replace it with the full image, or detach it")
+    if isinstance(got.get("tone"), (int, float)) and got["tone"] >= UNIFORM_SHARE:
+        out.add("media-uniform", gid, f"{got['tone']:.0%} of it is one tone: a blank, grey or failed image; "
+                                      "replace it, or detach it")
+
+
+def _duplicate_media_checks(T, M, S, out, in_scope, label):
     # the same page twice on one citation: near thumbnails, different files (the same file is dup-media)
     for c in T["citations"].values():
         refs = [r.get("ref") for r in c.get("media_list") or [] if isinstance(r, dict)]
