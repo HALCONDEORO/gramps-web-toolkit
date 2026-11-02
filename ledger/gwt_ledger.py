@@ -342,12 +342,66 @@ def iso_date(value):
     return datetime.date.fromisoformat(value).isoformat() if value else ''
 
 
+def assess_search(method, outcome, access, coverage, scope, ref,
+                  control_verified=False, filters_verified=False):
+    """Offline advice, not a search or proof of identity. Never expands the supplied scope."""
+    if not scope.strip() or not ref.strip():
+        raise ValueError('scope and ref must be non-empty')
+    reasons = []
+    result = outcome
+    if access != 'open':
+        result = 'blocked'
+        reasons.append('access not confirmed open: ' + access)
+    elif coverage != 'full':
+        result = 'partial'
+        reasons.append('coverage of the stated scope is ' + coverage)
+    elif method in ('ocr', 'index') and not (control_verified and filters_verified):
+        result = 'partial'
+        reasons.append('index/OCR positive control and applied filters need verification')
+    claims = {
+        'ocr': 'OCR query returned no matching result within the stated scope',
+        'index': 'index query returned no matching result within the stated scope',
+        'images': 'no matching entry located in the images actually reviewed',
+        'catalog': 'no matching description located in the inspected catalogue scope',
+    }
+    if result == 'blocked':
+        claim = 'search unresolved; access failure is not evidence of absence'
+    elif result == 'partial':
+        claim = 'incomplete search; no absence claim for the full stated scope'
+    elif outcome == 'hit':
+        claim = 'candidate located within the stated scope; identity and kinship remain unproved'
+    else:
+        claim = claims[method]
+    return dict(result=result, method=method, scope=scope, ref=ref, access=access,
+                coverage=coverage, reasons=reasons, claim=claim, kinship_proven=False)
+
+
+def run_assess(p, args):
+    try:
+        report = assess_search(args.method, args.outcome, args.access, args.coverage,
+                               args.scope, args.ref, args.control_verified, args.filters_verified)
+    except ValueError as exc:
+        p.error(str(exc))
+    print(json.dumps(report, ensure_ascii=False))
+    return 0
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog='gwt-ledger', description=__doc__.split('\n')[0])
     p.add_argument('--ledger', default=os.environ.get('GWT_LEDGER', 'buscado.tsv'))
     p.add_argument('--ledger-dir', default=os.environ.get('GWT_LEDGER_DIR', ''),
                    help='lane files: add uses agent, mark uses reader; read commands include all *.tsv here')
     sub = p.add_subparsers(dest='cmd', required=True)
+    a = sub.add_parser('assess', help='offline advice for a scoped search result; no reads or writes')
+    a.add_argument('--method', required=True, choices=('ocr', 'index', 'images', 'catalog'))
+    a.add_argument('--outcome', required=True, choices=('hit', 'none'))
+    a.add_argument('--access', required=True,
+                   choices=('open', 'restricted', 'captcha', 'load-error', 'maintenance', 'unknown'))
+    a.add_argument('--coverage', required=True, choices=('full', 'partial', 'outside', 'unknown'))
+    a.add_argument('--scope', required=True, help='collection, place, period, query variants and reviewed images')
+    a.add_argument('--ref', required=True, help='recoverable evidence reference; not opened or authenticated')
+    a.add_argument('--control-verified', action='store_true', help='known positive query returned its expected record')
+    a.add_argument('--filters-verified', action='store_true', help='current response was checked for all requested filters')
     c = sub.add_parser('check', help='has this search been done? print the matching rows; exit 0 if one is a '
                                      'search that ran and is not due again, 1 if not')
     c.add_argument('--person'); c.add_argument('--source'); c.add_argument('--query', required=True)
@@ -459,6 +513,8 @@ def validate_lookup_args(p, args):
 def main(argv=None):
     p = build_parser()
     args = p.parse_args(argv)
+    if args.cmd == 'assess':
+        return run_assess(p, args)
     if args.cmd in ('mark', 'query'):
         return run_reading(p, args)
     validate_lookup_args(p, args)

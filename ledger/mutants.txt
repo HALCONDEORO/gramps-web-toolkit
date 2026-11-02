@@ -24,3 +24,8 @@ gwt_ledger.py | if any(r.get(c) for r in rows for c in READING_COLUMNS) else COL
 gwt_ledger.py | if info.st_uid != os.geteuid(): | if False: | foreign UID ledger writes must be refused
 gwt_ledger.py | if resolved not in seen: | if True: | overlapping main and lane paths must not duplicate recorded rows
 gwt_ledger.py | resolved = os.path.realpath(path) | resolved = os.path.abspath(path) | directory aliases must not duplicate the shared ledger during discovery
+gwt_ledger.py | if access != 'open': | if False: | access errors never become negative searches
+gwt_ledger.py | elif coverage != 'full': | elif False: | incomplete coverage cannot answer the full scope
+gwt_ledger.py | elif method in ('ocr', 'index') and not (control_verified and filters_verified): | elif False: | OCR and index searches need positive control and verified filters
+gwt_ledger.py | if not scope.strip() or not ref.strip(): | if False: | assessment requires scope and evidence
+gwt_ledger.py | kinship_proven=False | kinship_proven=True | a search result never proves kinship
