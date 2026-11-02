@@ -21,6 +21,12 @@ import tempfile
 
 import gwt_transcription_review as tr
 
+def check(condition, detail):
+    """Checks remain active even when Python runs with optimization."""
+    if not condition:
+        raise AssertionError(detail)
+
+
 SAME_READER = "both transcriptions share the same reader: not independent"
 SAME_ENGINE_READER = "both transcriptions share the same engine and reader: not independent"
 IDENTICAL_PREFIX = "transcriptions are identical"
@@ -53,28 +59,28 @@ def statuses(packet):
 
 def check_base():
     p = tr.build_packet(BASE)
-    assert p["schema"] == "gwt.transcription-review/1"
-    assert p["status"] == "needs-writer-review"
-    assert p["auto_verified"] is False and p["refusal"]
-    assert p["status_counts"] == {"disagree": 4, "match": 1, "uncertain": 1}, p["status_counts"]
-    assert statuses(p) == {"given_names": "disagree", "surname": "disagree",
+    check((p["schema"] == "gwt.transcription-review/1"), ('demonstration check failed at line 56'))
+    check((p["status"] == "needs-writer-review"), ('demonstration check failed at line 57'))
+    check((p["auto_verified"] is False and p["refusal"]), ('demonstration check failed at line 58'))
+    check((p["status_counts"] == {"disagree": 4, "match": 1, "uncertain": 1}), (p["status_counts"]))
+    check((statuses(p) == {"given_names": "disagree", "surname": "disagree",
                            "date": "disagree", "act_type": "match",
-                           "father": "disagree", "mother": "uncertain"}, statuses(p)
-    assert p["warnings"] == [SAME_READER], p["warnings"]
-    assert p["sources"][1]["reader"] == " SYNTHETIC-Reader-1 "  # echoed raw
+                           "father": "disagree", "mother": "uncertain"}), (statuses(p)))
+    check((p["warnings"] == [SAME_READER]), (p["warnings"]))
+    check((p["sources"][1]["reader"] == " SYNTHETIC-Reader-1 "), ('demonstration check failed at line 64'))  # echoed raw
     date = p["fields"]["date"]["differences"]
-    assert len(date) == 1 and date[0]["a"]["range"] == [0, 3] and date[0]["b"]["range"] == [0, 1]
-    assert p["fields"]["father"]["uncertain_tokens"]["b"] == ["[unclear]"]
-    assert p["fields"]["mother"]["differences"] == []
+    check((len(date) == 1 and date[0]["a"]["range"] == [0, 3] and date[0]["b"]["range"] == [0, 1]), ('demonstration check failed at line 66'))
+    check((p["fields"]["father"]["uncertain_tokens"]["b"] == ["[unclear]"]), ('demonstration check failed at line 67'))
+    check((p["fields"]["mother"]["differences"] == []), ('demonstration check failed at line 68'))
     check_no_proof(p)
     return p
 
 
 def check_no_proof(p):
     """Assert refusal and accuracy disclaimers."""
-    assert not {"verified", "accuracy", "correct", "winner"} & set(p)
-    assert any("not evidence of correctness" in n for n in p["notes"])
-    assert any("No accuracy figure" in n for n in p["notes"])
+    check((not {"verified", "accuracy", "correct", "winner"} & set(p)), ('demonstration check failed at line 75'))
+    check((any("not evidence of correctness" in n for n in p["notes"])), ('demonstration check failed at line 76'))
+    check((any("No accuracy figure" in n for n in p["notes"])), ('demonstration check failed at line 77'))
     try:
         tr.auto_verify(p)
     except PermissionError:
@@ -100,18 +106,18 @@ def check_variants():
         ts[0]["fields"]["mother"] = "Anne Éxemple"
         ts[1]["fields"]["mother"] = "Anne Éxemple"
 
-    assert tr.build_packet(variant(v1))["warnings"] == [SAME_ENGINE_READER]
+    check((tr.build_packet(variant(v1))["warnings"] == [SAME_ENGINE_READER]), ('demonstration check failed at line 103'))
     w2 = tr.build_packet(variant(v2))["warnings"]
-    assert len(w2) == 2 and all("not identified" in w for w in w2) and SAME_READER not in w2, w2
-    assert tr.build_packet(variant(v3))["warnings"] == [SAME_READER]
+    check((len(w2) == 2 and all("not identified" in w for w in w2) and SAME_READER not in w2), (w2))
+    check((tr.build_packet(variant(v3))["warnings"] == [SAME_READER]), ('demonstration check failed at line 106'))
     p4 = tr.build_packet(variant(v4))
-    assert any(w.startswith(IDENTICAL_PREFIX) for w in p4["warnings"]), p4["warnings"]
+    check((any(w.startswith(IDENTICAL_PREFIX) for w in p4["warnings"])), (p4["warnings"]))
     s4 = statuses(p4)
-    assert s4["mother"] == "uncertain"
-    assert all(v == "match" for k, v in s4.items() if k != "mother"), s4
+    check((s4["mother"] == "uncertain"), ('demonstration check failed at line 110'))
+    check((all(v == "match" for k, v in s4.items() if k != "mother")), (s4))
     m5 = tr.build_packet(variant(v5))["fields"]["mother"]
-    assert m5["status"] == "uncertain" or m5["status"] == "match"
-    assert m5["differences"] == [] and m5["nfc_recomposed"] == {"a": False, "b": True}, m5
+    check((m5["status"] == "uncertain" or m5["status"] == "match"), ('demonstration check failed at line 113'))
+    check((m5["differences"] == [] and m5["nfc_recomposed"] == {"a": False, "b": True}), (m5))
     return 5
 
 
@@ -122,7 +128,7 @@ def _rc_err(argv):
     with contextlib.redirect_stderr(buf):
         rc = tr.main(argv)
     msg = buf.getvalue().strip()
-    assert msg.startswith("error: "), msg
+    check((msg.startswith("error: ")), (msg))
     msg = msg[len("error: "):]
     for key in ("--out already exists", "--out must not be the input file"):
         if msg.startswith(key):
@@ -137,17 +143,17 @@ def check_cli(packet):
         with open(src, "w", encoding="utf-8") as fh:
             json.dump(BASE, fh)
         out_json, out_txt = os.path.join(d, "o.json"), os.path.join(d, "o.txt")
-        assert tr.main([src, "--out", out_json]) == 0
-        assert tr.main([src, "--text", "--out", out_txt]) == 0
+        check((tr.main([src, "--out", out_json]) == 0), ('demonstration check failed at line 140'))
+        check((tr.main([src, "--text", "--out", out_txt]) == 0), ('demonstration check failed at line 141'))
         with open(out_json, encoding="utf-8") as fh:
-            assert json.load(fh) == packet
+            check((json.load(fh) == packet), ('demonstration check failed at line 143'))
         with open(out_txt, encoding="utf-8") as fh:
             text = fh.read()
-        assert SAME_READER in text and "uncertain in B" in text
-        assert "Agreement between two outputs is not evidence of correctness." in text
+        check((SAME_READER in text and "uncertain in B" in text), ('demonstration check failed at line 146'))
+        check(("Agreement between two outputs is not evidence of correctness." in text), ('demonstration check failed at line 147'))
         before = Path(out_json).read_bytes()
-        assert _rc_err([src, "--out", out_json]) == (2, "--out already exists"), "no-clobber"
-        assert Path(out_json).read_bytes() == before
+        check((_rc_err([src, "--out", out_json]) == (2, "--out already exists")), ("no-clobber"))
+        check((Path(out_json).read_bytes() == before), ('demonstration check failed at line 150'))
         # Symlink aliases of the input and a dangling symlink must also be refused.
         alias, dangling = os.path.join(d, "alias.json"), os.path.join(d, "dangling.json")
         src_bytes = Path(src).read_bytes()
@@ -156,9 +162,9 @@ def check_cli(packet):
             os.symlink(os.path.join(d, "missing-target"), dangling)
         except (OSError, NotImplementedError):
             return False  # symlinks unsupported here; variant skipped
-        assert _rc_err([src, "--out", alias, "--overwrite"]) == (2, "--out must not be the input file")
-        assert _rc_err([src, "--out", dangling]) == (2, "--out already exists")
-        assert Path(src).read_bytes() == src_bytes and not os.path.exists(os.path.join(d, "missing-target"))
+        check((_rc_err([src, "--out", alias, "--overwrite"]) == (2, "--out must not be the input file")), ('demonstration check failed at line 159'))
+        check((_rc_err([src, "--out", dangling]) == (2, "--out already exists")), ('demonstration check failed at line 160'))
+        check((Path(src).read_bytes() == src_bytes and not os.path.exists(os.path.join(d, "missing-target"))), ('demonstration check failed at line 161'))
         return True
 
 

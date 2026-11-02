@@ -7,6 +7,8 @@ that is deleted on exit. Every assertion is an exact expected safety outcome. St
 only, no network. Prints one brief summary line when everything holds; exits 1 on any failure.
 All people, readers, readings and "images" are invented; images are dummy bytes.
 """
+from pathlib import Path
+from unittest import mock
 import contextlib
 import hashlib
 import io
@@ -17,7 +19,7 @@ import tempfile
 
 import gwt_act_packet as gap
 
-CHECKS = 0
+CHECKS = []
 HEADER = gap.REQUIRED + gap.OPTIONAL
 EVIDENCE = {
     'a.jpg': b'synthetic-image-bytes', 'a-crop.png': b'synthetic-crop-bytes',
@@ -30,8 +32,7 @@ IGNORED = 'approval_ignored_conflict_or_uncertain'
 
 
 def check(cond, what):
-    global CHECKS
-    CHECKS += 1
+    CHECKS.append(what)
     if not cond:
         raise AssertionError(what)
 
@@ -68,7 +69,7 @@ class Case:
 
     def write_input(self, rows, path=None):
         path = path or self.inp
-        with open(path, 'w', encoding='utf-8', newline='') as f:
+        with Path(path).open('w', encoding='utf-8', newline='') as f:
             f.write(tsv(rows))
         return path
 
@@ -94,8 +95,7 @@ class Case:
 
 
 def read_bytes(p):
-    with open(p, 'rb') as f:
-        return f.read()
+    return Path(p).read_bytes()
 
 
 def never_promoted(m, n):
@@ -282,17 +282,15 @@ def rollback(base):
     c = Case(base, 'rb-broken')
     c.write_input([row('I0001', '1850-03-02', 'baptism', 'a', 'Juan Prueba', 'Juan Prueba')])
     real, fake = _fail_second_replace()
-    real_restore = gap._restore
 
     def broken_restore(path, old):
         raise OSError('injected restore failure')
     os.replace = fake
-    gap._restore = broken_restore
     try:
-        rc, _out, err = c.run()
+        with mock.patch.object(gap, '_restore', broken_restore):
+            rc, _out, err = c.run()
     finally:
         os.replace = real
-        gap._restore = real_restore
     eq(rc, 2, 'rollback 3 exit')
     check('rollback incomplete' in err, 'rollback 3 says incomplete')
     check('injected restore failure' in err, 'rollback 3 carries the restore error')
@@ -345,7 +343,7 @@ def main():
         except AssertionError as e:
             print(f'demo FAILED in {s.__name__}: {e}', file=sys.stderr)
             return 1
-    print(f'demo_act_packet OK: {len(scenarios)} scenarios, {CHECKS} checks; '
+    print(f'demo_act_packet OK: {len(scenarios)} scenarios, {len(CHECKS)} checks; '
           'all synthetic, nothing promoted or verified, nothing persisted')
     return 0
 
