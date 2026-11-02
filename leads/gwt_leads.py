@@ -24,7 +24,7 @@ birth in --living-after or earlier) and people or events marked private are held
 of place -> archive rows) adds where each gap's record is kept and whether that year is online; it never fetches
 anything. Standard library only.
 """
-import argparse, collections, csv, datetime, gzip, json, re, string, sys, unicodedata, urllib.parse
+import argparse, collections, csv, datetime, gzip, json, os, re, string, sys, unicodedata, urllib.parse
 
 KINDS = ('branch-end', 'missing-vital', 'uncited', 'unsupported-link')
 DEFAULT_KINDS = ('branch-end', 'missing-vital', 'uncited')  # unsupported-link needs --links, so it is asked for
@@ -60,38 +60,68 @@ SNAPSHOT_KEYS = {'Person': 'people', 'Family': 'families', 'Event': 'events', 'P
 ACCEPTED = 'a gwt-check dump or a gwt-apply snapshot'
 
 
-def load(path):
-    """The people, families, events and places of a `gwt-check dump` file ({tree, dumped_at, objects: {people:
-    [...]}}) or of a `gwt-apply` snapshot ({format: gwt-apply-snapshot/1, objects: {Person: [...]}}), gzipped or
-    not. A bare {people: [...]} map is read too. Anything else is an error, never an empty result."""
+def checked_path(path):
+    """A file named on the command line, made absolute with every symlink and `..` resolved, so the file that is
+    opened is the one that is reported. Resolving is not a security check and confines nothing: any local path,
+    inside the repository or not, is intended. What is refused, as BadInput, is a path with a NUL byte and an
+    existing path that is not a regular file (a directory, a device, a pipe). A missing file is left to open()."""
+    raw = os.fspath(path)
+    if '\0' in os.fsdecode(raw):
+        raise BadInput(f'{os.fsdecode(raw)!r}: the path contains a NUL byte')
+    real = os.path.realpath(raw)
+    if os.path.exists(real) and not os.path.isfile(real):
+        raise BadInput(f'{os.fsdecode(raw)}: not a regular file')
+    return real
+
+
+def os_text(exc, real, path):
+    """An error's text with the resolved path shown as the user typed it."""
+    return str(exc).replace(real, path)
+
+
+def read_json_file(path):
+    """The parsed JSON of a file, gzipped or not (BadInput when it cannot be read as JSON)."""
+    real = checked_path(path)
     try:
-        with open(path, 'rb') as f:
+        with open(real, 'rb') as f:
             gz = f.read(2) == b'\x1f\x8b'
-        with (gzip.open if gz else open)(path, 'rt', encoding='utf-8') as f:
-            data = json.load(f)
+        with (gzip.open if gz else open)(real, 'rt', encoding='utf-8') as f:
+            return json.load(f)
     except (OSError, ValueError, EOFError) as exc:
-        raise BadInput('%s: not JSON, so not %s (%s)' % (path, ACCEPTED, exc))
+        raise BadInput(f'{path}: not JSON, so not {ACCEPTED} ({os_text(exc, real, path)})')
+
+
+def snapshot_objects(path, data):
+    """The type -> list map of a parsed dump or snapshot (BadInput when it is neither)."""
     snapshot = isinstance(data, dict) and data.get('format') == SNAPSHOT_FORMAT
     if isinstance(data, dict):
         data = data.get('objects', data)
     if not isinstance(data, dict):
-        raise BadInput('%s: not %s: expected a JSON object with one list per type' % (path, ACCEPTED))
+        raise BadInput(f'{path}: not {ACCEPTED}: expected a JSON object with one list per type')
     if snapshot:
         data = {SNAPSHOT_KEYS[k]: v for k, v in data.items() if k in SNAPSHOT_KEYS}
     bad = [t for t in ('people', 'families', 'events') if not isinstance(data.get(t), list)]
     if bad:
-        raise BadInput('%s: no %s list: is this %s?' % (path, ', '.join(bad), ACCEPTED))
+        raise BadInput(f"{path}: no {', '.join(bad)} list: is this {ACCEPTED}?")
     if not data['people']:
-        raise BadInput('%s: the dump holds no people' % path)
+        raise BadInput(f'{path}: the dump holds no people')
+    return data
+
+
+def load(path):
+    """The people, families, events and places of a `gwt-check dump` file ({tree, dumped_at, objects: {people:
+    [...]}}) or of a `gwt-apply` snapshot ({format: gwt-apply-snapshot/1, objects: {Person: [...]}}), gzipped or
+    not. A bare {people: [...]} map is read too. Anything else is an error, never an empty result."""
+    data = snapshot_objects(path, read_json_file(path))
     out = {}
     for t in ('people', 'families', 'events'):
         bad = [o for o in data[t] if not isinstance(o, dict) or 'handle' not in o]
         if bad:
-            raise BadInput('%s: %d %s records are not objects with a handle: is this %s?' % (path, len(bad), t, ACCEPTED))
+            raise BadInput(f'{path}: {len(bad)} {t} records are not objects with a handle: is this {ACCEPTED}?')
         out[t] = {o['handle']: o for o in data[t]}
     places = data.get('places', [])
     if not isinstance(places, list) or any(not isinstance(o, dict) or 'handle' not in o for o in places):
-        raise BadInput('%s: places must be a list of objects with a handle' % path)
+        raise BadInput(f'{path}: places must be a list of objects with a handle')
     out['places'] = {o['handle']: o for o in places}
     return out
 
@@ -143,7 +173,7 @@ def year_text(ev):
     mark = MODIFIER_MARK.get(d.get('modifier') or 0, '')
     if not mark and (d.get('quality') or 0):
         mark = '~'
-    return '%s%d' % (mark, y)
+    return f'{mark}{y:d}'
 
 
 def date_gap(ev):
@@ -151,7 +181,7 @@ def date_gap(ev):
     if year(ev):
         return ''
     text = ((ev.get('date') or {}).get('text') or '').strip()
-    return 'has date text without an interpretable year (%s)' % text if text else 'has no date'
+    return f'has date text without an interpretable year ({text})' if text else 'has no date'
 
 
 def place_chain(T, handle):
@@ -189,7 +219,7 @@ def parse_years(text):
     for part in (x.strip() for x in text.split(',')) if text.strip() else ():
         m = re.fullmatch(r'(\d{1,4})(?:\s*-\s*(\d{1,4}))?', part)
         if not m or int(m.group(2) or m.group(1)) < int(m.group(1)):
-            raise BadInput('years %r: write ranges like 1793-1902, comma-separated' % text)
+            raise BadInput(f'years {text!r}: write ranges like 1793-1902, comma-separated')
         out.append((int(m.group(1)), int(m.group(2) or m.group(1))))
     return out
 
@@ -200,51 +230,81 @@ def load_archives(path):
     the queue: a quote is a character, never a field delimiter. A missing, unknown or repeated column, a bad years
     cell, an access value outside ACCESS or a url placeholder other than {place} and {year} is BadInput, never a row
     skipped in silence."""
+    header, rows = read_archive_rows(path)
+    check_archive_header(path, header)
+    index = {}
+    for n, row in enumerate(rows, 2):
+        where = f'{path} line {n}'
+        row = clean_archive_row(row, where)
+        check_archive_url(row['url'], where)
+        years = archive_years(row['years'], where)
+        index.setdefault(fold(row['match']), {'archive': row['archive'], 'series': row['series'], 'years': years,
+                                              'url': row['url'], 'access': row['access']})  # the first row of a name wins
+    return index
+
+
+def read_archive_rows(path):
+    """(header, rows) of an --archives file: stripped column names and one dict per line (BadInput when unreadable)."""
+    real = checked_path(path)
     try:
-        with open(path, encoding='utf-8-sig', newline='') as fh:
+        with open(real, encoding='utf-8-sig', newline='') as fh:
             reader = csv.DictReader(fh, delimiter='\t', quoting=csv.QUOTE_NONE)
             header = [h.strip() for h in reader.fieldnames or []]
             reader.fieldnames = header
             rows = list(reader)
     except UnicodeDecodeError:
-        raise BadInput('%s: the file is not UTF-8; save it as UTF-8 text, tab-separated' % path)
+        raise BadInput(f'{path}: the file is not UTF-8; save it as UTF-8 text, tab-separated')
     except (OSError, csv.Error) as exc:
-        raise BadInput('%s: %s' % (path, exc))
+        raise BadInput(f'{path}: {os_text(exc, real, path)}')
+    return header, rows
+
+
+def check_archive_header(path, header):
+    """BadInput for a missing, unknown or repeated column of an --archives header."""
     missing = [c for c in ARCHIVE_COLUMNS if c not in header]
     unknown = [c or '(empty)' for c in header if c not in ARCHIVE_COLUMNS + ARCHIVE_OPTIONAL]
     if missing or unknown:
-        raise BadInput('%s: %s; the columns are %s, plus %s if you want it' % (
-            path, '; '.join(x for x in ('missing column %s' % ', '.join(missing) if missing else '',
-                                         'unknown column %s' % ', '.join(unknown) if unknown else '') if x),
-            ', '.join(ARCHIVE_COLUMNS), ', '.join(ARCHIVE_OPTIONAL)))
+        problems = '; '.join(x for x in (f"missing column {', '.join(missing)}" if missing else '',
+                                         f"unknown column {', '.join(unknown)}" if unknown else '') if x)
+        raise BadInput(f"{path}: {problems}; the columns are {', '.join(ARCHIVE_COLUMNS)}, "
+                       f"plus {', '.join(ARCHIVE_OPTIONAL)} if you want it")
     repeated = sorted({c for c in header if header.count(c) > 1})
     if repeated:
-        raise BadInput('%s: column %s appears more than once' % (path, ', '.join(repeated)))
-    index = {}
-    for n, row in enumerate(rows, 2):
-        where = '%s line %d' % (path, n)
-        if None in row:
-            raise BadInput('%s: the row has more cells than the header' % where)
-        row = {k: (v or '').strip() for k, v in row.items()}  # trailing empty cells may be left out
-        if not fold(row['match']) or not row['archive']:
-            raise BadInput('%s: match and archive must not be empty' % where)
-        access = row.get('access') or 'unknown'
-        if access not in ACCESS:
-            raise BadInput('%s: access %r is not one of %s' % (where, access, ', '.join(ACCESS)))
-        try:
-            fields = [(f, spec, conv) for _, f, spec, conv in string.Formatter().parse(row['url']) if f is not None]
-        except ValueError as exc:
-            raise BadInput('%s: url: %s' % (where, exc))
-        bad = [f for f, spec, conv in fields if f not in URL_FIELDS or spec or conv]
-        if bad:
-            raise BadInput('%s: url placeholder {%s} unknown; only {place} and {year}' % (where, bad[0]))
-        try:
-            years = parse_years(row['years'])
-        except BadInput as exc:
-            raise BadInput('%s: %s' % (where, exc))
-        index.setdefault(fold(row['match']), {'archive': row['archive'], 'series': row['series'], 'years': years,
-                                              'url': row['url'], 'access': access})  # the first row of a name wins
-    return index
+        raise BadInput(f"{path}: column {', '.join(repeated)} appears more than once")
+
+
+def clean_archive_row(row, where):
+    """An --archives row with stripped cells and its access resolved (empty reads as unknown); BadInput for a row
+    with extra cells, an empty match or archive, or an access outside ACCESS."""
+    if None in row:
+        raise BadInput(f'{where}: the row has more cells than the header')
+    row = {k: (v or '').strip() for k, v in row.items()}  # trailing empty cells may be left out
+    if not fold(row['match']) or not row['archive']:
+        raise BadInput(f'{where}: match and archive must not be empty')
+    access = row.get('access') or 'unknown'
+    if access not in ACCESS:
+        raise BadInput(f"{where}: access {access!r} is not one of {', '.join(ACCESS)}")
+    row['access'] = access
+    return row
+
+
+def check_archive_url(url, where):
+    """BadInput for a url template with a placeholder other than {place} and {year}, or one that does not parse."""
+    try:
+        fields = [(f, spec, conv) for _, f, spec, conv in string.Formatter().parse(url) if f is not None]
+    except ValueError as exc:
+        raise BadInput(f'{where}: url: {exc}')
+    bad = [f for f, spec, conv in fields if f not in URL_FIELDS or spec or conv]
+    if bad:
+        raise BadInput(f'{where}: url placeholder {{{bad[0]}}} unknown; only {{place}} and {{year}}')
+
+
+def archive_years(text, where):
+    """parse_years with the row's position in the message."""
+    try:
+        return parse_years(text)
+    except BadInput as exc:
+        raise BadInput(f'{where}: {exc}')
 
 
 def exact_year(ev):
@@ -359,16 +419,35 @@ def not_living(T, living_after):
     their death, or the marriage of a family they head ends by then, or so does that of anyone descending from
     them. A descendant born in 1900 means every ancestor was born before 1900, so the direct line above any
     dated person is never held back."""
-    def by_cutoff(e):
-        y = latest_year(e)
-        return y is not None and y <= living_after
-    seeds = {h for h, p in T['people'].items()
-             if any(by_cutoff(e) for e in own_events(T, p) if etype(e) in BIRTH_LIKE) or by_cutoff(birth(T, p))
-             or by_cutoff(death(T, p))}
+    seeds = dated_person_seeds(T, living_after)
     for f in T['families'].values():
-        if any(by_cutoff(T['events'].get(r.get('ref'))) and etype(T['events'][r['ref']]) in MARRIAGE_LIKE
-               for r in f.get('event_ref_list', []) if r.get('ref') in T['events']):
+        if marriage_by_cutoff(T, f, living_after):
             seeds.update(h for h in (f.get('father_handle'), f.get('mother_handle')) if h in T['people'])
+    return with_ancestors(T, seeds)
+
+
+def by_cutoff(e, living_after):
+    """True when the event's latest possible year (see latest_year) is living_after or earlier."""
+    y = latest_year(e)
+    return y is not None and y <= living_after
+
+
+def dated_person_seeds(T, living_after):
+    """Handles of the people whose own birth or baptism, birth or death event ends by living_after."""
+    return {h for h, p in T['people'].items()
+            if any(by_cutoff(e, living_after) for e in own_events(T, p) if etype(e) in BIRTH_LIKE)
+            or by_cutoff(birth(T, p), living_after) or by_cutoff(death(T, p), living_after)}
+
+
+def marriage_by_cutoff(T, f, living_after):
+    """True when a Marriage event of the family f ends by living_after."""
+    return any(by_cutoff(T['events'].get(r.get('ref')), living_after)
+               and etype(T['events'][r['ref']]) in MARRIAGE_LIKE
+               for r in f.get('event_ref_list', []) if r.get('ref') in T['events'])
+
+
+def with_ancestors(T, seeds):
+    """The seeds and every person above them through any parent family, breadth first."""
     old, queue = set(seeds), collections.deque(seeds)
     while queue:
         p = T['people'][queue.popleft()]
@@ -423,97 +502,158 @@ def leads(T, root_gid=None, kinds=DEFAULT_KINDS, living_after=None, hold=True, l
     """(rows, held): one row per gap, highest priority first, and {gramps_id: why} for the people held back
     (none when hold is False). With archives (load_archives), a gap whose place matches a row gets 'where'."""
     living_after = default_living_after() if living_after is None else living_after
-    gen = {}
-    if root_gid:
-        root = next((h for h, p in T['people'].items() if p.get('gramps_id') == root_gid), None)
-        if root is None:
-            raise BadInput('no person %s in the dump' % root_gid)
-        gen = generations(T, root)
-    out, held = [], {}
-    old = not_living(T, living_after)
-
-    def add(p, kind, gap, what):
-        g = gen.get(p['handle'])
-        prio = max(40, 100 - g) if g is not None else 10
-        out.append({'person': p.get('gramps_id', p['handle']), 'label': label(p), 'kind': kind, 'gap': gap,
-                    'what': what, 'priority': prio, 'generation': g, 'weak': weak_name(p), 'facts': facts(T, p)})
-        where = where_of(T, gap_event(T, p, gap), archives) if archives else None
-        if where:
-            out[-1]['where'] = where
-
+    gen = root_generations(T, root_gid)
+    collector = GapCollector(T, gen, archives, living_after, hold, not_living(T, living_after))
     for p in T['people'].values():
-        why = held_back(T, p, living_after, old) if hold else ''
+        why = collector.hold_reason(p)
         if why:
-            held[p.get('gramps_id', p['handle'])] = why
+            collector.held[p.get('gramps_id', p['handle'])] = why
             continue
+        collector.person_gaps(p, kinds)
+    if 'missing-vital' in kinds:
+        collector.marriage_gaps()
+    if 'unsupported-link' in kinds:
+        collector.link_gaps(links)
+    out = collector.rows
+    out.sort(key=lambda r: (-r['priority'], id_order(r['person']), r['kind'], r['gap']))
+    return out, collector.held
+
+
+def root_generations(T, root_gid):
+    """handle -> generation for the root person with Gramps id root_gid and its ancestors; {} without a root."""
+    if not root_gid:
+        return {}
+    root = next((h for h, p in T['people'].items() if p.get('gramps_id') == root_gid), None)
+    if root is None:
+        raise BadInput(f'no person {root_gid} in the dump')
+    return generations(T, root)
+
+
+def check_link_row(row):
+    """BadInput for a row of a links report that is malformed or from a level this version does not know."""
+    if not (isinstance(row, dict) and all(isinstance(row.get(k), str) for k in ('family', 'child', 'level'))):
+        raise BadInput('not a gwt-check links report: every row needs a family, a child and a level')
+    if row['level'] not in LINK_GAPS and row['level'] not in LINK_NOT_GAPS:
+        raise BadInput(f"links report: unknown level {row['level']!r} (is it from a newer gwt-check?)")
+
+
+def link_gap_text(T, row, f, ref):
+    """The gap a report row names for a family f and child ref, or None when the row is no gap here."""
+    gap = LINK_GAPS.get(row['level'])
+    if gap is None or not (is_birth_relation(ref.get('frel')) and is_birth_relation(ref.get('mrel'))):
+        return None  # supported, listed by another kind, or not a birth link a birth record could prove
+    if row['level'] == 'a record names one' and \
+            sum(f.get(k) in T['people'] for k in ('father_handle', 'mother_handle')) < 2:
+        return None  # the one parent the family has is named
+    return gap
+
+
+def link_what(row, gap):
+    """The task text of an unsupported link, with the report row's flags to read first."""
+    flags = [x for x in row.get('flags') or [] if isinstance(x, str)]
+    read_first = f" [read first: {'; '.join(flags)}]" if flags else ''
+    return (f"family {row['family']}: {gap}; transcribe the parents from the cited record into its citation, or "
+            f'find a record that names both (words only: the link is not shown wrong){read_first}')
+
+
+class GapCollector:
+    """The rows of leads(): what the tree, the living cutoff and the archives say, and who is held back."""
+
+    def __init__(self, T, gen, archives, living_after, hold, old):
+        self.T, self.gen, self.archives = T, gen, archives
+        self.living_after, self.hold, self.old = living_after, hold, old
+        self.rows, self.held = [], {}
+
+    def add(self, p, kind, gap, what):
+        g = self.gen.get(p['handle'])
+        prio = max(40, 100 - g) if g is not None else 10
+        self.rows.append({'person': p.get('gramps_id', p['handle']), 'label': label(p), 'kind': kind, 'gap': gap,
+                          'what': what, 'priority': prio, 'generation': g, 'weak': weak_name(p),
+                          'facts': facts(self.T, p)})
+        where = where_of(self.T, gap_event(self.T, p, gap), self.archives) if self.archives else None
+        if where:
+            self.rows[-1]['where'] = where
+
+    def hold_reason(self, p):
+        """Why p is held back ('' when it is not, or when holding back is off)."""
+        return held_back(self.T, p, self.living_after, self.old) if self.hold else ''
+
+    def person_gaps(self, p, kinds):
+        """Every gap of the kinds asked for in one person's own record."""
+        T = self.T
         b, d, by = birth(T, p), death(T, p), birth_dated(T, p)
         if 'branch-end' in kinds and not parents(T, p):
-            add(p, 'branch-end', 'branch-end', 'no parents recorded')
+            self.add(p, 'branch-end', 'branch-end', 'no parents recorded')
         if 'missing-vital' in kinds:
-            if not b:
-                add(p, 'missing-vital', 'birth-missing', 'no birth or baptism event')
-            if not d and p['handle'] in old:
-                shown = by and year(by) and by.get('private') is not True
-                add(p, 'missing-vital', 'death-missing', 'no death or burial event' +
-                    (' (%s %d)' % (etype(by).lower(), year(by)) if shown else ''))
-            for code, e in (('birth', b), ('death', d)):
-                if not e:
-                    continue
-                if date_gap(e):
-                    gap = date_gap(e)
-                    if e.get('private') is True and gap != 'has no date':
-                        gap = 'has date text without an interpretable year'  # the text of a private date stays out
-                    add(p, 'missing-vital', code + '-date', '%s %s' % (etype(e).lower(), gap))
-                if not e.get('place'):
-                    add(p, 'missing-vital', code + '-place', '%s has no place' % etype(e).lower())
+            self.vital_gaps(p, b, d, by)
         if 'uncited' in kinds:
             for code, e in (('birth', b), ('death', d)):
                 if e and not e.get('citation_list'):
-                    add(p, 'uncited', code + '-uncited', '%s has no citation' % etype(e).lower())
-    if 'missing-vital' in kinds:
+                    self.add(p, 'uncited', code + '-uncited', f'{etype(e).lower()} has no citation')
+
+    def vital_gaps(self, p, b, d, by):
+        """Missing birth, death, date and place gaps of p (birth b, death d, dated birth or baptism by)."""
+        if not b:
+            self.add(p, 'missing-vital', 'birth-missing', 'no birth or baptism event')
+        if not d and p['handle'] in self.old:
+            shown = by and year(by) and by.get('private') is not True
+            self.add(p, 'missing-vital', 'death-missing', 'no death or burial event' +
+                     (f' ({etype(by).lower()} {year(by):d})' if shown else ''))
+        for code, e in (('birth', b), ('death', d)):
+            if e:
+                self.event_gaps(p, code, e)
+
+    def event_gaps(self, p, code, e):
+        """The no-date and no-place gaps of one birth or death event."""
+        if date_gap(e):
+            gap = date_gap(e)
+            if e.get('private') is True and gap != 'has no date':
+                gap = 'has date text without an interpretable year'  # the text of a private date stays out
+            self.add(p, 'missing-vital', code + '-date', f'{etype(e).lower()} {gap}')
+        if not e.get('place'):
+            self.add(p, 'missing-vital', code + '-place', f'{etype(e).lower()} has no place')
+
+    def marriage_gaps(self):
+        """One gap per family with children and no marriage event, on its first spouse not held back."""
+        T = self.T
         for f in T['families'].values():
             if f.get('child_ref_list') and not any(
                     etype(T['events'].get(r.get('ref'), {})) in MARRIAGE_LIKE for r in f.get('event_ref_list', [])):
-                for h in (f.get('father_handle'), f.get('mother_handle')):
-                    p = T['people'].get(h)
-                    if p and not (hold and held_back(T, p, living_after, old)):
-                        add(p, 'missing-vital', 'marriage-missing-%s' % f.get('gramps_id', f['handle']),
-                            'family %s has children but no marriage event' % f.get('gramps_id', ''))
-                        break
-    if 'unsupported-link' in kinds:
+                self.marriage_gap(f)
+
+    def marriage_gap(self, f):
+        for h in (f.get('father_handle'), f.get('mother_handle')):
+            p = self.T['people'].get(h)
+            if p and not self.hold_reason(p):
+                gid = f.get('gramps_id', f['handle'])
+                self.add(p, 'missing-vital', f'marriage-missing-{gid}',
+                         f"family {f.get('gramps_id', '')} has children but no marriage event")
+                break
+
+    def link_gaps(self, links):
+        """One gap per row of a gwt-check links report that no record supports (see link_gap_text)."""
+        T = self.T
         by_gid = {p.get('gramps_id'): p for p in T['people'].values()}
         fam_by_gid = {f.get('gramps_id'): f for f in T['families'].values()}
         stale = 0
         for row in (links or {}).get('rows', []):
-            if not (isinstance(row, dict) and all(isinstance(row.get(k), str) for k in ('family', 'child', 'level'))):
-                raise BadInput('not a gwt-check links report: every row needs a family, a child and a level')
-            if row['level'] not in LINK_GAPS and row['level'] not in LINK_NOT_GAPS:
-                raise BadInput('links report: unknown level %r (is it from a newer gwt-check?)' % row['level'])
+            check_link_row(row)
             p, f = by_gid.get(row['child']), fam_by_gid.get(row['family'])
             ref = next((c for c in (f or {}).get('child_ref_list', []) if p and c.get('ref') == p['handle']), None)
             if ref is None:
                 stale += 1
                 continue
-            gap = LINK_GAPS.get(row['level'])
-            if gap is None or not (is_birth_relation(ref.get('frel')) and is_birth_relation(ref.get('mrel'))):
-                continue  # supported, listed by another kind, or not a birth link a birth record could prove
-            if row['level'] == 'a record names one' and \
-                    sum(f.get(k) in T['people'] for k in ('father_handle', 'mother_handle')) < 2:
-                continue  # the one parent the family has is named
-            why = held_back(T, p, living_after, old) if hold else ''
-            if why:
-                held[p.get('gramps_id', p['handle'])] = why
+            gap = link_gap_text(T, row, f, ref)
+            if gap is None:
                 continue
-            flags = [x for x in row.get('flags') or [] if isinstance(x, str)]
-            add(p, 'unsupported-link', 'link-%s' % row['family'],
-                'family %s: %s; transcribe the parents from the cited record into its citation, or find a record '
-                'that names both (words only: the link is not shown wrong)%s'
-                % (row['family'], gap, ' [read first: %s]' % '; '.join(flags) if flags else ''))
+            why = self.hold_reason(p)
+            if why:
+                self.held[p.get('gramps_id', p['handle'])] = why
+                continue
+            self.add(p, 'unsupported-link', f"link-{row['family']}", link_what(row, gap))
         if stale:
-            raise BadInput('%d rows of the links report name a child who is not in that family in this dump: the '
-                           'report is from another tree or an older dump, so run gwt-check links on this one' % stale)
-    out.sort(key=lambda r: (-r['priority'], id_order(r['person']), r['kind'], r['gap']))
-    return out, held
+            raise BadInput(f'{stale} rows of the links report name a child who is not in that family in this dump: the '
+                           'report is from another tree or an older dump, so run gwt-check links on this one')
 
 
 def id_order(gid):
@@ -537,8 +677,8 @@ def query_of(row):
 def fact_note(f):
     """facts as 'by=~1860 bp=San_Juan,Villa': spaces as _, and %, |, ;, = and _ escaped so the note stays parseable."""
     def esc(v):
-        return re.sub(r'[%|;=_\s]', lambda m: '_' if m.group().isspace() else '%%%02X' % ord(m.group()), str(v))
-    return ' '.join('%s=%s' % (k, esc(v)) for k, v in sorted(f.items()))
+        return re.sub(r'[%|;=_\s]', lambda m: '_' if m.group().isspace() else f'%{ord(m.group()):02X}', str(v))
+    return ' '.join(f'{k}={esc(v)}' for k, v in sorted(f.items()))
 
 
 def where_note(w):
@@ -562,15 +702,15 @@ def queue_task(r, source=''):
     code with --per-gap), never the name, so a corrected name refreshes the open task instead of adding one."""
     gaps = r.get('gaps') or [r]
     task = task_of(r)
-    note = '; '.join('%s: %s' % (g['gap'], g['what']) for g in gaps)
+    note = '; '.join(f"{g['gap']}: {g['what']}" for g in gaps)
     wheres = []
     for g in gaps:
         if g.get('where') and g['where'] not in wheres:
             wheres.append(g['where'])
     if wheres:
-        note = 'where: %s | %s' % ('; '.join(where_note(w) for w in wheres), note)
+        note = f"where: {'; '.join(where_note(w) for w in wheres)} | {note}"
     if r.get('facts'):
-        note = 'facts: %s | %s' % (fact_note(r['facts']), note)
+        note = f"facts: {fact_note(r['facts'])} | {note}"
     dedupe_key = ':'.join([r['person'].lower(), task, source.lower()] + ([] if 'gaps' in r else [r['gap']]))
     return {'person': r['person'], 'label': r['label'], 'kind': task, 'source': source, 'query': query_of(r),
             'priority': r['priority'], 'note': note, 'dedupe_key': dedupe_key}
@@ -580,7 +720,7 @@ def tsv_cell(value):
     return ' '.join(str(value).replace('\t', ' ').splitlines()).strip()
 
 
-def main(argv=None):
+def build_parser():
     p = argparse.ArgumentParser(prog='gwt-leads', description=__doc__.split('\n')[0])
     p.add_argument('dump')
     p.add_argument('--root', help='Gramps id of the person whose ancestors rank first')
@@ -606,52 +746,67 @@ def main(argv=None):
     p.add_argument('--keep-weak', action='store_true',
                    help='queue format: also queue people whose name is too thin to search (a one-word name '
                         'matches thousands of people); by default they are skipped and counted on stderr')
-    args = p.parse_args(argv)
+    return p
+
+
+def check_queue_flags(p, args):
+    """Refuse (argparse error, exit 2) a queue-only flag given with another format."""
     if args.format != 'queue':
         for flag, on in (('--source', args.source), ('--per-gap', args.per_gap), ('--skip-weak', args.skip_weak), ('--keep-weak', args.keep_weak)):
             if on:
-                p.error('%s only applies to --format queue' % flag)
+                p.error(f'{flag} only applies to --format queue')
+
+
+def resolve_kinds(p, args):
+    """The kinds asked for, as a tuple; --links adds unsupported-link, and that kind without --links is an error."""
+    check_queue_flags(p, args)
     kinds = tuple(k for k in args.kinds.split(',') if k)
     bad = [k for k in kinds if k not in KINDS]
     if bad:
-        p.error('unknown kind: %s' % ', '.join(bad))
+        p.error(f"unknown kind: {', '.join(bad)}")
     if args.links and 'unsupported-link' not in kinds:
         kinds += ('unsupported-link',)  # --links can only mean this kind
     if 'unsupported-link' in kinds and not args.links:
         p.error('the unsupported-link kind needs --links FILE, the JSON `gwt-check links --json` writes')
-    links = None
-    if args.links:
-        try:
-            with open(args.links, encoding='utf-8') as fh:
-                links = json.load(fh)
-            if not isinstance(links, dict) or not isinstance(links.get('rows'), list):
-                raise ValueError('not a gwt-check links report')
-        except (OSError, ValueError) as exc:
-            print('gwt-leads: %s: %s' % (args.links, exc), file=sys.stderr)
-            return 2
+    return kinds
+
+
+def load_links(path):
+    """The parsed `gwt-check links --json` report in a file (BadInput when unreadable or not such a report)."""
+    real = checked_path(path)
     try:
-        archives = load_archives(args.archives) if args.archives else None
-        rows, held = leads(load(args.dump), args.root, kinds, args.living_after, hold=not args.include_living,
-                           links=links, archives=archives)
-    except BadInput as exc:
-        print('gwt-leads: %s' % exc, file=sys.stderr)
-        return 2
+        with open(real, encoding='utf-8') as fh:
+            links = json.load(fh)
+        if not isinstance(links, dict) or not isinstance(links.get('rows'), list):
+            raise ValueError('not a gwt-check links report')
+    except (OSError, ValueError) as exc:
+        raise BadInput(f'{path}: {os_text(exc, real, path)}')
+    return links
+
+
+def report_held(held, living_after):
+    """The one stderr line naming (ids only) the people held back, when there are any."""
     if held:
         n_private = sum(1 for why in held.values() if why == 'private')
-        print('gwt-leads: held back %d people (%d marked private, %d who may be living: born after %d or in an unknown '
-              'year, no death): %s' % (len(held), n_private, len(held) - n_private, args.living_after,
-                                       ' '.join(sorted(held, key=id_order))), file=sys.stderr)
-    if args.format == 'queue':
-        if not args.keep_weak:
-            weak = sorted({r['person'] for r in rows if r['weak'] and r['generation'] is None}, key=id_order)
-            rows = [r for r in rows if not (r['weak'] and r['generation'] is None)]
-            if weak:
-                print('gwt-leads: skipped %d people whose name is too thin to search (research them by hand, or --keep-weak): %s' % (len(weak), ' '.join(weak)),
-                      file=sys.stderr)
-        if not args.per_gap:
-            rows = group_by_person(rows)
-    if args.limit:
-        rows = rows[:args.limit]
+        ids = ' '.join(sorted(held, key=id_order))
+        print(f'gwt-leads: held back {len(held)} people ({n_private} marked private, {len(held) - n_private} who may '
+              f'be living: born after {living_after} or in an unknown year, no death): {ids}', file=sys.stderr)
+
+
+def queue_rows(rows, args):
+    """The rows of --format queue: thin names left out unless --keep-weak (ids to stderr), grouped per person
+    unless --per-gap."""
+    if not args.keep_weak:
+        weak = sorted({r['person'] for r in rows if r['weak'] and r['generation'] is None}, key=id_order)
+        rows = [r for r in rows if not (r['weak'] and r['generation'] is None)]
+        if weak:
+            print(f"gwt-leads: skipped {len(weak)} people whose name is too thin to search "
+                  f"(research them by hand, or --keep-weak): {' '.join(weak)}", file=sys.stderr)
+    return rows if args.per_gap else group_by_person(rows)
+
+
+def print_rows(rows, args):
+    """One line per row in the format asked for."""
     for r in rows:
         if args.format == 'queue':
             print(json.dumps(queue_task(r, args.source), ensure_ascii=False))
@@ -659,6 +814,26 @@ def main(argv=None):
             print(json.dumps(r, ensure_ascii=False))
         else:
             print('\t'.join(tsv_cell(r[c]) for c in ('priority', 'person', 'label', 'kind', 'what')))
+
+
+def main(argv=None):
+    p = build_parser()
+    args = p.parse_args(argv)
+    kinds = resolve_kinds(p, args)
+    try:
+        links = load_links(args.links) if args.links else None
+        archives = load_archives(args.archives) if args.archives else None
+        rows, held = leads(load(args.dump), args.root, kinds, args.living_after, hold=not args.include_living,
+                           links=links, archives=archives)
+    except BadInput as exc:
+        print(f'gwt-leads: {exc}', file=sys.stderr)
+        return 2
+    report_held(held, args.living_after)
+    if args.format == 'queue':
+        rows = queue_rows(rows, args)
+    if args.limit:
+        rows = rows[:args.limit]
+    print_rows(rows, args)
     return 0
 
 

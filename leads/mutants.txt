@@ -20,7 +20,7 @@ gwt_leads.py | if missing or unknown: | if missing: | an unknown column in the a
 gwt_leads.py | bad = [f for f, spec, conv in fields if f not in URL_FIELDS or spec or conv] | bad = [] | a url placeholder other than {place} and {year} exits 2
 gwt_leads.py | if access not in ACCESS: | if False: | an access value outside online, browser, letter, unknown exits 2
 gwt_leads.py | if not m or int(m.group(2) or m.group(1)) < int(m.group(1)): | if not m: | a backwards years range exits 2
-gwt_leads.py |         if None in row: |         if False: | a row with more cells than the header exits 2, never drops the extra cell
+gwt_leads.py |     if None in row: |     if False: | a row with more cells than the header exits 2, never drops the extra cell
 gwt_leads.py | access = row.get('access') or 'unknown' | access = row.get('access') | an empty or missing access reads as unknown
 gwt_leads.py |         if where: |         if True: | without --archives, or without a match, a row has no where key: json output is unchanged
 gwt_leads.py |     if wheres: |     if False: | a matched gap puts a where part in the queue note
@@ -30,7 +30,7 @@ gwt_leads.py | next((archives[n] for n in folded if n in archives), None) | next
 gwt_leads.py | delimiter='\t', quoting=csv.QUOTE_NONE) | delimiter='\t') | a quote in the archives file is a character: a stray one never swallows the rows after it
 gwt_leads.py |     if repeated: |     if False: | a column named twice in the archives header exits 2, never keeps the last cell in silence
 gwt_leads.py | unknown = [c or '(empty)' for c in header | unknown = [c for c in header | an empty header cell is named in the message, not left blank
-gwt_leads.py | open(path, encoding='utf-8-sig', newline='') | open(path, encoding='utf-8', newline='') | an archives file saved with a byte-order mark reads its first column
+gwt_leads.py | open(real, encoding='utf-8-sig', newline='') | open(real, encoding='utf-8', newline='') | an archives file saved with a byte-order mark reads its first column
 gwt_leads.py | header = [h.strip() for h in reader.fieldnames or []] | header = list(reader.fieldnames or []) | spaces around a column name in the archives header do not count
 gwt_leads.py | row = {k: (v or '').strip() for k, v in row.items()} | row = {k: (v or '') for k, v in row.items()} | spaces around an archives cell do not count
 gwt_leads.py | gap.startswith(('birth-', 'link-')) | gap.startswith(('birth-',)) | an unsupported link asks for the child's birth record

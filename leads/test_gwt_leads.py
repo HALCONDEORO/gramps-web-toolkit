@@ -1,5 +1,4 @@
-import io, json, os, subprocess, sys, tempfile, unittest
-from contextlib import redirect_stderr, redirect_stdout
+import json, os, subprocess, sys, tempfile, unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gwt_leads as L
@@ -161,7 +160,8 @@ class LeadsTest(unittest.TestCase):
 
     # --- who is held back ---
 
-    def living_tree(self):
+    @staticmethod
+    def living_tree():
         T = {'people': {}, 'events': {}, 'families': {}, 'places': {}}
 
         def add(gid, *evs, private=False):
@@ -194,11 +194,12 @@ class LeadsTest(unittest.TestCase):
             code, out, err = self.cli(path, '--format', fmt, '--living-after', '1925')
             self.assertEqual(code, 0, err)
             for gid in ('I2', 'I5', 'I6', 'I7', 'I8'):
-                self.assertNotIn('"%s"' % gid if fmt != 'tsv' else '\t%s\t' % gid, out, fmt)
+                self.assertNotIn(f'"{gid}"' if fmt != 'tsv' else f'\t{gid}\t', out, fmt)
             self.assertIn('held back 5 people (1 marked private, 4 who may be living', err)
             self.assertIn('I2 I5 I6 I7 I8', err)
             self.assertNotIn('Ana', err)  # ids only, never names
         code, out, err = self.cli(path, '--include-living', '--living-after', '1925')
+        self.assertEqual(code, 0, err)
         self.assertIn('\tI2\t', out)
         self.assertNotIn('held back', err)
 
@@ -295,7 +296,8 @@ class LeadsTest(unittest.TestCase):
 
     # --- facts ---
 
-    def facts_tree(self):
+    @staticmethod
+    def facts_tree():
         T = tree()
         T['places'] = {'par': {'handle': 'par', 'name': {'value': 'San Juan'}, 'placeref_list': [{'ref': 'town'}]},
                        'town': {'handle': 'town', 'name': {'value': 'Villa | Norte'}, 'placeref_list': [{'ref': 'prov'}]},
@@ -325,12 +327,14 @@ class LeadsTest(unittest.TestCase):
         T['events']['ed2'] = event('ed2', 'Death', 1933, place='prov')
         T['people']['fa']['event_ref_list'].append({'ref': 'ed2', 'role': 'Primary'})
         tasks = [L.queue_task(t) for t in L.group_by_person(rows_of(T, 'I1')) if t['person'] == 'I2']
-        search = next(t for t in tasks if t['kind'] == 'search')
+        search = next((t for t in tasks if t['kind'] == 'search'), None)
+        self.assertIsNotNone(search)
         self.assertEqual(search['note'], 'facts: bp=San_Juan,_Villa_%7C_Norte by=<1860 dp=Provincia dy=1933 | '
                                          'branch-end: no parents recorded; '
                                          'marriage-missing-F1: family F1 has children but no marriage event')
         self.assertEqual(search['query'], 'Father Test 1860 San Juan')
-        verify = next(t for t in tasks if t['kind'] == 'verify')
+        verify = next((t for t in tasks if t['kind'] == 'verify'), None)
+        self.assertIsNotNone(verify)
         self.assertTrue(verify['note'].endswith('| birth-uncited: birth has no citation'))
         self.assertEqual(L.fact_note({'bp': 'a=b;c_d%'}), 'bp=a%3Db%3Bc%5Fd%25')
 
@@ -343,7 +347,8 @@ class LeadsTest(unittest.TestCase):
         father = [(t['kind'], t['dedupe_key']) for t in tasks if t['person'] == 'I2']
         self.assertEqual(father, [('search', 'i2:search:'), ('verify', 'i2:verify:')])
         self.assertEqual([t['priority'] for t in tasks], sorted((t['priority'] for t in tasks), reverse=True))
-        code, out, _ = self.cli(self.dump(tree()), '--root', 'I1', '--format', 'queue', '--per-gap', '--source', 'FS')
+        code, out, err = self.cli(self.dump(tree()), '--root', 'I1', '--format', 'queue', '--per-gap', '--source', 'FS')
+        self.assertEqual(code, 0, err)
         per_gap = [json.loads(l) for l in out.splitlines() if '"I2"' in l]
         self.assertEqual(sorted(t['dedupe_key'] for t in per_gap),
                          ['i2:search:fs:branch-end', 'i2:search:fs:death-missing', 'i2:search:fs:marriage-missing-F1',
@@ -352,11 +357,14 @@ class LeadsTest(unittest.TestCase):
 
     def test_limit_keeps_the_highest_priority_tasks(self):
         path = self.dump(tree())
-        code, out, _ = self.cli(path, '--root', 'I1', '--format', 'queue', '--limit', '1')
+        code, out, err = self.cli(path, '--root', 'I1', '--format', 'queue', '--limit', '1')
+        self.assertEqual(code, 0, err)
         self.assertEqual([(t['person'], t['kind']) for t in map(json.loads, out.splitlines())], [('I2', 'search')])
-        code, out, _ = self.cli(path, '--root', 'I1', '--limit', '2')
+        code, out, err = self.cli(path, '--root', 'I1', '--limit', '2')
+        self.assertEqual(code, 0, err)
         self.assertEqual([l.split('\t')[:2] for l in out.splitlines()], [['99', 'I2'], ['99', 'I2']])
-        code, out, _ = self.cli(path, '--root', 'I1')
+        code, out, err = self.cli(path, '--root', 'I1')
+        self.assertEqual(code, 0, err)
         prios = [int(l.split('\t')[0]) for l in out.splitlines()]
         self.assertEqual(prios, sorted(prios, reverse=True))
         self.assertLess(prios[-1], prios[0])
@@ -371,11 +379,13 @@ class LeadsTest(unittest.TestCase):
     def test_reseeding_never_duplicates_and_refreshes_the_open_task(self):
         q = os.path.join(self.td.name, 'cola.tsv')
         T = tree()
-        code, seeds, _ = self.cli(self.dump(T), '--root', 'I1', '--format', 'queue')
+        code, seeds, err = self.cli(self.dump(T), '--root', 'I1', '--format', 'queue')
+        self.assertEqual(code, 0, err)
         self.queue(q, 'add', '--jsonl', '-', '--dedupe', stdin=seeds)
         first = self.queue(q, 'list').splitlines()
         T['people']['fa']['primary_name']['first_name'] = 'Fathers'  # a name correction between rounds
-        code, seeds, _ = self.cli(self.dump(T), '--root', 'I1', '--format', 'queue')
+        code, seeds, err = self.cli(self.dump(T), '--root', 'I1', '--format', 'queue')
+        self.assertEqual(code, 0, err)
         self.queue(q, 'add', '--jsonl', '-', '--dedupe', stdin=seeds)
         rows = [l.split('\t') for l in self.queue(q, 'list').splitlines()]
         self.assertEqual(len(rows), len(first))
@@ -395,19 +405,23 @@ class LeadsTest(unittest.TestCase):
         path = self.dump(T)
         for flags in (['--skip-weak'], []):  # default since 2026-10; --skip-weak kept for compatibility
             code, out, err = self.cli(path, '--root', 'I1', '--format', 'queue', *flags)
+            self.assertEqual(code, 0, err)
             people = {json.loads(l)['person'] for l in out.splitlines()}
             self.assertIn('I2', people)       # weak, but the root's father
             self.assertNotIn('I9', people)    # weak and not an ancestor
             self.assertIn('skipped 1 people whose name is too thin to search (research them by hand, or --keep-weak): I9', err)
         code, out, err = self.cli(path, '--root', 'I1', '--format', 'queue', '--keep-weak')
+        self.assertEqual(code, 0, err)
         self.assertIn('I9', {json.loads(l)['person'] for l in out.splitlines()})  # opt-out of the default skip
-        code, out, _ = self.cli(path, '--format', 'json')
+        code, out, err = self.cli(path, '--format', 'json')
+        self.assertEqual(code, 0, err)
         self.assertTrue(all(json.loads(l)['weak'] for l in out.splitlines() if '"I9"' in l))
 
     def test_tsv_cells_never_split_a_row(self):
         T = tree()
         T['people']['lo']['primary_name']['first_name'] = 'Lo\tner\nX'
-        code, out, _ = self.cli(self.dump(T), '--kinds', 'branch-end')
+        code, out, err = self.cli(self.dump(T), '--kinds', 'branch-end')
+        self.assertEqual(code, 0, err)
         self.assertTrue(all(len(l.split('\t')) == 5 for l in out.splitlines()))
         self.assertIn('\tLo ner X Other\t', out)
 
@@ -493,6 +507,18 @@ class LeadsTest(unittest.TestCase):
                 self.assertIn('gwt-check dump', err)
                 self.assertIn('gwt-apply snapshot', err)
 
+    def test_a_nul_path_or_a_non_file_is_bad_input_but_any_local_file_is_allowed(self):
+        with self.assertRaises(L.BadInput):
+            L.checked_path('dump\0.json')
+        with self.assertRaises(L.BadInput):
+            L.load(self.td.name)  # a directory is not a file
+        code, out, err = self.cli(self.td.name)
+        self.assertEqual((code, out), (2, ''), err)
+        self.assertIn('not a regular file', err)
+        self.assertNotIn('Traceback', err)
+        # a file outside the repository is intended: the path is resolved, never confined
+        self.assertEqual(len(L.load(self.dump(tree()))['people']), 5)
+
     # --- the real `gwt-check dump` shape, and honest dates ---
 
     def real_dump(self, mutate=None):
@@ -516,7 +542,8 @@ class LeadsTest(unittest.TestCase):
 
     def test_date_text_without_a_year_is_not_called_no_date(self):
         def mutate(objects):
-            e = next(e for e in objects['events'] if e['type'] == 'Birth')
+            e = next((e for e in objects['events'] if e['type'] == 'Birth'), None)
+            self.assertIsNotNone(e)
             e['date'] = dict(e['date'], dateval=[0, 0, 0, False], year=0, text='before the war')
         T = L.load(self.real_dump(mutate))
         what = [r['what'] for r in L.leads(T, None, ('missing-vital',), hold=False)[0]]
@@ -594,8 +621,10 @@ class LeadsTest(unittest.TestCase):
 
     def test_a_gwt_check_links_report_with_a_cited_link_makes_no_task_and_does_not_stop(self):
         def mutate(objects):
-            fam = next(f for f in objects['families'] if f['child_ref_list'])
-            cit = next(c for c in objects['citations'] if not c.get('private'))
+            fam = next((f for f in objects['families'] if f['child_ref_list']), None)
+            cit = next((c for c in objects['citations'] if not c.get('private')), None)
+            self.assertIsNotNone(fam)
+            self.assertIsNotNone(cit)
             fam['child_ref_list'][0]['citation_list'] = [cit['handle']]
         if not os.path.isdir(os.path.join(HERE, '..', 'check', 'gwt_check')):
             self.skipTest('gwt-check is not beside this package')
@@ -642,7 +671,8 @@ class LeadsTest(unittest.TestCase):
 
     # --- --archives: where each gap's record is kept ---
 
-    def archives_tree(self):
+    @staticmethod
+    def archives_tree():
         """I2's birth is in a parish four levels deep in an invented French chain; I3 died in the department;
         I9 was born in another country."""
         T = tree()
@@ -659,7 +689,7 @@ class LeadsTest(unittest.TestCase):
         return T
 
     def archives(self, *rows, header='match\tarchive\tseries\tyears\turl'):
-        path = os.path.join(self.td.name, 'archives-%d.tsv' % len(os.listdir(self.td.name)))
+        path = os.path.join(self.td.name, f'archives-{len(os.listdir(self.td.name))}.tsv')
         with open(path, 'w', encoding='utf-8') as f:
             f.write('\n'.join((header,) + rows) + '\n')
         return path
@@ -789,8 +819,9 @@ class LeadsTest(unittest.TestCase):
                          'url=https://archives.example.org/search?commune%3DSaint-%25C3%2589xemple&year%3D1860')
         self.assertEqual(len(note.split(' | ')), 3)
         # two gaps on the same record give that record's hint once
-        group = next(g for g in L.group_by_person(L.leads(T, 'I1', L.DEFAULT_KINDS, 1925, archives=L.load_archives(
-            self.archives('France\tAD Exemple\t\t\t')))[0]) if g['person'] == 'I2' and g['task'] == 'search')
+        group = next((g for g in L.group_by_person(L.leads(T, 'I1', L.DEFAULT_KINDS, 1925, archives=L.load_archives(
+            self.archives('France\tAD Exemple\t\t\t')))[0]) if g['person'] == 'I2' and g['task'] == 'search'), None)
+        self.assertIsNotNone(group)
         group['gaps'].append(dict(group['gaps'][0], gap='birth-date', what='birth has no date'))
         self.assertEqual(L.queue_task(group)['note'].split(' | ')[1], 'where: access=unknown archive=AD_Exemple online=false')
         # one task of two gaps on two records: both hints, each once, in gap order
@@ -807,6 +838,7 @@ class LeadsTest(unittest.TestCase):
         self.assertEqual(rc, 2)
         self.assertIn('column url appears more than once', err)
         rc, _, err = self.cli(d, '--archives', self.archives('France\tA\t\t\t', header=head + '\t'))
+        self.assertEqual(rc, 2)
         self.assertIn('unknown column (empty)', err)
         latin = self.archives()
         with open(latin, 'w', encoding='cp1252') as f:
