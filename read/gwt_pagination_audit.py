@@ -385,8 +385,12 @@ def load_manifest(path):
 
 def main(argv=None):
     args = sys.argv[1:] if argv is None else argv
+    if args in (['-h'], ['--help']):
+        print('usage: gwt-pagination-audit MANIFEST.json')
+        print('Offline manifest completeness audit. No live validation or network.')
+        return EXIT_COMPLETE
     if len(args) != 1:
-        print("usage: gwt_pagination_audit.py MANIFEST.json", file=sys.stderr)
+        print("usage: gwt-pagination-audit MANIFEST.json", file=sys.stderr)
         return EXIT_BAD_INPUT
     try:
         manifest = load_manifest(args[0])

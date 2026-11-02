@@ -8,6 +8,7 @@ disagreement (comparison is exact: case, accents, spelling, digits).
 
 Standard library only.  See docs/transcription-review.md.
 """
+from pathlib import Path
 import argparse
 import difflib
 import json
@@ -224,7 +225,7 @@ def render_text(packet):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p = argparse.ArgumentParser(prog="gwt-transcription-review", description=__doc__.splitlines()[0])
     p.add_argument("input", help="JSON file with two transcriptions")
     p.add_argument("--out", help="write packet JSON here (default: stdout)")
     p.add_argument("--text", action="store_true", help="print a plain-text packet")
@@ -285,7 +286,7 @@ def _no_dup_pairs(pairs):
 
 
 def _load(path):
-    with open(path, encoding="utf-8") as fh:
+    with Path(path).open(encoding="utf-8") as fh:
         text = fh.read(MAX_INPUT_CHARS + 1)
     if len(text) > MAX_INPUT_CHARS:
         raise ReviewError(f"input file too large (max {MAX_INPUT_CHARS} characters)")

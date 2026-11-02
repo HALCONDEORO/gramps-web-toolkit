@@ -20,7 +20,7 @@ def test_full_agreement_still_not_verified():
     p = R.build_packet(doc())
     assert p["auto_verified"] is False
     assert p["status"] == "needs-writer-review"
-    assert set(r["status"] for r in p["fields"].values()) == {"match"}
+    assert {r["status"] for r in p["fields"].values()} == {"match"}
 
 
 def test_auto_verify_refuses():

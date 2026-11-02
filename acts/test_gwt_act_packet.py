@@ -29,7 +29,8 @@ class T(unittest.TestCase):
         self.ot = os.path.join(self.td.name, 'out.tsv')
         self.oj = os.path.join(self.td.name, 'out.json')
 
-    def run_cli(self, rows, head=HEAD):
+    def run_cli(self, rows, head=None):
+        head = HEAD if head is None else head
         with open(self.inp, 'w', encoding='utf-8') as f:
             f.write('\t'.join(head) + '\n')
             for r in rows:
@@ -460,7 +461,7 @@ class T(unittest.TestCase):
                     v = 'img/a.jpg'
                 rc, err = self.run_err([row(**{field: v + ch})])
                 self.assertEqual(rc, 1, (field, ch))
-                self.assertIn('character in %s' % field, err, (field, ch))
+                self.assertIn(f'character in {field}', err, (field, ch))
                 self.assertIn('bidirectional or line-separator', err)
                 self.no_outputs()
 

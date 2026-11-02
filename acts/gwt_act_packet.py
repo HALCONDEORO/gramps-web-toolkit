@@ -9,6 +9,7 @@ the input carries approval metadata, which is only recorded. It does not check
 image content; file signatures are reported as hints, not verification.
 """
 import argparse
+from pathlib import Path
 import csv
 import datetime
 import hashlib
@@ -67,7 +68,7 @@ def file_facts(path):
     """Return (signature, sha256) computed from one single read of the file's bytes."""
     h = hashlib.sha256()
     sig, size = None, 0
-    with open(path, 'rb') as f:
+    with Path(path).open('rb') as f:
         for chunk in iter(lambda: f.read(65536), b''):
             if sig is None:
                 sig = _sig(chunk[:8])
@@ -236,7 +237,7 @@ def evidence_warnings(img_sig, crop_sig, img_hash, crop_hash):
 def _read_rows(path):
     """Return the non-blank TSV rows (header first)."""
     try:
-        with open(path, encoding='utf-8-sig', newline='') as f:  # a leading BOM is accepted
+        with Path(path).open(encoding='utf-8-sig', newline='') as f:  # a leading BOM is accepted
             rd = csv.reader(f, delimiter='\t', quoting=csv.QUOTE_NONE)
             rows = [r for r in rd if r and any(c.strip() for c in r)]
     except csv.Error as e:
@@ -265,7 +266,7 @@ def read_input(path):
     out = []
     for i, r in enumerate(rows[1:], start=2):
         if len(r) > len(header):
-            raise PacketError('line %d: too many fields' % i)
+            raise PacketError(f'line {int(i)}: too many fields')
         r = r + [''] * (len(header) - len(r))
         out.append((i, dict(zip(header, r))))
     if not out:
@@ -280,7 +281,7 @@ def build(input_path, root):
         try:
             records.append(check_row(row, root, seen))
         except PacketError as e:
-            errors.append('line %d: %s' % (line, e))
+            errors.append(f'line {int(line)}: {e}')
     return records, errors
 
 
@@ -358,7 +359,7 @@ def _discard(path):
 def _snapshot(path):
     """Return the current bytes of path, or None if it does not exist."""
     try:
-        with open(path, 'rb') as f:
+        with Path(path).open('rb') as f:
             return f.read()
     except FileNotFoundError:
         return None

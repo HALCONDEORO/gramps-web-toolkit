@@ -193,21 +193,21 @@ def crop_problem(crop):
 def reading_problems(i, r):
     """Reasons reading number i cannot count as an explicit reading with crop provenance."""
     if not isinstance(r, dict):
-        return ['reading %d is not an object' % i]
+        return [f'reading {int(i)} is not an object']
     out = []
     if not isinstance(r.get('reader'), str) or not r['reader'].strip():
-        out.append('reading %d has no reader' % i)
+        out.append(f'reading {int(i)} has no reader')
     cp = crop_problem(r.get('crop'))
-    out += ['reading %d %s' % (i, cp)] if cp else []
+    out += [f'reading {int(i)} {cp}'] if cp else []
     for k in ('given', 'surname'):
         np_ = name_problem(r.get(k)) if isinstance(r.get(k), str) else 'is not text'
-        out += ['reading %d %s %s' % (i, k, np_)] if np_ else []
+        out += [f'reading {int(i)} {k} {np_}'] if np_ else []
     if not isinstance(r.get('date_iso'), str):
-        out.append('reading %d date_iso is not text' % i)
+        out.append(f'reading {int(i)} date_iso is not text')
     elif not _clean(r.get('date_iso')):
-        out.append('reading %d lacks date_iso' % i)
+        out.append(f'reading {int(i)} lacks date_iso')
     elif not valid_iso(_clean(r['date_iso'])):
-        out.append('reading %d date_iso is not YYYY-MM-DD' % i)
+        out.append(f'reading {int(i)} date_iso is not YYYY-MM-DD')
     return out
 
 
@@ -305,13 +305,13 @@ def blockers(date_iso, filiation, conflicts=()):
 def _checked_evidence(cand, evidence, n):
     """The evidence object (empty when None); raises ValueError for a bad candidate, evidence or unknown key."""
     if not isinstance(cand, dict):
-        raise ValueError('candidate %d is not an object' % n)
+        raise ValueError(f'candidate {int(n)} is not an object')
     evidence = {} if evidence is None else evidence
     if not isinstance(evidence, dict):
-        raise ValueError('evidence for candidate %d is not an object' % n)
+        raise ValueError(f'evidence for candidate {int(n)} is not an object')
     unknown = sorted(set(evidence) - set(EVIDENCE_KEYS))
     if unknown:
-        raise ValueError('evidence for candidate %d has unknown keys: %s' % (n, ', '.join(map(str, unknown))))
+        raise ValueError(f"evidence for candidate {int(n)} has unknown keys: {', '.join(map(str, unknown))}")
     return evidence
 
 
@@ -355,7 +355,7 @@ def link(cand, evidence=None, n=1):
     readings, readers = _readings_readers(raw)
     missing = [k for k in LOCATORS if not fields[k]]
     date_iso, filiation = _first(cand, evidence, 'date_iso'), _first(cand, evidence, 'filiation')
-    return {'link_id': 'gal-%04d' % n, 'candidate_id': _clean(cand.get('id')), 'stage': stage,
+    return {'link_id': f'gal-{int(n):04}', 'candidate_id': _clean(cand.get('id')), 'stage': stage,
             'index_url': index_url, 'name_in_index': _clean(cand.get('name')), 'date_in_index': _clean(cand.get('date')),
             **fields, 'date_iso': date_iso, 'filiation': filiation, 'state': 'por-confirmar-acta',
             'zoom': zoom, 'readers': readers, 'readings': readings, 'missing': missing, 'blockers': blockers(date_iso, filiation, conflicts), 'problems': problems,
@@ -373,9 +373,9 @@ def build(candidates, evidence=None):
     for i, c in enumerate(candidates, 1):
         cid = c.get('id') if isinstance(c, dict) else None
         if not isinstance(cid, str) or not cid.strip():
-            raise ValueError('candidate %d has an empty or non-text id' % i)
+            raise ValueError(f'candidate {int(i)} has an empty or non-text id')
         if cid.strip() in seen:
-            raise ValueError('duplicate candidate id %r (candidate %d)' % (cid.strip(), i))
+            raise ValueError(f'duplicate candidate id {cid.strip()!r} (candidate {int(i)})')
         seen.add(cid.strip())
         out.append(link(c, evidence.get(cid.strip()), i))
     return out
