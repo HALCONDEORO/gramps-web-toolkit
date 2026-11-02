@@ -234,33 +234,43 @@ def main(argv=None):
     if a.cmd == "corpus":
         return corpus(a)
     rows = load(a.map)
-    if a.cmd == "set":
-        key = a.archive.strip().lower()
-        if not key:
-            p.error("archive is empty")
-        r = rows.setdefault(key, {c: "unknown" for c in COLS} | {"archive": a.archive.strip(), "url": "", "note": "", "alias": ""})
-        for k in list(CHOICES) + ["url", "note", "alias"]:
-            if getattr(a, k) is not None:
-                r[k] = " ".join(str(getattr(a, k)).split())  # no tabs or newlines in a TSV cell
-        r["checked"] = datetime.date.today().isoformat()
-        save(a.map, rows)
-        print("\t".join(r.get(c, "") for c in COLS))
-        return 0
-    if a.cmd == "show":
-        r = find(rows, a.archive)
-        if not r:
-            print("no row for %s" % a.archive, file=sys.stderr)
-            return 1
-        for c in COLS:
-            print("%s: %s" % (c, r.get(c, "")))
-        return 0
-    if a.cmd == "list":
-        for k in sorted(rows):
-            r = rows[k]
-            if all(getattr(a, f) in (None, r.get(f)) for f in ("captcha", "viewer", "download", "writes", "index")):
-                print("\t".join(r.get(c, "") for c in COLS[:8]))
-        return 0
-    return plan_command(p, a, rows)
+    commands = {"set": lambda: set_command(p, a, rows),
+                "show": lambda: show_command(a, rows),
+                "list": lambda: list_command(a, rows),
+                "plan": lambda: plan_command(p, a, rows)}
+    return commands[a.cmd]()
+
+
+def set_command(p, a, rows):
+    key = a.archive.strip().lower()
+    if not key:
+        p.error("archive is empty")
+    r = rows.setdefault(key, {c: "unknown" for c in COLS} | {"archive": a.archive.strip(), "url": "", "note": "", "alias": ""})
+    for k in list(CHOICES) + ["url", "note", "alias"]:
+        if getattr(a, k) is not None:
+            r[k] = " ".join(str(getattr(a, k)).split())  # no tabs or newlines in a TSV cell
+    r["checked"] = datetime.date.today().isoformat()
+    save(a.map, rows)
+    print("\t".join(r.get(c, "") for c in COLS))
+    return 0
+
+
+def show_command(a, rows):
+    r = find(rows, a.archive)
+    if not r:
+        print("no row for %s" % a.archive, file=sys.stderr)
+        return 1
+    for c in COLS:
+        print("%s: %s" % (c, r.get(c, "")))
+    return 0
+
+
+def list_command(a, rows):
+    for k in sorted(rows):
+        r = rows[k]
+        if all(getattr(a, f) in (None, r.get(f)) for f in ("captcha", "viewer", "download", "writes", "index")):
+            print("\t".join(r.get(c, "") for c in COLS[:8]))
+    return 0
 
 
 def plan_command(p, a, rows):
