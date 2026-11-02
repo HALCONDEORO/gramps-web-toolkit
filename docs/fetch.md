@@ -451,3 +451,65 @@ Exit status is 0 for valid input, including zero people (JSON `[]`, TSV header o
 Empty input, a missing/duplicate header, an invalid date, an unreadable file or malformed
 TSV exits 2 with no partial result. All input blocks are validated before output.
 Notarial catalogue JSON rejects duplicate keys at every nesting level and NaN/Infinity constants before output (exit2).
+
+## Pure bounded search plans
+
+`gwt_fetch.search_plan.build(given, original, selected, sources)` returns a plan
+without searching, opening files, downloading pages or writing to a tree. It
+reuses `variants.suggest(..., rules=False)` and `names.queries`; existing APIs and
+CLI behavior are unchanged. This is a Python helper, with no executor or new CLI.
+
+```python
+from gwt_fetch.search_plan import build
+
+plan = build(
+    "Nuvio",
+    {"spelling": "Zunexa de Molquix Talvex", "provenance": "synthetic original reading"},
+    [{"spelling": "Zúnexa de Molquix Talvex", "provenance": "synthetic selected alternative"}],
+    ["gazeta", "boe"],
+)
+assert plan["status"] == "planned" and plan["executed"] is False
+```
+
+Each spelling is a **complete surname string**, including compound and second
+surnames. The helper does not guess surname boundaries. Select alternatives
+explicitly, including any proposed OCR glyph confusions, with their provenance.
+Resolve ambiguous cluster suggestions before selecting: the helper accepts no
+cluster documents, configuration maps or automatic observation-to-alias rules.
+There is no reverse or transitive expansion and no identity or filiation claim.
+Provenance records the supplied assertion; the helper does not verify it.
+
+Both existing query orders are planned. Entries are grouped by source and
+`names.fold(query)`. The original supplies the representative literal when it
+collides; other selections sort by literal spelling and provenance. Source order
+is `gazeta`, then `boe`. Every contribution retains `spelling`, `provenance` and
+its exact `query`, including accent/case alternatives that folding groups. Only
+identical spelling/provenance pairs are deduplicated. This is local grouping, not
+a guarantee of a remote service's matching semantics. An executor would send
+`entry["query"]`, not silently send every contributing alternative as well.
+
+Inputs require nonblank single-line text, at most 128 characters per query term
+and 512 per provenance. Query terms require canonical single spaces, no outer
+spaces, no double quotes and nonempty folded text. Controls, Unicode surrogates
+and unknown selection fields are rejected. `selected` and `sources` must be
+lists: at most eight alternatives plus the original, one or two distinct sources
+from `gazeta`/`boe`, at most 36 logical source/query entries. Excess is rejected,
+never truncated. Input order does not change the plan; inputs are not mutated.
+
+Each entry has `status: planned` and `coverage_status: unknown`. No timestamps,
+hits, tried status, negative result or image-viewed status are generated. A plan
+does not establish access permission. The logical entry bound is not an HTTP
+request budget; execution, pagination, retries and permission gates are separate
+future work. For a later authorized manual review, propose only **6–8 explicitly
+selected pages per batch**, preserving their supplied numbering and provenance.
+This helper neither selects pages nor emits download or lease commands.
+
+Keep coverage observations separate by source, record type and year, with an
+observation date and evidence reference. Existing [access coverage](access-coverage.md)
+retains supplied access assertions and conflicts; access status does not establish
+search completeness or an absence. This planner does not ingest or reinterpret
+those assertions. Public index hits, OCR references and persistent locators are
+leads: they prove neither viewed images nor confirmed people. A confirmed claim
+requires an actual act citation supporting that claim; an unverified hypothesis
+link without an act must remain explicitly marked **hypothesis — no act**.
+Restricted resources remain restricted; retain the custodian's requirements.
