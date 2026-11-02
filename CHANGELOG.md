@@ -6,6 +6,10 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ## [Unreleased]
 
+### Fixed
+
+- Vital-pointer checks accept primary Gramps fallback event types when no exact primary Birth/Death exists, without changing tree data or treating fallback dates as exact vital dates. Invalid indices, missing targets, wrong roles and wrong-side events remain findings.
+
 ### Added
 
 - `gwt-report kin` names offline relationships and `gwt-report digest` lists new objects since the previous family update. Includes wheel packaging, command dispatcher, synthetic fixtures and mutation tests; does not write to Gramps.
