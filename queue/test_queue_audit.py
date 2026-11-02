@@ -292,7 +292,7 @@ class ReviewRegressionTest(unittest.TestCase):
 
     setUp, tearDown, audit = (AuditTest.setUp, AuditTest.tearDown, AuditTest.audit)
     codes = staticmethod(AuditTest.codes)
-    run_cli = AuditTest.run_cli
+    run_cli = staticmethod(AuditTest.run_cli)
 
     def p(self, name):
         return os.path.join(self.dir.name, name)

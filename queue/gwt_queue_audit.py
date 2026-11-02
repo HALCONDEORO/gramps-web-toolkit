@@ -20,6 +20,7 @@ or its source starts with `private`.
 
 Exit status: 0 no findings, 1 findings, 2 unusable input. Standard library only.
 """
+from pathlib import Path
 import argparse, collections, datetime, json, math, os, re, sys, tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
