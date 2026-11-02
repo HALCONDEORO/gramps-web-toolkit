@@ -40,7 +40,7 @@ def truthy(v):
 
 
 def gb(n):
-    return '%.2f GB' % (n / GB) if n >= GB else '%.1f MB' % (n / 10 ** 6)
+    return f'{n / GB:.2f} GB' if n >= GB else f'{n / 10 ** 6:.1f} MB'
 
 
 def tree_size(path):
@@ -62,11 +62,10 @@ def git_version(text):
 def doctor(repo='.', max_packs=PACKS, max_tmp_gb=TMP_GB, max_binary_gb=BINARY_GB, environ=None, platform=None):
     """Return the report: {repo, git, partial_clone, checks: [{check, level, message, fix}], findings}.
     level is ok, warn, info or skip; findings counts the warns. Raises CannotRun."""
-    from gwt_rawstore import is_binary_name
     environ = os.environ if environ is None else environ
     platform = sys.platform if platform is None else platform
     if not os.path.isdir(repo):
-        raise CannotRun('no such directory: %s' % repo)
+        raise CannotRun(f'no such directory: {repo}')
     try:
         rc, out, _ = git(repo, 'version')
     except FileNotFoundError:
@@ -74,7 +73,7 @@ def doctor(repo='.', max_packs=PACKS, max_tmp_gb=TMP_GB, max_binary_gb=BINARY_GB
     version = out.strip().removeprefix('git version ')
     rc, out, err = git(repo, 'rev-parse', '--show-toplevel', '--git-common-dir')
     if rc != 0:
-        raise CannotRun('not a git work tree: %s (%s)' % (repo, err.strip().splitlines()[-1] if err.strip() else rc))
+        raise CannotRun(f'not a git work tree: {repo} ({err.strip().splitlines()[-1] if err.strip() else rc})')
     top, common = out.splitlines()[:2]
     common = os.path.normpath(os.path.join(os.path.abspath(repo), common))
     checks = []
@@ -82,6 +81,22 @@ def doctor(repo='.', max_packs=PACKS, max_tmp_gb=TMP_GB, max_binary_gb=BINARY_GB
     def add(check, level, message, fix=''):
         checks.append({'check': check, 'level': level, 'message': message, 'fix': fix})
 
+    state = _inventory(repo, common)
+    partial = state['partial']
+    _pack_checks(add, state, version, max_packs)
+    _lazy_checks(add, partial, state['filters'], environ)
+    by_folder, binary_total, biggest = _binary_checks(add, top, max_binary_gb)
+    sized = _cache_checks(add, top, common, state['git_bytes'], max_tmp_gb, environ)
+    for folder, _ in biggest:
+        if binary_total > max_binary_gb * GB and folder != '.':
+            sized[os.path.join(top, folder)] = by_folder[folder][1]
+    _time_machine_checks(add, top, sized, max_tmp_gb, platform)
+
+    return {'repo': top, 'git': version, 'partial_clone': partial, 'checks': checks,
+            'findings': sum(1 for c in checks if c['level'] == 'warn')}
+
+
+def _inventory(repo, common):
     # ---- packs and the multi-pack-index
     packdir = os.path.join(common, 'objects', 'pack')
     names = set(os.listdir(packdir)) if os.path.isdir(packdir) else set()
@@ -97,6 +112,13 @@ def doctor(repo='.', max_packs=PACKS, max_tmp_gb=TMP_GB, max_binary_gb=BINARY_GB
     filters = git(repo, 'config', '--get-regexp', r'^remote\..*\.partialclonefilter$')[1].split()[1::2]
     partial = bool(config['extensions.partialclone'] or filters or promisor)
 
+    return dict(packs=packs, promisor=promisor, midx=midx, git_bytes=git_bytes, config=config,
+                filters=filters, partial=partial)
+
+
+def _pack_checks(add, state, version, max_packs):
+    packs, promisor, midx = state['packs'], state['promisor'], state['midx']
+    git_bytes, config, partial = state['git_bytes'], state['config'], state['partial']
     summary = '%d packs (%d promisor), %s in .git' % (len(packs), promisor, gb(git_bytes))
     if len(packs) > max_packs:
         fix = 'git repack --geometric=2 -d && git multi-pack-index write   ' \
@@ -107,12 +129,15 @@ def doctor(repo='.', max_packs=PACKS, max_tmp_gb=TMP_GB, max_binary_gb=BINARY_GB
     else:
         add('packs', 'ok', summary)
     if len(packs) > MIDX_PACKS and not midx:
-        add('multi-pack-index', 'warn', 'no multi-pack-index over %d packs' % len(packs), 'git multi-pack-index write')
+        add('multi-pack-index', 'warn', f'no multi-pack-index over {len(packs)} packs', 'git multi-pack-index write')
     else:
-        add('multi-pack-index', 'ok', 'present' if midx else 'not needed for %d packs' % len(packs))
+        add('multi-pack-index', 'ok', 'present' if midx else f'not needed for {len(packs)} packs')
     add('maintenance', 'info', 'gc.auto=%s maintenance.auto=%s' % (config['gc.auto'] or 'unset',
                                                                    config['maintenance.auto'] or 'unset'))
 
+
+
+def _lazy_checks(add, partial, filters, environ):
     # ---- lazy fetching in a partial clone
     if partial and not truthy(environ.get('GIT_NO_LAZY_FETCH')):
         add('lazy-fetch', 'warn', 'partial clone (filter %s) with lazy fetching on: git show <rev>:<path>, '
@@ -122,6 +147,10 @@ def doctor(repo='.', max_packs=PACKS, max_tmp_gb=TMP_GB, max_binary_gb=BINARY_GB
     else:
         add('lazy-fetch', 'ok', 'off' if partial else 'not a partial clone')
 
+
+
+def _binary_checks(add, top, max_binary_gb):
+    from gwt_rawstore import is_binary_name
     # ---- binaries tracked in git: index only, sizes from the work tree
     by_folder = {}
     for path in git(top, 'ls-files', '-z')[1].split('\0'):
@@ -137,13 +166,17 @@ def doctor(repo='.', max_packs=PACKS, max_tmp_gb=TMP_GB, max_binary_gb=BINARY_GB
     binary_total = sum(s for _, s in by_folder.values())
     binary_files = sum(n for n, _ in by_folder.values())
     biggest = sorted(by_folder.items(), key=lambda kv: -kv[1][1])[:3]
-    named = ', '.join('%s/ %s' % (f, gb(s)) for f, (_, s) in biggest)
+    named = ', '.join(f'{f}/ {gb(s)}' for f, (_, s) in biggest)
     if binary_total > max_binary_gb * GB:
         add('binaries', 'warn', '%d tracked binaries, %s (%s)' % (binary_files, gb(binary_total), named),
-            ' ; '.join('gwt-rawstore migrate %s --remove' % f for f, _ in biggest) + '   then commit the rawstore.tsv files')
+            ' ; '.join(f'gwt-rawstore migrate {f} --remove' for f, _ in biggest) + '   then commit the rawstore.tsv files')
     else:
         add('binaries', 'ok', '%d tracked binaries, %s' % (binary_files, gb(binary_total)))
 
+    return by_folder, binary_total, biggest
+
+
+def _cache_checks(add, top, common, git_bytes, max_tmp_gb, environ):
     # ---- scratch and cache folders inside the work tree
     sized = {common: git_bytes}
     for name in SCRATCH_DIRS:
@@ -151,10 +184,21 @@ def doctor(repo='.', max_packs=PACKS, max_tmp_gb=TMP_GB, max_binary_gb=BINARY_GB
         if os.path.isdir(p) and not os.path.islink(p):
             sized[p] = size = tree_size(p)
             if size > max_tmp_gb * GB:
-                add('scratch', 'warn', '%s/ holds %s' % (name, gb(size)),
+                add('scratch', 'warn', f'{name}/ holds {gb(size)}',
                     'move scratch out of the repo (one mktemp -d per lane) and delete what is done')
             else:
-                add('scratch', 'ok', '%s/ holds %s' % (name, gb(size)))
+                add('scratch', 'ok', f'{name}/ holds {gb(size)}')
+    caches = _find_caches(top, environ)
+    for p, why in sorted(caches.items()):
+        sized[p] = size = tree_size(p)
+        add('cache', 'warn', f'{why} inside the repo: {os.path.relpath(p, top)} ({gb(size)})',
+            'keep caches under ~/.cache, outside the work tree' + (f', and point {why} there' if why[0] == '$' else ''))
+    if not caches:
+        add('cache', 'ok', 'no cache folder inside the repo')
+    return sized
+
+
+def _find_caches(top, environ):
     caches = {}
     for d in [top] + [os.path.join(top, x) for x in sorted(os.listdir(top)) if x != '.git']:
         if os.path.isdir(d) and not os.path.islink(d) and os.path.isdir(os.path.join(d, '.cache')):
@@ -164,19 +208,13 @@ def doctor(repo='.', max_packs=PACKS, max_tmp_gb=TMP_GB, max_binary_gb=BINARY_GB
             p = os.path.realpath(os.path.expanduser(v))
             if p == top or p.startswith(top.rstrip('/') + '/'):
                 caches[p] = '$' + k
-    for p, why in sorted(caches.items()):
-        sized[p] = size = tree_size(p)
-        add('cache', 'warn', '%s inside the repo: %s (%s)' % (why, os.path.relpath(p, top), gb(size)),
-            'keep caches under ~/.cache, outside the work tree' + (', and point %s there' % why if why[0] == '$' else ''))
-    if not caches:
-        add('cache', 'ok', 'no cache folder inside the repo')
-    for folder, _ in biggest:
-        if binary_total > max_binary_gb * GB and folder != '.':
-            sized[os.path.join(top, folder)] = by_folder[folder][1]
+    return caches
 
+
+def _time_machine_checks(add, top, sized, max_tmp_gb, platform):
     # ---- Time Machine (macOS only), for every folder above that is over --max-tmp-gb
     if platform != 'darwin':
-        add('time-machine', 'skip', 'not macOS (%s): Time Machine checks skipped' % platform)
+        add('time-machine', 'skip', f'not macOS ({platform}): Time Machine checks skipped')
     else:
         big = [p for p, s in sorted(sized.items()) if s > max_tmp_gb * GB]
         included = []
@@ -184,21 +222,19 @@ def doctor(repo='.', max_packs=PACKS, max_tmp_gb=TMP_GB, max_binary_gb=BINARY_GB
             try:
                 r = run(('tmutil', 'isexcluded', p), top, timeout=30)
             except (FileNotFoundError, subprocess.TimeoutExpired) as e:
-                add('time-machine', 'skip', 'tmutil did not answer (%s)' % type(e).__name__)
+                add('time-machine', 'skip', f'tmutil did not answer ({type(e).__name__})')
                 break
             if '[Excluded]' not in r.stdout:
                 included.append(p)
         else:
             if included:
                 add('time-machine', 'warn', 'backed up by Time Machine: ' + ', '.join(included),
-                    ' ; '.join('tmutil addexclusion %s' % p for p in included) +
+                    ' ; '.join(f'tmutil addexclusion {p}' for p in included) +
                     '   (for .git, only once the remote has every commit)')
             else:
-                add('time-machine', 'ok', '%d big folder(s), all excluded' % len(big) if big else 'no folder over %s'
+                add('time-machine', 'ok', f'{len(big)} big folder(s), all excluded' if big else 'no folder over %s'
                     % gb(max_tmp_gb * GB))
 
-    return {'repo': top, 'git': version, 'partial_clone': partial, 'checks': checks,
-            'findings': sum(1 for c in checks if c['level'] == 'warn')}
 
 
 def main(a, out=None):
@@ -209,7 +245,7 @@ def main(a, out=None):
     except (CannotRun, subprocess.TimeoutExpired) as e:
         if a.json:
             out(json.dumps({'error': str(e)}))
-        print('gwt-rawstore doctor: %s' % e, file=sys.stderr)
+        print(f'gwt-rawstore doctor: {e}', file=sys.stderr)
         return 2
     if a.json:
         out(json.dumps(rep, indent=2))
@@ -217,7 +253,7 @@ def main(a, out=None):
         out('gwt-rawstore doctor: %s (git %s%s)' % (rep['repo'], rep['git'], ', partial clone' if rep['partial_clone']
                                                      else ''))
         for c in rep['checks']:
-            out('%-5s %s: %s' % (c['level'], c['check'], c['message']))
+            out(f"{c['level']:5} {c['check']}: {c['message']}")
             if c['fix']:
                 out('      fix: ' + c['fix'])
         out('%d finding(s)' % rep['findings'])
