@@ -135,6 +135,7 @@ nav:
       - gwt-check: check.md
       - gwt-import-excel: import-excel.md
       - gwt-leads: leads.md
+      - gwt-report: report.md
   - Research tools:
       - gwt-queue: queue.md
       - gwt-ledger: ledger.md
@@ -152,6 +153,7 @@ nav:
       - gwt-batch: batch.md
       - gwt-fetch: fetch.md
       - Surname clusters: surname-clusters.md
+      - Variant queries: variant-queries.md
       - gwt-mh: myheritage.md
       - gwt-read: read.md
       - gwt-read sources: sources/index.md

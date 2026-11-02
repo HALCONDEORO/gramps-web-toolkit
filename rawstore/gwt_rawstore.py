@@ -10,6 +10,7 @@ the record; the bytes live in the bucket and can be fetched back and checked at 
     gwt-rawstore verify [dirs] [--deep]                every manifest row is in the bucket with the right size and hash
     gwt-rawstore migrate <dir> [--remove]              upload files already committed; --remove untracks and ignores them
     gwt-rawstore check-staged                          pre-commit check: refuse big binaries outside allowed paths
+    gwt-rawstore doctor [--repo PATH] [--json]          read-only repo health: packs, lazy fetch, binaries, scratch, backups
 
 Configuration comes from the environment, then from the file in $GWT_RAWSTORE_CONFIG (default
 ~/.config/gwt-rawstore/config, KEY=value lines): GWT_RAWSTORE_ENDPOINT, GWT_RAWSTORE_BUCKET,
@@ -19,11 +20,13 @@ AWS SigV4 and use path-style addressing, which Garage and MinIO need. Standard l
 """
 import argparse, concurrent.futures, datetime, fnmatch, hashlib, hmac, http.client, os, re, shutil, subprocess, \
     sys, tempfile, time, urllib.error, urllib.parse, urllib.request, xml.etree.ElementTree as ET
+import gwt_rawstore_kinds
+from gwt_rawstore_kinds import is_binary_name
+import gwt_rawstore_doctor   # imported here so a wheel without it fails on any run, not only on `doctor`
 
+BINARY_EXT = gwt_rawstore_kinds.BINARY_EXT
 MANIFEST = 'rawstore.tsv'
 COLUMNS = ('sha256', 'size', 'key', 'path')
-BINARY_EXT = {'.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.webp', '.bmp', '.heic', '.jp2', '.pdf',
-              '.zip', '.tar', '.gz', '.tgz', '.7z', '.mp3', '.m4a', '.ogg', '.wav', '.mp4', '.mov', '.djvu'}
 EMPTY_SHA = hashlib.sha256(b'').hexdigest()
 CHUNK = 1 << 20
 TRIES, WAIT = 3, 2.0   # put: attempts per file, and seconds before the first retry (doubled each time)
@@ -42,8 +45,6 @@ def object_key(sha, name, prefix=''):
     return '%s%s/%s/%s' % (prefix, sha[:2], sha, name)
 
 
-def is_binary_name(path):
-    return os.path.splitext(path)[1].lower() in BINARY_EXT
 
 
 # ---------------------------------------------------------------- config
@@ -460,8 +461,21 @@ def main(argv=None, store=None):
     g.add_argument('-j', '--jobs', type=int, default=4)
     g = sub.add_parser('check-staged', help='pre-commit hook: refuse big staged binaries')
     g.add_argument('--max-kb', type=int, default=None)
+    g = sub.add_parser('doctor', help='read-only check of a repo\'s disk health; never fetches')
+    g.add_argument('--repo', default='.', help='a path inside the work tree (default: here)')
+    g.add_argument('--json', action='store_true', help='print the report as JSON')
+    g.add_argument('--max-packs', type=int, default=gwt_rawstore_doctor.PACKS)
+    g.add_argument('--max-tmp-gb', type=float, default=gwt_rawstore_doctor.TMP_GB,
+                   help='a scratch or cache folder, or .git for Time Machine, bigger than this is reported')
+    g.add_argument('--max-binary-gb', type=float, default=gwt_rawstore_doctor.BINARY_GB)
     a = p.parse_args(argv)
+    if a.cmd == 'doctor':
+        return gwt_rawstore_doctor.main(a)
 
+    return _dispatch(a, store)
+
+
+def _dispatch(a, store):
     cfg = load_config()
     if a.cmd == 'check-staged':
         max_kb = a.max_kb if a.max_kb is not None else int(cfg.get('GWT_RAWSTORE_MAX_KB', '256'))
@@ -471,15 +485,19 @@ def main(argv=None, store=None):
     if a.cmd == 'put':
         return 1 if put(store, expand(a.paths, a.all), prefix, a.remove, a.jobs) else 0
     if a.cmd == 'get':
-        if len(a.refs) > 1 and a.output and not os.path.isdir(a.output):
-            raise SystemExit('gwt-rawstore: -o must be an existing directory when several refs are given')
-        for ref in a.refs:
-            print(get(store, ref, cache, a.output, prefix))
-        return 0
+        return _get_refs(a, store, cache, prefix)
     if a.cmd == 'verify':
         return 1 if verify(store, a.roots, a.deep) else 0
     if a.cmd == 'migrate':
         return 1 if migrate(store, a.folder, prefix, a.remove, a.jobs) else 0
+
+
+def _get_refs(a, store, cache, prefix):
+    if len(a.refs) > 1 and a.output and not os.path.isdir(a.output):
+        raise SystemExit('gwt-rawstore: -o must be an existing directory when several refs are given')
+    for ref in a.refs:
+        print(get(store, ref, cache, a.output, prefix))
+    return 0
 
 
 if __name__ == '__main__':
