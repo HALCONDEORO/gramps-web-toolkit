@@ -1,0 +1,12 @@
+gwt_act_packet.py |         'status': STATUS, |         'status': review or STATUS, | an approved review promotes the act out of pending_review
+gwt_act_packet.py | 'auto_promoted': 0, | 'auto_promoted': len(records), | the manifest counts every act as auto promoted
+gwt_act_packet.py |     m = DATE_RE.fullmatch(s) |     m = DATE_RE.match(s) | a date with trailing characters is accepted
+gwt_act_packet.py |         datetime.date(int(m.group(1)), int(m.group(2) or 1), int(m.group(3) or 1)) |         datetime.date(int(m.group(1)), 1, 1) | month 13 or 30 February is accepted as a date
+gwt_act_packet.py |     if r1.casefold() == r2.casefold(): |     if r1 == r2: | the same reader in another letter case counts as independent
+gwt_act_packet.py |     if reviewer.casefold() in (r1.casefold(), r2.casefold()): |     if reviewer in (r1, r2): | a reviewer who differs from a reader only in letter case is accepted
+gwt_act_packet.py |         key = (person, typ, date, img, crop) |         key = (person, typ, date, row['image'], row['crop']) | the same evidence under another spelling is not a duplicate
+gwt_act_packet.py | 'image_sha256': img_hash, | 'image_sha256': crop_hash, | the image record carries the hash of the crop
+gwt_act_packet.py |         if os.path.commonpath([real_root, real]) == real_root: |         if False: | an output file may be created inside the evidence root
+gwt_act_packet.py | and os.path.samefile(real, real_in)): | and False): | a hard link to the input is accepted as an output
+gwt_act_packet.py | os.path.exists(b) and os.path.samefile(a, b)): | os.path.exists(b) and False): | two output names for one file (hard link) are accepted
+gwt_act_packet.py |             _discard(t) |             pass | a failed swap leaves a staged temp file behind
