@@ -77,7 +77,8 @@ def coverage_assertion(row):
 
 def coverage_rows(path):
     # Explicit local input, parsed as data only; no referenced file or URL is opened.
-    contents = Path(path).read_text(encoding="utf-8")
+    with Path(path).open(encoding="utf-8", newline="") as stream:
+        contents = stream.read()
     reader = csv.DictReader(io.StringIO(contents, newline=""), delimiter="\t", strict=True)
     if (reader.fieldnames is None or len(reader.fieldnames) != len(COVERAGE_COLS)
             or set(reader.fieldnames) != set(COVERAGE_COLS)):

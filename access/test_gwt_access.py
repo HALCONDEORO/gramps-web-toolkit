@@ -170,6 +170,17 @@ class CoverageTest(unittest.TestCase):
                         columns=tuple(reversed(self.columns)))
         self.assertEqual(self.query()[1], first)
 
+    def test_coverage_quoted_crlf_and_lf_remain_distinct(self):
+        rows = [self.row(evidence_ref="local:line1\r\nline2"),
+                self.row(evidence_ref="local:line1\nline2")]
+        self.write_rows(rows + [rows[0]])
+        code, out, err = self.query()
+        self.assertEqual((code, err), (0, ""))
+        sources = json.loads(out)["years"][1]["sources"]
+        self.assertEqual(len(sources), 2)
+        self.assertEqual({r["evidence_ref"] for r in sources},
+                         {"local:line1\r\nline2", "local:line1\nline2"})
+
     def test_coverage_invalid_rows_rejected_even_outside_query(self):
         cases = [{field: ""} for field in self.columns]
         cases += [{"status": value} for value in ("notfound", "images", "captcha", "probably online", "ONLINE")]
