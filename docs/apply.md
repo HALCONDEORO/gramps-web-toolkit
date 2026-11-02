@@ -427,3 +427,9 @@ The revert never overwrites anything that differs from what the run left:
 With `--apply` the tree lock is taken before the plan reads anything. Each object is read again right before it is written, and an object that changed since the plan is skipped. Busy answers are tried again. If the revert stops halfway, run the same command again: what is already undone reads as a skip. At the end it reads every restored object back and checks every deleted one again.
 
 The exit code is 0 when the run is undone. It is 1 on a problem, when a `manual` step is left, or when an object changed since the run and was left alone. The revert writes its own log, as an apply does: with `--apply`, `gwt-apply-revert-<run id>.jsonl` in the same per-tree folder, or `<stem>.<run id><suffix>` next to `--log`; a plan writes one only with `--log`. A revert is a tree write like any other, so run it as that tree's only writer and check the tree after it.
+
+## Same-day namesake review hold
+
+A person merge is held for review before note creation or mutation when both primary names normalize to the same full name and corresponding primary Birth/Birth or Baptism/Baptism events have the same exact Gregorian day. Parent or citation contradictions are not required. Reason or namesake waivers do not bypass this hold. A completed-merge rerun still skips first. Unknown, approximate, invalid or qualified dates do not establish an exact-day match.
+
+This conservative hold does not establish that the people are distinct or identical. Review the full original evidence before preparing any separately authorised correction. It performs no merge by itself and supplies no automatic override.

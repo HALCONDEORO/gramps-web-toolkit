@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .client import ApiError, Client, Retryable
 from .dates import DateError, date_key, parse_date
+from .merge_guard import same_day_review_required
 
 TARGET_KINDS = {
     "person": "Person",
@@ -1993,6 +1994,9 @@ class Applier:
         if self._merge_done("Person", op):
             return
         winner, loser = self.obj("Person", op["winner"]), self.obj("Person", op["loser"])
+        if same_day_review_required(self.c, winner, loser, self._name_key):
+            raise Conflict(f"Person {self.label(winner)} and {self.label(loser)}: "
+                           "same-day namesake merge requires review; this does not establish distinct identities")
         for o in (winner, loser):
             o.setdefault("_class", "Person")
         name = loser.get("primary_name") or {}

@@ -120,3 +120,12 @@ gwt_apply/cli.py | if isinstance(ro, dict) and ro.get("id"): | if False: | the b
 gwt_apply/cli.py | if b.get("restorable") is False or not b.get("size"): | if b.get("restorable") is False: | a 201 that names an empty backup stops the run before it writes
 gwt_apply/ops.py | if self.private_new:  # tags never come here | if False:  # tags never come here | --private-new saves every object the run creates as private
 gwt_apply/cli.py | verify=args.verify, private_new=args.private_new).run(ops) | verify=args.verify).run(ops) | the --private-new flag reaches the run
+
+gwt_apply/merge_guard.py | if not any(name) or name != _name(loser, name_key): | if False: | different or missing names do not trigger the review hold
+gwt_apply/merge_guard.py | return bool(_events(client, winner) & _events(client, loser)) | return False | same-day namesakes hold even without parents or citations
+gwt_apply/merge_guard.py | groups.add((kind, day)) | groups.add(day) | Birth and Baptism on the same day are not corresponding events
+gwt_apply/merge_guard.py | if ref.get("role", "Primary") != "Primary" or not ref.get("ref"): | if not ref.get("ref"): | witness events do not establish a primary event match
+gwt_apply/merge_guard.py | if not isinstance(value, dict) or value.get("calendar") != 0: | if not isinstance(value, dict): | unknown and non-Gregorian calendars do not establish an exact day
+gwt_apply/merge_guard.py | if value.get("modifier", 0) != 0 or value.get("quality", 0) != 0 or value.get("newyear", 0) != 0: | if False: | approximate estimated and noncivil dates cannot establish a same-day match
+gwt_apply/merge_guard.py | if not isinstance(parts, (list, tuple)) or len(parts) != 4 or parts[3] is not False: | if not isinstance(parts, (list, tuple)) or len(parts) < 4: | range and dual-year values cannot establish an exact day
+gwt_apply/ops.py | if same_day_review_required(self.c, winner, loser, self._name_key): | if False: | all same-day namesakes stop before note save or merge
