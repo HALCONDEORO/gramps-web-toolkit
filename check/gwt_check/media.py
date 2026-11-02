@@ -205,18 +205,22 @@ def _duplicate_media_checks(T, M, S, out, in_scope, label):
     for c in T["citations"].values():
         refs = [r.get("ref") for r in c.get("media_list") or [] if isinstance(r, dict)]
         hashed = [(h, _hash(S[h])) for h in dict.fromkeys(refs) if h in M and _hash(S[h]) is not None]
-        for i, (a, ha) in enumerate(hashed):
-            for b, hb in hashed[i + 1:]:
-                if M[a].get("checksum") and M[a].get("checksum") == M[b].get("checksum"):
-                    continue
-                if not (in_scope("media", a) or in_scope("media", b)):
-                    continue
-                bits = hamming(ha, hb)
-                if bits <= DUP_BITS:
-                    pair = ",".join(sorted((label("media", a), label("media", b)), key=_id_order))
-                    out.add("media-dup-page", f"{c.get('gramps_id') or c['handle']} {pair}",
-                            f"{bits} of {HASH_SIDE * HASH_SIDE} bits apart: may be the same page twice, though pages "
-                            "of one printed form can look alike; compare them before detaching one")
+        _compare_pages(c, hashed, M, out, in_scope, label)
+
+
+def _compare_pages(c, hashed, M, out, in_scope, label):
+    for i, (a, ha) in enumerate(hashed):
+        for b, hb in hashed[i + 1:]:
+            if M[a].get("checksum") and M[a].get("checksum") == M[b].get("checksum"):
+                continue
+            if not (in_scope("media", a) or in_scope("media", b)):
+                continue
+            bits = hamming(ha, hb)
+            if bits <= DUP_BITS:
+                pair = ",".join(sorted((label("media", a), label("media", b)), key=_id_order))
+                out.add("media-dup-page", f"{c.get('gramps_id') or c['handle']} {pair}",
+                        f"{bits} of {HASH_SIDE * HASH_SIDE} bits apart: may be the same page twice, though pages "
+                        "of one printed form can look alike; compare them before detaching one")
 
 
 def _id_order(gid: str):
