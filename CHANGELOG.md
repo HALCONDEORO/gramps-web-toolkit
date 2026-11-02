@@ -6,6 +6,10 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ## [Unreleased]
 
+### Fixed
+
+- Vital-pointer checks accept primary Gramps fallback event types when no exact primary Birth/Death exists, without changing tree data or treating fallback dates as exact vital dates. Invalid indices, missing targets, wrong roles and wrong-side events remain findings.
+
 ### Added
 
 - Conservative `merge_place` and `delete_place` operations with explicit reasons, hierarchy/type/fact guards, backlink checks, dry-run planning and place-merge snapshot invalidation. Recovery requires a verified backup.

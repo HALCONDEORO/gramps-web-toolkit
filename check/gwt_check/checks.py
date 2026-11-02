@@ -430,7 +430,10 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
             else:
                 r = erl[i]
                 e = E.get(r.get("ref"))
-                if not e or e.get("type") != typ or r.get("role") != "Primary":
+                fallbacks = ({"Baptism", "Christening", "Stillbirth"} if typ == "Birth" else
+                             {"Burial", "Cremation", "Cause Of Death", "Probate", "Stillbirth"})
+                accepted = {typ} if primaries else {typ}.union(fallbacks)
+                if not e or e.get("type") not in accepted or r.get("role") != "Primary":
                     got = f"{e.get('gramps_id')} {e.get('type')} {r.get('role')}" if e else "a missing event"
                     out.add("birth-death-pointer", f"{gid} {field}", f"points at {got}")
 
