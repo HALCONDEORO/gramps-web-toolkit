@@ -168,11 +168,16 @@ def preflight(ops: list[dict], client) -> list[str]:
                for op in ops):
         return []
     tree, family_parents, couples = tree_people(client)
+    # Keep IDs for parents an earlier run made, even when their ops are in this list.
+    parent_ids = {w.handle: w.ref for w in tree}
     # people an earlier run of this list already made are the ops themselves, not duplicates of them
     made = {stable_handle(op["key"]) for op in ops if op["op"] == "add_person"}
     tree = [w for w in tree if w.handle not in made]
     ids = {w.ref for w in tree}
     new = list_people(ops, family_parents)
+    for who in new.values():
+        who.parents = {parent_ids.get(stable_handle(r[4:]), r) if r.startswith("key:") else r
+                       for r in who.parents}
     return _person_pass(ops, tree, ids, new) + _couple_pass(ops, tree, couples, new)
 
 
