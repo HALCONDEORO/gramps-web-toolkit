@@ -168,3 +168,8 @@ gwt_fetch/iiif.py | return list(dict.fromkeys(want)) | return want | a page name
 gwt_fetch/iiif.py |     if store.done(stem, label, url, source): |     if False: | a native file on disk without a row gets its row back, with no second image request
 gwt_fetch/iiif.py |         if marker == 0xFF:  # fill byte |         if False: | fill bytes before a JPEG marker do not hide the image's width
 gwt_fetch/iiif.py |     if data[:2] != b"\xff\xd8": |     if False: | a file that is not a JPEG is never read as one
+gwt_fetch/geo_fr.py |     lng, lat = xy |     lat, lng = xy | GeoJSON longitude/latitude must not be swapped in output
+gwt_fetch/geo_fr.py | 'matched' if len(exact) == 1 and len(rows) == 1 else | 'matched' if rows else | ambiguous fuzzy results must not be selected
+gwt_fetch/geo_fr.py | r['department'] == department | True | exact department filter is applied even if API returns extra rows
+gwt_fetch/geo_fr.py | r['insee_code'] == code | False | exact code selection must preserve its candidate
+gwt_fetch/geo_fr.py | r['requires_human_review'] = True | r['requires_human_review'] = False | every coordinate suggestion requires human review
