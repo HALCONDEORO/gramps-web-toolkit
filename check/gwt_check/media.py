@@ -102,7 +102,7 @@ def measure(data: bytes) -> dict:
 
 # a thumbnail the server will not make: 404 gone, 413 too large, 415 no thumbnailer, 422 a file it cannot read
 # (corrupt, HEIC without its plugin), 501 a PDF without poppler; counted as unread, never the end of the run
-NO_THUMB = frozenset(range(400, 500)) - {401, 429} | {501}
+NO_THUMB = frozenset([*range(400, 500), 501]) - {401, 429}
 
 
 def annotate(client, objects: dict, status: dict | None = None, *, download: bool = False,

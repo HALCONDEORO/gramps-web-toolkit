@@ -391,3 +391,16 @@ def test_a_failing_list_of_missing_files_is_a_note_not_the_end_of_the_check(monk
     assert main(["check", "--json", report]) == 0
     assert "list of missing files failed" in capsys.readouterr().err
     assert json.load(open(report))["info"]["media files not checked"] == 1
+
+
+@pytest.mark.parametrize('status', [404, 413, 415, 422, 501])
+def test_unavailable_thumbnail_status_is_allowed_without_pillow(status):
+    assert status in media.NO_THUMB
+    client = FakeClient(thumbs={'hO0001': status})
+    headers, data = client.get('/media/hO0001/thumbnail/256', {}, raw=True, none_on=media.NO_THUMB)
+    assert headers == {} and data is None
+    assert client.calls == [('/media/hO0001/thumbnail/256', None)]
+
+
+def test_authentication_and_rate_limit_are_not_thumbnail_absence():
+    assert 401 not in media.NO_THUMB and 429 not in media.NO_THUMB
