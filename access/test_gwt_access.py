@@ -3,22 +3,18 @@ import csv
 import json
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
 from contextlib import redirect_stderr, redirect_stdout
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gwt_access as A
 
 
-class AccessHarness(unittest.TestCase):
-    def setUp(self):
-        self.d = tempfile.TemporaryDirectory()
-        self.m = os.path.join(self.d.name, "a.tsv")
-
+class CoverageTest(unittest.TestCase):
     def tearDown(self):
         self.d.cleanup()
 
-    def run_(self, *argv):
+    @staticmethod
+    def run_(*argv):
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
             try:
@@ -28,11 +24,9 @@ class AccessHarness(unittest.TestCase):
         return code, out.getvalue(), err.getvalue()
 
 
-
-class CoverageTest(AccessHarness):
-
     def setUp(self):
-        AccessHarness.setUp(self)
+        self.d = tempfile.TemporaryDirectory()
+        self.m = os.path.join(self.d.name, "a.tsv")
         self.tsv = os.path.join(self.d.name, "coverage.tsv")
         self.columns = ("archive", "parish", "record_type", "year_from", "year_to",
                         "status", "evidence_ref", "checked")
