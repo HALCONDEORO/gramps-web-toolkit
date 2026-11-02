@@ -24,6 +24,8 @@ import argparse
 import csv
 import datetime
 import json
+import io
+from pathlib import Path
 import os
 import re
 import sys
@@ -50,46 +52,65 @@ def coverage_year(value):
     return year
 
 
-def coverage_report(path, parish, record_type, year_from, year_to):
-    """Read explicit local assertions; never derive availability or select a latest source."""
+def coverage_query_bounds(parish, record_type, year_from, year_to):
     if any(not isinstance(v, str) or not v.strip() for v in (parish, record_type)):
         raise ValueError("coverage needs a nonempty parish and record type")
     if (type(year_from) is not int or type(year_to) is not int
             or not COVERAGE_MIN_YEAR <= year_from <= year_to <= COVERAGE_MAX_YEAR
             or year_to - year_from + 1 > COVERAGE_MAX_SPAN):
         raise ValueError("coverage needs ordered integer years 1000..2100, at most 500 inclusive years")
+
+
+def coverage_assertion(row):
+    if None in row or any(not isinstance(row[c], str) or not row[c].strip() for c in COVERAGE_COLS):
+        raise ValueError("every coverage column must be nonempty; row must match header")
+    lo, hi = coverage_year(row["year_from"]), coverage_year(row["year_to"])
+    if lo > hi:
+        raise ValueError("year_from must not exceed year_to")
+    if row["status"] not in COVERAGE_STATUSES:
+        raise ValueError("status must be online, restricted, not_digitised or unknown")
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", row["checked"]):
+        raise ValueError("checked must be an ISO date YYYY-MM-DD")
+    datetime.date.fromisoformat(row["checked"])
+    return row | {"year_from": lo, "year_to": hi}
+
+
+def coverage_rows(path):
+    # Explicit local input, parsed as data only; no referenced file or URL is opened.
+    contents = Path(path).read_text(encoding="utf-8")
+    reader = csv.DictReader(io.StringIO(contents, newline=""), delimiter="\t", strict=True)
+    if (reader.fieldnames is None or len(reader.fieldnames) != len(COVERAGE_COLS)
+            or set(reader.fieldnames) != set(COVERAGE_COLS)):
+        raise ValueError("coverage TSV needs exactly these columns: " + "/".join(COVERAGE_COLS))
+    for row in reader:
+        try:
+            yield coverage_assertion(row)
+        except ValueError as e:
+            raise ValueError(f"coverage TSV line {reader.line_num}: {e}") from e
+
+
+def coverage_status(statuses):
+    if not statuses:
+        return "unknown"
+    return statuses[0] if len(statuses) == 1 else "conflict"
+
+
+def coverage_report(path, parish, record_type, year_from, year_to):
+    """Read explicit local assertions; never derive availability or select a latest source."""
+    coverage_query_bounds(parish, record_type, year_from, year_to)
     sources = set()
-    with open(path, encoding="utf-8", newline="") as fh:
-        reader = csv.DictReader(fh, delimiter="\t", strict=True)
-        if (reader.fieldnames is None or len(reader.fieldnames) != len(COVERAGE_COLS)
-                or set(reader.fieldnames) != set(COVERAGE_COLS)):
-            raise ValueError("coverage TSV needs exactly these columns: " + "/".join(COVERAGE_COLS))
-        for row in reader:
-            try:
-                if None in row or any(not isinstance(row[c], str) or not row[c].strip() for c in COVERAGE_COLS):
-                    raise ValueError("every coverage column must be nonempty; row must match header")
-                lo, hi = coverage_year(row["year_from"]), coverage_year(row["year_to"])
-                if lo > hi:
-                    raise ValueError("year_from must not exceed year_to")
-                if row["status"] not in COVERAGE_STATUSES:
-                    raise ValueError("status must be online, restricted, not_digitised or unknown")
-                if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", row["checked"]):
-                    raise ValueError("checked must be an ISO date YYYY-MM-DD")
-                datetime.date.fromisoformat(row["checked"])
-            except ValueError as e:
-                raise ValueError("coverage TSV line %d: %s" % (reader.line_num, e)) from e
-            if (row["parish"] == parish and row["record_type"] == record_type
-                    and lo <= year_to and hi >= year_from):
-                row["year_from"], row["year_to"] = lo, hi
-                sources.add(tuple(row[c] for c in COVERAGE_COLS))
-    # Deduplicate only identical assertions. All dates, archives and references remain distinct.
+    for row in coverage_rows(path):
+        lo, hi = row["year_from"], row["year_to"]
+        if (row["parish"] == parish and row["record_type"] == record_type
+                and lo <= year_to and hi >= year_from):
+            sources.add(tuple(row[c] for c in COVERAGE_COLS))
     assertions = [dict(zip(COVERAGE_COLS, source)) for source in sorted(sources)]
     years = []
     for year in range(year_from, year_to + 1):
         matches = [r for r in assertions if r["year_from"] <= year <= r["year_to"]]
         statuses = sorted({r["status"] for r in matches})
-        status = "unknown" if not statuses else statuses[0] if len(statuses) == 1 else "conflict"
-        years.append({"year": year, "status": status, "statuses": statuses, "sources": matches})
+        years.append({"year": year, "status": coverage_status(statuses),
+                      "statuses": statuses, "sources": matches})
     return {"schema_version": 1, "parish": parish, "record_type": record_type,
             "year_from": year_from, "year_to": year_to, "years": years}
 
@@ -132,7 +153,7 @@ def corpus(a):
         with open(a.csv, encoding="utf-8-sig", newline="") as fh:
             found = list(csv.DictReader(fh))
     except OSError as e:
-        print("gwt-access: %s" % e, file=sys.stderr)
+        print(f"gwt-access: {e}", file=sys.stderr)
         return 2
     if not found or "type_document" not in found[0] or "institution" not in found[0]:
         print("gwt-access: not the corpus file (needs institution and type_document columns)", file=sys.stderr)
@@ -197,7 +218,7 @@ def main(argv=None):
         try:
             report = coverage_report(a.tsv, a.parish, a.record_type, a.year_from, a.year_to)
         except (OSError, ValueError, csv.Error) as e:
-            print("gwt-access: %s" % e, file=sys.stderr)
+            print(f"gwt-access: {e}", file=sys.stderr)
             return 2
         print(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2))
         return 0

@@ -224,13 +224,13 @@ class CoverageTest(unittest.TestCase):
         before = {name: Path(self.d.name, name).read_bytes() for name in os.listdir(self.d.name)}
         args = [sys.executable, "-B", A.__file__, "--map", self.m, "coverage", self.tsv,
                 "--parish", "Saint Test", "--type", "baptisms", "--year-from", "1800", "--year-to", "1801"]
-        result = subprocess.run(args, capture_output=True, text=True, cwd=self.d.name)
+        result = subprocess.run(args, capture_output=True, text=True, cwd=self.d.name, check=False)
         self.assertEqual((result.returncode, result.stderr), (0, ""))
         self.assertEqual(json.loads(result.stdout), A.coverage_report(self.tsv, "Saint Test", "baptisms", 1800, 1801))
-        self.assertEqual(subprocess.run(args, capture_output=True, text=True, cwd=self.d.name).stdout, result.stdout)
+        self.assertEqual(subprocess.run(args, capture_output=True, text=True, cwd=self.d.name, check=False).stdout, result.stdout)
         missing_args = args.copy()
         missing_args[6] = os.path.join(self.d.name, "missing.tsv")
-        missing = subprocess.run(missing_args, capture_output=True, text=True, cwd=self.d.name)
+        missing = subprocess.run(missing_args, capture_output=True, text=True, cwd=self.d.name, check=False)
         self.assertEqual((missing.returncode, missing.stdout), (2, ""))
         self.assertIn("gwt-access:", missing.stderr)
         self.assertEqual({name: Path(self.d.name, name).read_bytes() for name in os.listdir(self.d.name)}, before)
