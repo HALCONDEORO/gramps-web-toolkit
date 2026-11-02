@@ -673,7 +673,7 @@ def describe_citation(T, o):
     return 'new citation: ' + ', '.join(b for b in bits if b)
 
 
-def describe_media(T, o):
+def describe_media(o):
     return 'new media: ' + (o.get('desc') or o.get('path') or o.get('gramps_id') or '')
 
 
@@ -681,7 +681,9 @@ DESCRIBERS = {'people': describe_person, 'events': describe_event, 'citations': 
 
 
 def describe(T, t, o):
-    return DESCRIBERS.get(t, describe_media)(T, o)
+    if t in DESCRIBERS:
+        return DESCRIBERS[t](T, o)
+    return describe_media(o)
 
 
 def is_weak(T, t, o, weak_tags):
