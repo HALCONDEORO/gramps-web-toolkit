@@ -92,7 +92,7 @@ class Candidates(Run, unittest.TestCase):
             def __iter__(self):
                 raise AssertionError('the wanted surnames were walked for one line')
         wanted = NoScan()
-        set.update(wanted, [('s%d' % i,) for i in range(500)] + [('ortega',), ('la', 'fontaine')])
+        set.update(wanted, [(f's{i}',) for i in range(500)] + [('ortega',), ('la', 'fontaine')])
         self.assertTrue(gwt_insee.surname_matches('ORTEGA SANZ', wanted))
         self.assertTrue(gwt_insee.surname_matches('DE LA FONTAINE', wanted))
         self.assertFalse(gwt_insee.surname_matches('ORTEGAS', wanted))
