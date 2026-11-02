@@ -8,6 +8,8 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
+- Archive-request drafting guide: keep sourced date/spelling variants, flag impossible book ranges, continue existing institutional threads, request whole household sheets and order direct-line records before optional searches. Synthetic examples only; no send or access authority.
+
 - `gwt-fetch index-locate`: offline exact book/folio/face-or-page to image crosswalk, with separate provenance and explicit viewer index base. No inferred offset, image access, reading or identity claim.
 
 - `gwt-fetch leads extract` reads local French transcriptions as collateral clues with literal evidence, optional subject/declared-parent exclusion and mention counts. `leads match` marks only possible surname matches against a local catalogue with explicit variants. Offline, with formula-safe TSV or JSON; never creates people or relationships. A clause with negation, uncertainty or alternatives (`ne fut pas parrain`, `parrain probable`, `X ou Y`) is reported as `other`/`low` with the whole clause as literal, never as an affirmed role; the word list is fixed and conservative.
