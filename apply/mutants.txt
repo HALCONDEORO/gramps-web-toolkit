@@ -9,6 +9,7 @@ gwt_apply/merge_guard.py | if not isinstance(value, dict) or value.get("calendar
 gwt_apply/merge_guard.py | if value.get("modifier", 0) != 0 or value.get("quality", 0) != 0 or value.get("newyear", 0) != 0: | if False: | approximate estimated and noncivil dates cannot establish a same-day match
 gwt_apply/merge_guard.py | if not isinstance(parts, (list, tuple)) or len(parts) != 4 or parts[3] is not False: | if not isinstance(parts, (list, tuple)) or len(parts) < 4: | range and dual-year values cannot establish an exact day
 gwt_apply/ops.py | if same_day_review_required(self.c, winner, loser, self._name_key): | if False: | all same-day namesakes stop before note save or merge
+gwt_apply/dupes.py | parent_ids.get(stable_handle(r[4:]), r) | r | preflight compares a known parent key by its tree ID, including parents excluded as resumed ops
 gwt_apply/dupes.py | if a.spouses & b.spouses: | if False: | preflight flags a namesake who shares a spouse with a tree person
 gwt_apply/ops.py | if str(ev.get("type")).lower() != etype.lower(): | if str(ev.get("type")) != etype: | add_event matches an existing event type whatever its case
 gwt_apply/client.py | if r.status_code >= 500 or "database is locked" in r.text[:2000].lower(): | if r.status_code >= 500: | a "database is locked" answer is retried even when its status is not 5xx
