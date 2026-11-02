@@ -95,14 +95,14 @@ def blocked(memory, op):
 @pytest.mark.parametrize("parents,acts", [(False, False), (True, False), (False, True), (True, True)])
 @pytest.mark.parametrize("reverse", [False, True])
 def test_same_day_with_or_without_contradictions(kind, parents, acts, reverse):
-    memory, a, b, op = fixture(kind, parents, acts)
+    memory, _unused_a, _unused_b, op = fixture(kind, parents, acts)
     if reverse:
         op["winner"], op["loser"] = op["loser"], op["winner"]
     blocked(memory, op)
 
 
 def test_reason_vitals_and_direct_namesake_waiver_cannot_bypass():
-    memory, a, b, op = fixture()
+    memory, _unused_a, _unused_b, op = fixture()
     op.update(reason="same person", use_loser=["birth"], allow_namesake=True,
               namesake_reason="same person", namesake_of=["I1"])
     blocked(memory, op)
@@ -153,7 +153,7 @@ def test_same_day_no_contradictory_evidence_still_holds(kind, context):
                                 "bet 1888-04-12 and 1888-04-12", "from 1888-04-12 to 1888-04-13",
                                 "1888", "1888-04", "1888-04-13", "1900-04-12"])
 def test_uncertain_partial_or_distant_dates_are_outside_guard(date):
-    memory, a, b, op = fixture(parents=True)
+    memory, _unused_a, _unused_b, op = fixture(parents=True)
     memory.data["Event"]["e1"]["date"] = parse_date(date)
     Probe(memory).merge_person(op)
     assert memory.calls == ["note", "merge"]
@@ -163,7 +163,7 @@ def test_uncertain_partial_or_distant_dates_are_outside_guard(date):
                                   dict(calendar=None), dict(dateval=[0, 0, 0, False]), dict(dateval=[12, 4, 1888, True]),
                                   dict(newyear=1), dict(dateval=[12, 4, 1888, False, 13, 4, 1888, False])])
 def test_invalid_unknown_or_non_civil_dates(patch):
-    memory, a, b, op = fixture(parents=True)
+    memory, _unused_a, _unused_b, op = fixture(parents=True)
     for ev in memory.data["Event"].values():
         ev["date"].update(patch)
     Probe(memory).merge_person(op)
@@ -231,7 +231,7 @@ def test_common_source_disjointness_even_with_other_sources():
 
 
 def test_completed_merge_rerun_is_first_and_unchanged():
-    memory, a, b, op = fixture()
+    memory, a, _unused_b, op = fixture()
     memory.data["Event"]["e1"]["date"] = parse_date("1888-04-13")
     applier = Probe(memory)
     applier.merge_person(op)
@@ -244,7 +244,7 @@ def test_completed_merge_rerun_is_first_and_unchanged():
 
 
 def test_completed_merge_does_not_even_read_event_evidence():
-    memory, a, b, op = fixture(parents=True, acts=True)
+    memory, a, _unused_b, op = fixture(parents=True, acts=True)
     del memory.data["Person"]["2"]
     a["note_list"] = [stable_handle(op["key"] + "#merge")]
     # Evidence reads fail if the guard accidentally moves before _merge_done.
