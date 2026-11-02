@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, index_locator, leads, names, notarial, touraine, variants
+from . import boe, coverage, crop, digibib, europeana, gazeta, geo, iiif, index_locator, leads, names, notarial, touraine, variants
 
 
 def _max_images(text: str) -> int:
@@ -82,6 +82,18 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--iiif-only", action="store_true", help="only records whose provider serves IIIF")
     s.add_argument("--rows", type=int, default=20)
 
+    s = sub.add_parser("crop", help="cut a saved image into a box, a grid or a half (needs Pillow)")
+    s.add_argument("images", nargs="+", metavar="IMG")
+    how = s.add_mutually_exclusive_group(required=True)
+    how.add_argument("--box", help="x,y,w,h in pixels")
+    how.add_argument("--grid", help="columns x rows, e.g. 2x3")
+    how.add_argument("--half", choices=["left", "right"])
+    s.add_argument("--from-size", metavar="WxH",
+                   help="the --box was measured on an image of this size (a preview); scale it to the real image")
+    s.add_argument("--overlap", default="0%", help="with --grid, how far each tile reaches into its neighbours, e.g. 10%%")
+    s.add_argument("--max", type=int, help="shrink each piece so its longest side is at most this many pixels")
+    s.add_argument("--out", help="write pieces and their manifest.tsv rows here (default: beside each image)")
+
     s = sub.add_parser("geo", help="geocode Spanish places through CartoCiudad; prints TSV with INE codes")
     s.add_argument("places", nargs="+")
     s.add_argument("--types", default="Municipio,poblacion",
@@ -157,7 +169,7 @@ def main(argv=None) -> int:
         return variants.run(args)
     if args.cmd == "names" and not args.source:
         args.source = ["gazeta", "boe"]
-    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "names": names, "europeana": europeana, "geo": geo, "touraine": touraine, "coverage": coverage, "notarial-plan": notarial, "index-locate": index_locator}[args.cmd]
+    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "names": names, "europeana": europeana, "geo": geo, "touraine": touraine, "coverage": coverage, "notarial-plan": notarial, "index-locate": index_locator, "crop": crop}[args.cmd]
     if args.cmd == "touraine" and args.action == "catalogue":
         from . import touraine_catalogue
         mod = touraine_catalogue

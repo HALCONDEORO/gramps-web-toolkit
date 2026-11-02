@@ -169,6 +169,27 @@ For 1800–1806, `chain` orders CAT-A (1800–1802), CAT-B (1802–1803), CAT-C 
 `catalogue_coverage` is `1800-1803,1805-1806`; `catalogue_gaps` is `1804`. Both reuse the existing inclusive-range helpers. `overlaps` identifies 1802 with CAT-A and CAT-B; adjacent overlap segments combine only when their catalogue IDs agree. `unknown_coverage` lists CAT-U, whose tentative dates never fill 1804. Gaps are years without exact coverage in the supplied metadata, not evidence that records were lost or never existed. With no matching entries, the entire period is a catalogue gap.
 
 Every chain entry has `status: "candidate"`, its clipped `search_period` (or `null`), the original `metadata`, supplied references and a `next_step`. Ordering is chronological, then office and ID, with unknown dates last; it is a search itinerary, not a claim that one office succeeded another. Consult the supplied references and record literal evidence yourself. Catalogue coverage never establishes that a contract was found, or supports marriage or parentage. There is no person matching, inferred relationship or queue/tree write. Exit 0 means a valid plan, including gaps or no candidates; input errors exit 2.
+## `crop`: cut a saved page into pieces
+
+A register page is often too big to read in one look, and a double page holds two. `crop` cuts a saved image and writes each piece as a JPEG beside it:
+
+- `--box x,y,w,h` cuts one box, in the image's pixels. With `--from-size WxH` the box was measured on a preview of that size and is scaled to the real image. A box that reaches past the edge is refused.
+- `--grid 2x3` cuts 2 columns by 3 rows. `--overlap 10%` makes each tile reach 10% of its size into its neighbours, so a line on a tile edge is whole in one of them.
+- `--half left|right` cuts the left or right half of a double page.
+- `--max 1600` shrinks each piece so its longest side is at most 1600 px. Leave it out to keep native pixels.
+
+`--from-size` without `--box`, and `--overlap` without `--grid`, are refused rather than ignored.
+
+```
+$ gwt-fetch crop /tmp/reg/0012_f12.jpg --grid 2x3 --overlap 10%
+/tmp/reg/0012_f12_grid2x3-r1c1.jpg
+...
+```
+
+Pieces are named `<original>_box-x-y-w-h.jpg`, `<original>_grid2x3-r1c2.jpg` or `<original>_left.jpg`. Each gets a row in the same folder's `manifest.tsv`, with the same columns as a download: `label` is `crop x,y,w,h of <original> sha256:<original's sha256>`, `image_url` is the original's URL from its own row (or its file name) with `#xywh=x,y,w,h` in the original's pixels, and `manifest_url` is the original's. Cropping a piece again keeps one `#xywh=` on the original: the new box is moved and scaled (after `--max`) into the original's pixels. Like a download, a piece is never overwritten, and re-running skips finished ones. If that folder's `manifest.tsv` was written by another tool (other columns), `crop` refuses to add to it; `--out DIR` writes the pieces and their rows to another folder, and `image_url` then names the original by its path from there.
+
+`crop` needs Pillow: `pipx install 'gramps-web-toolkit[crop]'`, or `pip install Pillow` beside a clone. Without it, `crop` prints how to install it and exits 2.
+
 ## `digibib`: DIGIBIB viewers without IIIF
 
 DIGIBÍS's DIGIBIB runs BVPH, the Biblioteca Virtual de Defensa, Galiciana and many regional digital libraries. None of these installs serve IIIF. The viewer URL is `.../catalogo_imagenes/grupo.do?path=N`. Each page view (`&presentacion=pagina&posicion=K`) names one image as `imagen_id.do?idImagen=M`, and that URL with `&formato=jpg` returns the full JPEG. `gwt-fetch digibib` walks those page views. When the object is a single file, `grupo.do` serves the file itself (often a PDF); it is saved as `0001_document.pdf`.
