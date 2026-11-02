@@ -62,7 +62,7 @@ def write_json(path, obj):
 # Session secrets a page or a search carries: bearer tokens, the FamilyGraph tokens a MyHeritage page embeds
 # (fgToken, webClientFgToken, ...), session ids, XSRF and CSRF tokens, and Authorization headers.
 _SECRET_NAME = r'\w*(?:fgtoken|xsrftoken|csrftoken|csrf_token|bearer_token|bearertoken|access_token|accesstoken)'
-_SECRET_KEY = re.compile(r'^%s$|^authorization$' % _SECRET_NAME, re.I)
+_SECRET_KEY = re.compile(rf'^{_SECRET_NAME}$|^authorization$', re.I)
 _SECRET_RES = (
     re.compile(r'(%s(?:\\*["\'])?\s*[:=]\s*(?:\\*["\'])?)([^"\'&\s,;}\\<]+)' % _SECRET_NAME, re.I),
     re.compile(r'(name="bearer_token"\r?\n\r?\n)([^\r\n]+)'),
@@ -102,7 +102,7 @@ def envelope(url, final_url=None, text='', json_body=None, **extra):
 def search_key(normalized_url, words):
     """<slug of the words>-<10 hex of the URL>: readable, and two different searches never collide."""
     h = hashlib.sha256(normalized_url.encode()).hexdigest()[:10]
-    return '%s-%s' % (slug(' '.join(str(w) for w in words if w)), h)
+    return f"{slug(' '.join((str(w) for w in words if w)))}-{h}"
 
 
 def write_search(out_dir, key, env, candidates):
@@ -115,9 +115,9 @@ def write_search(out_dir, key, env, candidates):
 
 def print_paths(source, base, out=print):
     """The three lines a lane copies into its ledger row: the source slug, the evidence and the candidates."""
-    out('source\t%s' % source)
-    out('evidence\t%s.json' % base)
-    out('candidates\t%s.candidates.json' % base)
+    out(f'source\t{source}')
+    out(f'evidence\t{base}.json')
+    out(f'candidates\t{base}.candidates.json')
 
 
 # ---------------------------------------------------------------- manifest of saved files (gwt-rawstore)
@@ -210,6 +210,7 @@ def classify_answer(status, headers, body, expect=None, page=None):
     a block), 'unexpected' (JSON of the wrong shape) or 'http' (any other non-2xx). A JSON reader passes
     `expect(parsed) -> bool`; a page reader passes `page(html) -> bool`, true only when the page carries the
     record text it asked for, so any other page (an empty frame, an error page) is a STOP."""
+    del headers  # Classification uses status and body; keep the public call signature.
     if status == 403:
         return 'blocked'
     if status == 429:
@@ -280,18 +281,18 @@ class Reader:
             st, rh, body = self.fetcher(method, u, h, data)
             verdict = classify_answer(st, rh, body, expect, page)
             state.update(status=st, verdict=verdict, body=body)
-            self.log('%s %s -> HTTP %s %s' % (method, u, st, verdict))
+            self.log(f'{method} {u} -> HTTP {st} {verdict}')
             return (st if verdict == 'ok' or not 200 <= st < 300 else NOT_STORED), rh, body
 
         status, rh, body = self.cache.fetch('GET', url, headers or {}, None, gated, refresh=refresh)
         verdict = state.get('verdict', 'ok')
         if verdict == 'blocked' and on_403 is not None and on_403(state['body']) == 'restricted':
-            self.gate.denied(self.lane, 'HTTP 403 %s' % url[:120])     # logged; no pause, no block
-            raise Restricted('restricted: HTTP 403 at %s is about this record\'s access, not a block; no gate hit' % url,
+            self.gate.denied(self.lane, f'HTTP 403 {url[:120]}')     # logged; no pause, no block
+            raise Restricted(f'restricted: HTTP 403 at {url} is about this record\'s access, not a block; no gate hit',
                              state['status'], state['body'])
         if verdict != 'ok':
             code, why, tell = STOP_FOR[verdict]
-            what = 'HTTP %s %s' % (state['status'], url[:120])
+            what = f"HTTP {state['status']} {url[:120]}"
             if tell == 'block':
                 self.gate.hit(self.lane, what)
                 self.gate.block(self.BLOCK_HOURS, what)
@@ -299,7 +300,7 @@ class Reader:
                 self.gate.hit(self.lane, what)
             elif tell == 'dead':
                 self.gate.dead(self.lane, what)
-            raise Stop('%s (HTTP %s at %s)' % (why, state['status'], url), code, verdict)
+            raise Stop(f"{why} (HTTP {state['status']} at {url})", code, verdict)
         return status, rh, body, 'status' not in state
 
 
@@ -323,7 +324,7 @@ def spec_problems(spec):
     bad = []
     for key, kind in SPEC_KEYS.items():
         if not isinstance(spec.get(key), kind):
-            bad.append('%s must be a %s' % (key, kind.__name__))
+            bad.append(f'{key} must be a {kind.__name__}')
     if not re.fullmatch(r'[a-z][a-z0-9-]*', str(spec.get('id', ''))):
         bad.append('id must be a lowercase slug')
     if isinstance(spec.get('pace'), dict) and set(spec['pace']) != {'start', 'floor', 'ceil'}:

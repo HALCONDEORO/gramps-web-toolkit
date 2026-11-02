@@ -4,7 +4,7 @@ Invented pages and ids, a fake transport, a fake gate: no request leaves this ma
 Run: cd read && python3 -m pytest -q test_registry.py"""
 import contextlib, io, json, os, unittest
 
-from test_gwt_read import Base, FakeGate, FakeNet, CAPTCHA, SEARCH, RECORD, persona
+from test_gwt_read import Base, FakeGate, FakeNet, CAPTCHA, RECORD, persona
 import _template
 import gwt_read  # noqa: E402
 import gwt_reader  # noqa: E402
@@ -70,7 +70,7 @@ class Registry(unittest.TestCase):
             add_search_args = _template.add_search_args
 
             @staticmethod
-            def search(a, R):
+            def search(_args, R):
                 seen.append(R)
                 return gwt_reader.EXIT_EMPTY
 

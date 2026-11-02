@@ -172,7 +172,7 @@ class FSCacheTest(unittest.TestCase):
         self.assertEqual(cli('get', RECORD), (0, b'body-1', 'HTTP 200 HIT\n'))
         self.assertEqual(cli('get', '--offline', RECORD)[0], 0)
         self.assertEqual(len(fake.calls), 1)
-        code, out, _ = cli('stats')
+        _code, out, _ = cli('stats')
         self.assertEqual(json.loads(out)['entries'], 1)
 
     def test_cli_token_file(self):

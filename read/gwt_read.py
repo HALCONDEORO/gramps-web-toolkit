@@ -93,15 +93,15 @@ def search_url(given='', surnames=(), by=None, dy=None, years=2, place='', fathe
         q.append(('q.surname', sur))
     for key, y in (('birthLikeDate', by), ('deathLikeDate', dy)):
         if y:
-            q += [('q.%s.from' % key, str(int(y) - years)), ('q.%s.to' % key, str(int(y) + years))]
+            q += [(f'q.{key}.from', str(int(y) - years)), (f'q.{key}.to', str(int(y) + years))]
     if place:
         q.append(('q.anyPlace', place))
     for role, name in (('father', father), ('mother', mother)):
         g, s = _split(name)
         if g:
-            q.append(('q.%sGivenName' % role, g))
+            q.append((f'q.{role}GivenName', g))
         if s:
-            q.append(('q.%sSurname' % role, s))
+            q.append((f'q.{role}Surname', s))
     if collection:
         q.append(('f.collectionId', str(collection)))
     q += [('count', str(count)), ('offset', str(offset))]
@@ -115,7 +115,7 @@ def ark_id(arg):
 
 
 def record_url(ark, host=FS_HOST):
-    return '%s/ark:/61903/%s' % (host, ark)
+    return f'{host}/ark:/61903/{ark}'
 
 
 def is_search(doc):
@@ -230,7 +230,7 @@ def urllib_fetcher(token, user_agent, urlopen=urllib.request.urlopen):
                 return r.status, rh, body
         except urllib.error.HTTPError as e:
             return e.code, dict(e.headers or {}), e.read()
-        except (urllib.error.URLError, OSError) as e:
+        except OSError as e:
             return 0, {}, str(e).encode()
     return fetch
 
@@ -267,7 +267,7 @@ def _save(a, R, url, accept, expect, key, to_cands, total_of, on_403=None):
     base = gwt_reader.write_search(a.out, key, env, cands)
     gwt_reader.print_paths(SOURCE, base, out)
     total = total_of(doc)
-    out('results\t%s total, %d read%s' % ('?' if total is None else total, len(cands), ' (cache)' if cached else ''))
+    out(f"results\t{'?' if total is None else total} total, {len(cands)} read{' (cache)' if cached else ''}")
     return EXIT_OK if cands else EXIT_EMPTY
 
 
@@ -280,7 +280,7 @@ def cmd_search(a, R):
     return _save(a, R, url, ACCEPT_SEARCH, is_search, key, search_candidates, lambda d: d.get('results'))
 
 
-def _fs_on_403(a, R, ark):
+def _fs_on_403(a, R, _ark):
     """Is this record's 403 its own access? Its permissions first (no request); then, with --control-ark, the
     control record read again through the gate: only when it answers is the account fine and the record restricted.
     If the control read fails in any way (refused, a 5xx, the wrong shape, a paused gate), the first 403 stays a
@@ -306,11 +306,11 @@ def _fs_on_403(a, R, ark):
 def cmd_record(a, R):
     ark = ark_id(a.ark)
     if not ark:
-        err('%r is not a FamilySearch record ark (1:1:XXXX-XXX)' % a.ark)
+        err(f'{a.ark!r} is not a FamilySearch record ark (1:1:XXXX-XXX)')
         return EXIT_USAGE
     control = getattr(a, 'control_ark', '')
     if control and ark_id(control) in (None, ark):
-        err('--control-ark %r must be a FamilySearch record ark (1:1:XXXX-XXX) other than the one you read' % control)
+        err(f'--control-ark {control!r} must be a FamilySearch record ark (1:1:XXXX-XXX) other than the one you read')
         return EXIT_USAGE
     key = 'fs-record-' + ark.replace(':', '-')
     try:
@@ -343,7 +343,7 @@ def cmd_pares_search(a, R):
 def cmd_pares_record(a, R):
     did = gwt_pares.description_id(a.id)
     if not did:
-        err('%r is not a PARES description id (digits) or its URL' % a.id)
+        err(f'{a.id!r} is not a PARES description id (digits) or its URL')
         return EXIT_USAGE
     h = {'accept': gwt_pares.ACCEPT, 'accept-language': gwt_pares.LANGUAGE}
     return _save_page(a, R, gwt_pares.description_url(did), h, gwt_pares.is_description, 'pares-record-' + did,
@@ -360,7 +360,7 @@ def cmd_genae_search(a, R):
     cands, pages, seen = [], {}, set()
     for block in gwt_genae.BLOCKS:
         url = gwt_genae.block_url(block, query)
-        status, rh, body, cached = R.get(url, h, refresh=a.refresh, page=lambda p, b=block: gwt_genae.is_block(p, b))
+        _status, _rh, body, cached = R.get(url, h, refresh=a.refresh, page=lambda p, b=block: gwt_genae.is_block(p, b))
         page = body.decode('utf-8', 'replace')
         n = len(gwt_genae.rows(page))
         pages[block] = {'url': url, 'html': page, 'rows': n, 'cut': gwt_genae.is_cut(n), 'from_cache': cached}
@@ -373,8 +373,11 @@ def cmd_genae_search(a, R):
                               text=' '.join(gwt_genae.text(p['html']) for p in pages.values()), blocks=pages)
     base = gwt_reader.write_search(a.out, key, env, cands)
     gwt_reader.print_paths(gwt_genae.SOURCE, base, out)
-    out('results\t%s' % ', '.join('%s %d%s' % (b, pages[b]['rows'], '+ (cut: narrow the search)' if pages[b]['cut'] else '')
-                                   for b in gwt_genae.BLOCKS))
+    counts = []
+    for block in gwt_genae.BLOCKS:
+        suffix = '+ (cut: narrow the search)' if pages[block]['cut'] else ''
+        counts.append(f"{block} {pages[block]['rows']}{suffix}")
+    out(f"results\t{', '.join(counts)}")
     return EXIT_OK if cands else EXIT_EMPTY
 
 
@@ -388,7 +391,7 @@ def _boe_read(a, R, phrase, pages, born=None):
     url = gwt_boe.search_url(phrase, a.year_from, a.year_to)
     cands, found, first = [], 0, url
     for n in range(pages):
-        status, rh, body, cached = R.get(url, h, refresh=a.refresh, page=gwt_boe.is_results)
+        _status, _rh, body, _cached = R.get(url, h, refresh=a.refresh, page=gwt_boe.is_results)
         page = body.decode('utf-8', 'replace')
         if n == 0:
             found = gwt_boe.total(page)
@@ -411,12 +414,12 @@ def _boe_pdf_context(a, R, cands, phrase):
     h = {'accept': 'application/pdf', 'accept-language': gwt_boe.LANGUAGE}
     for c in [c for c in cands if c['url'].endswith('.pdf') and not c.get('implausible')][:n]:
         # an HTML page served with 200 at a PDF URL is not the act: a STOP, never cached for 90 days
-        status, rh, body, cached = R.get(c['url'], h, refresh=a.refresh, page=lambda p: p.startswith('%PDF'))
+        _status, _rh, body, _cached = R.get(c['url'], h, refresh=a.refresh, page=lambda p: p.startswith('%PDF'))
         txt = gwt_boe.pdf_text(body)
         ctx = gwt_boe.context(txt, phrase)
         c['context'] = ctx
         if ctx:
-            c['note'] += ' | in the act: ...%s...' % ctx
+            c['note'] += f' | in the act: ...{ctx}...'
         else:
             c['note'] += ' [name not whole in the text layer: open the PDF]'
         every = gwt_boe.parents_after(txt, phrase)    # one (father, mother) or None per occurrence of the name
@@ -425,14 +428,15 @@ def _boe_pdf_context(a, R, cands, phrase):
             c['parents_in_act'] = [list(p) for p in found]
             same = gwt_boe.act_parents(every, getattr(a, 'parents', None))
             c['same_parents'] = same
-            c['note'] = '[parents in the act: %s%s] ' % ('; '.join('%s y %s' % p for p in found), '' if same is None else
-                                                        ', as in the tree' if same else ', NOT the tree\'s: another person?') + c['note']
+            parents = '; '.join(f'{father} y {mother}' for father, mother in found)
+            comparison = '' if same is None else ', as in the tree' if same else ", NOT the tree's: another person?"
+            c['note'] = f"[parents in the act: {parents}{comparison}] " + c['note']
 
 
 def _boe_verdicts(cands):
     for c in cands:
         c['verdict'] = gwt_boe.verdict(c)
-        c['note'] = '[%s] %s' % (c['verdict'], c['note'])
+        c['note'] = f"[{c['verdict']}] {c['note']}"
 
 
 def cmd_boe_search(a, R):
@@ -450,9 +454,9 @@ def cmd_boe_search(a, R):
     env = gwt_reader.envelope(first, None, text=gwt_boe.text(page), total=found)
     base = gwt_reader.write_search(a.out, key, env, cands)
     gwt_reader.print_paths(gwt_boe.SOURCE, base, out)
-    out('results\t%d of %d' % (len(cands), found))
+    out(f'results\t{len(cands)} of {int(found)}')
     for v in ('consistent', 'open', 'excluded'):
-        out('%s\t%d' % (v, sum(1 for c in cands if c['verdict'] == v)))
+        out(f"{v}\t{int(sum((1 for c in cands if c['verdict'] == v)))}")
     return EXIT_OK if cands else EXIT_EMPTY
 
 
@@ -510,7 +514,7 @@ def _save_page(a, R, url, h, page_ok, key, to_cands, total_of):
     base = gwt_reader.write_search(a.out, key, env, cands)
     gwt_reader.print_paths(gwt_pares.SOURCE, base, out)
     total = total_of(page)
-    out('results\t%s total, %d read%s' % ('?' if total is None else total, len(cands), ' (cache)' if cached else ''))
+    out(f"results\t{'?' if total is None else total} total, {len(cands)} read{' (cache)' if cached else ''}")
     return EXIT_OK if cands else EXIT_EMPTY
 
 
@@ -606,7 +610,7 @@ def _fs_record_args(r):
 def _default_build(src, a, urlopen, gate):
     """The Reader of a public source: its own gate and cache rules, no token."""
     urlopen = urlopen or urllib.request.urlopen
-    gate = gate or Gate(a.gate_dir or '~/.cache/gwt-gate-%s' % src['id'], **src['pace'])
+    gate = gate or Gate(a.gate_dir or f"~/.cache/gwt-gate-{src['id']}", **src['pace'])
     return gwt_reader.Reader(FSCache(a.cache_dir, rules=src['cache_rules']), gate, a.lane,
                              urllib_fetcher(None, a.user_agent, urlopen), log=err)
 
@@ -617,14 +621,14 @@ def _pares_build(src, a, urlopen, gate):
     return _default_build(src, a, urlopen, gate)
 
 
-def _fs_build(src, a, urlopen, gate):
+def _fs_build(_src, a, urlopen, gate):
     urlopen = urlopen or urllib.request.urlopen
     token = token_from_env()
     if not token:
         err('no session token: set GWT_FS_TOKEN, or GWT_FS_TOKEN_FILE to a file holding it (mode 600)')
         return EXIT_USAGE
     acct = gwt_reader.slug(a.account)
-    gate = gate or Gate(a.gate_dir or '~/.cache/gwt-gate-fs-%s' % acct, **FS_PACE)
+    gate = gate or Gate(a.gate_dir or f'~/.cache/gwt-gate-fs-{acct}', **FS_PACE)
     cache = FSCache(a.cache_dir, rules=FAMILYSEARCH_RULES)
     return gwt_reader.Reader(cache, gate, a.lane, urllib_fetcher(token, a.user_agent, urlopen), log=err)
 
@@ -682,8 +686,8 @@ def module_source(mod):
     for k in _MODULE_KEYS:
         if hasattr(mod, k):
             src[k] = getattr(mod, k)
-    src.setdefault('site_args', _site_args('GWT_%s_USER_AGENT' % src['id'].upper().replace('-', '_'),
-                                           '~/.cache/gwt-gate-%s' % src['id']))
+    src.setdefault('site_args', _site_args(f"GWT_{src['id'].upper().replace('-', '_')}_USER_AGENT",
+                                           f"~/.cache/gwt-gate-{src['id']}"))
     src.setdefault('build', _default_build)
     src.setdefault('search_help', 'a search; writes the answer and its candidates')
     src.setdefault('record_help', 'one record by its id')
@@ -693,16 +697,16 @@ def module_source(mod):
 def sources(modules=None):
     """{id: entry} of every source, in the order --help lists them: the older ones, then each module in
     gwt_reader.SOURCE_MODULES that has a SPEC."""
-    out = {s['id']: s for s in LEGACY}
+    registry = {s['id']: s for s in LEGACY}
     for name in gwt_reader.SOURCE_MODULES if modules is None else modules:
         mod = name if not isinstance(name, str) else __import__(name)
         if hasattr(mod, 'SPEC'):
             src = module_source(mod)
             bad = gwt_reader.spec_problems(src)
-            if bad or src['id'] in out:
-                raise ValueError('%s: %s' % (getattr(mod, '__name__', mod), '; '.join(bad) or 'id already taken'))
-            out[src['id']] = src
-    return out
+            if bad or src['id'] in registry:
+                raise ValueError(f"{getattr(mod, '__name__', mod)}: {'; '.join(bad) or 'id already taken'}")
+            registry[src['id']] = src
+    return registry
 
 
 # ---------------------------------------------------------------- canary controls
@@ -735,29 +739,27 @@ def run_controls(src, sp, a, R, when='control', undo=None):
         n, code = _canary(src, sp, ctl, a, R)
         ok = code in (EXIT_OK, EXIT_EMPTY) and n >= ctl['min_count']
         short += not ok
-        out('control\t%s\t%s\t%d read, want at least %d\t%s' % (when, ' '.join(ctl['argv']), n, ctl['min_count'],
-                                                               'ok' if ok else 'SHORT'))
+        out(f"control\t{when}\t{' '.join(ctl['argv'])}\t{int(n)} read, want at least {int(ctl['min_count'])}\t{'ok' if ok else 'SHORT'}")
     if short:
         if undo:
             undo()
-        out('void\t%s: %d of %d canaries read less than their minimum; read nothing here as "no results"'
-            % (src['id'], short, len(src['controls'])))
+        out(f"void\t{src['id']}: {int(short)} of {len(src['controls'])} canaries read less than their minimum; read nothing here as \"no results\"")
         return gwt_reader.EXIT_WALL
     return EXIT_OK
 
 
 def parser(srcs=None):
     srcs = sources() if srcs is None else srcs
-    p = argparse.ArgumentParser(prog='gwt-read', description=__doc__.split('\n')[0],
+    argument_parser = argparse.ArgumentParser(prog='gwt-read', description=__doc__.split('\n')[0],
                                 epilog=__doc__[__doc__.index('Exit codes:'):],
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    sites = p.add_subparsers(dest='site', required=True)
+    sites = argument_parser.add_subparsers(dest='site', required=True)
     for src in srcs.values():
         sp = sites.add_parser(src['id'], help=src['help'])
         if src.get('site_args'):
             src['site_args'](sp)
-        sub = sp.add_subparsers(dest='cmd', required=True)
-        s = sub.add_parser('search', help=src['search_help'])
+        commands = sp.add_subparsers(dest='cmd', required=True)
+        s = commands.add_parser('search', help=src['search_help'])
         src['add_search_args'](s)
         if src['controls']:
             s.add_argument('--controls', choices=('before', 'after', 'both'),
@@ -765,14 +767,14 @@ def parser(srcs=None):
                            'a short canary makes the run void (exit 3)')
         s.add_argument('--out', required=True)
         if src.get('record'):
-            r = sub.add_parser('record', help=src['record_help'])
+            r = commands.add_parser('record', help=src['record_help'])
             src['add_record_args'](r)
             r.add_argument('--out', required=True)
         if src['controls']:
-            sub.add_parser('control', help='run the canary searches (no cache): exit 0 when each reads at least its '
+            commands.add_parser('control', help='run the canary searches (no cache): exit 0 when each reads at least its '
                            'minimum, 3 (void) otherwise')
         src['_search_parser'] = s
-    return p
+    return argument_parser
 
 
 def main(argv=None, urlopen=None, gate=None, srcs=None):
@@ -805,7 +807,8 @@ def main(argv=None, urlopen=None, gate=None, srcs=None):
         finally:
             R.cache.store = store
         if when in ('after', 'both') and code in (EXIT_OK, EXIT_EMPTY):
-            undo = lambda: _undo(a.out, files, R.cache, stored)
+            def undo():
+                _undo(a.out, files, R.cache, stored)
             try:
                 c = run_controls(src, src['_search_parser'], a, R, 'after', undo)
             except (gwt_reader.Stop, Paused):
@@ -830,7 +833,7 @@ def _undo(folder, before, cache, stored):
     for name, mtime in _listing(folder).items():
         if before.get(name) != mtime:
             os.remove(os.path.join(folder, name))
-            out('removed\t%s' % os.path.join(folder, name))
+            out(f'removed\t{os.path.join(folder, name)}')
     for method, url, headers, data in stored:
         cache.forget(method, url, headers, data)
 
@@ -842,7 +845,7 @@ def _run(R, cmd, a):
         err(str(e))
         return e.exit_code
     except Paused as e:
-        err('%s; do other work' % e)
+        err(f'{e}; do other work')
         return EXIT_PAUSED
 
 

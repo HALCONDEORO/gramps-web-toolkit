@@ -48,9 +48,9 @@ gwt_read.py | ns.refresh, ns.out = True, tmp | ns.refresh, ns.out = False, tmp |
 gwt_read.py | c = run_controls(src, src['_search_parser'], a, R, 'before') | c = 0 | a short canary before a search means no search
 gwt_read.py | if when in ('after', 'both') and code in (EXIT_OK, EXIT_EMPTY): | if False: | --controls after runs the canaries after the search and voids it when one is short
 gwt_read.py | if lab in ('EVENT_PARISH_ORIG', 'CP_MAR_PLACE_ORIG') or (lab.startswith('EVENT_PLACE') and lab.endswith('_ORIG')): | if lab in ('EVENT_PARISH_ORIG', 'CP_MAR_PLACE_ORIG') or lab.startswith('EVENT_PLACE'): | place_orig keeps only the place as the index typed it, not the standard place
-gwt_read.py | if bad or src['id'] in out: | if bad: | a source module cannot take an id another source already has
+gwt_read.py | if bad or src['id'] in registry: | if bad: | a source module cannot take an id another source already has
 gwt_read.py | if _ARTIFACT_DENIED in text.lower(): | if False: | a FamilySearch 403 saying "Access to artifact denied" is that record's access ("restricted"), not a 24 h block
-gwt_reader.py | self.gate.denied(self.lane, 'HTTP 403 %s' % url[:120])     # logged; no pause, no block | pass | a restricted record is still logged in the gate log as a denial, with no pause
+gwt_reader.py | self.gate.denied(self.lane, f'HTTP 403 {url[:120]}')     # logged; no pause, no block | pass | a restricted record is still logged in the gate log as a denial, with no pause
 gwt_read.py | if e.verdict == 'blocked': | if True: | a 403 whose control read fails with a 5xx, a 429 or the wrong shape stays a 24 h block, never an exit 1 that tells the gate nothing
 gwt_read.py | except Paused: | except ZeroDivisionError: | a 403 whose control read meets a paused gate stays a 24 h block, never an exit 6 that records nothing
 gwt_read.py | if control and ark_id(control) in (None, ark): | if False: | a --control-ark that is not a 1:1 record ark, or is the record itself, exits 64 instead of being ignored

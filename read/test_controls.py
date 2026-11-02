@@ -68,7 +68,7 @@ class Controls(Base):
     def test_a_short_canary_before_means_no_search(self):
         gate = FakeGate()
         net = FakeNet(gate, (200, ONE))
-        code, rows, _ = self.search(net, gate, '--controls', 'before')
+        code, _rows, _ = self.search(net, gate, '--controls', 'before')
         self.assertEqual((code, len(net.requests), self.out_files()), (gwt_reader.EXIT_WALL, 1, []))
 
     def test_a_short_canary_after_voids_the_none(self):
@@ -98,7 +98,7 @@ class Controls(Base):
     def test_a_stopped_canary_after_also_leaves_no_files_and_no_cached_none(self):
         gate = FakeGate()
         net = FakeNet(gate, (200, NONE), (200, CAPTCHA), (200, RESULTS))
-        code, rows, _ = self.search(net, gate, '--controls', 'after')
+        code, _rows, _ = self.search(net, gate, '--controls', 'after')
         self.assertEqual((code, len(gate.hits)), (gwt_reader.EXIT_WALL, 1))
         self.assertEqual(self.out_files(), [], 'a search whose after-canary was stopped left files that read as "none"')
         code, _, _ = self.search(net, gate)      # the same search again, without controls
@@ -116,7 +116,7 @@ class Controls(Base):
         gate = FakeGate()
         net = FakeNet(gate, (200, NONE), (200, NONE), (200, RESULTS))
         self.search(net, gate)
-        code, rows, text = self.search(net, gate, '--controls', 'after')
+        code, _rows, text = self.search(net, gate, '--controls', 'after')
         self.assertEqual((code, len(net.requests)), (gwt_reader.EXIT_EMPTY, 3), text)
         self.assertNotIn('(cache)', text)
 
@@ -134,8 +134,8 @@ class Controls(Base):
 
 class Legacy(Base):
     def test_familysearch_control_counts_rows_of_its_public_canary(self):
-        entries = [{'id': 'QZZ8-%03d' % i, 'content': {'gedcomx': {'persons': [
-            persona('p%d' % i, 'QZZ8-%03d' % i, 'John', 'Smith', 'Male', principal=True)]}}} for i in range(12)]
+        entries = [{'id': f'QZZ8-{int(i):03}', 'content': {'gedcomx': {'persons': [
+            persona(f'p{int(i)}', f'QZZ8-{int(i):03}', 'John', 'Smith', 'Male', principal=True)]}}} for i in range(12)]
         gate = FakeGate()
         net = FakeNet(gate, (200, json.dumps({'results': 12, 'entries': entries}).encode()))
         o = io.StringIO()
