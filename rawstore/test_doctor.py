@@ -51,7 +51,7 @@ class Base:
 
     def add_packs(self, n):
         for i in range(n):
-            oid = sh(self.repo, 'hash-object', '-w', '--stdin', inp='invented blob %d\n' % i).strip()
+            oid = sh(self.repo, 'hash-object', '-w', '--stdin', inp=f'invented blob {i}\n').strip()
             sh(self.repo, 'pack-objects', '-q', '.git/objects/pack/pack', inp=oid + '\n')
 
 
@@ -214,7 +214,7 @@ class PartialClone(unittest.TestCase):
             calls.append((tuple(args), kw.get('env') or {}))
             if args[0] == 'tmutil':
                 return subprocess.CompletedProcess(args, 0, f'[Included]    {args[-1]}\n', '')
-            return real(args, **kw)
+            return real(args, check=kw.pop("check", False), **kw)
         with mock.patch.object(D.subprocess, 'run', record):
             rep = D.doctor(self.repo, max_packs=0, max_tmp_gb=0, max_binary_gb=0, environ={}, platform='darwin')
         self.assertGreater(rep['findings'], 0)

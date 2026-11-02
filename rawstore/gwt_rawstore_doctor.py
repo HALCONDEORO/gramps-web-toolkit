@@ -119,13 +119,13 @@ def _inventory(repo, common):
 def _pack_checks(add, state, version, max_packs):
     packs, promisor, midx = state['packs'], state['promisor'], state['midx']
     git_bytes, config, partial = state['git_bytes'], state['config'], state['partial']
-    summary = '%d packs (%d promisor), %s in .git' % (len(packs), promisor, gb(git_bytes))
+    summary = f'{len(packs)} packs ({promisor} promisor), {gb(git_bytes)} in .git'
     if len(packs) > max_packs:
         fix = 'git repack --geometric=2 -d && git multi-pack-index write   ' \
               '(in the foreground, on a quiet disk, never while a backup runs)'
         if partial and git_version(version) < GEOMETRIC_PROMISOR:
             fix = 'upgrade git to 2.53 or newer first (older repack --geometric mishandles promisor packs), then ' + fix
-        add('packs', 'warn', summary + '; over %d, every missing-object lookup reads every pack index' % max_packs, fix)
+        add('packs', 'warn', summary + f'; over {max_packs}, every missing-object lookup reads every pack index', fix)
     else:
         add('packs', 'ok', summary)
     if len(packs) > MIDX_PACKS and not midx:
@@ -139,9 +139,8 @@ def _pack_checks(add, state, version, max_packs):
 def _lazy_checks(add, partial, filters, environ):
     # ---- lazy fetching in a partial clone
     if partial and not truthy(environ.get('GIT_NO_LAZY_FETCH')):
-        add('lazy-fetch', 'warn', 'partial clone (filter %s) with lazy fetching on: git show <rev>:<path>, '
-            'grep <rev>, archive, log -p and log -S download each missing blob as its own pack'
-            % (','.join(filters) or 'unknown'),
+        add('lazy-fetch', 'warn', f"partial clone (filter {','.join(filters) or 'unknown'}) with lazy fetching on: git show <rev>:<path>, "
+            'grep <rev>, archive, log -p and log -S download each missing blob as its own pack' ,
             'export GIT_NO_LAZY_FETCH=1   (in every agent\'s environment; prefetch on purpose, in one batch)')
     else:
         add('lazy-fetch', 'ok', 'off' if partial else 'not a partial clone')
@@ -167,10 +166,10 @@ def _binary_checks(add, top, max_binary_gb):
     biggest = sorted(by_folder.items(), key=lambda kv: -kv[1][1])[:3]
     named = ', '.join(f'{f}/ {gb(s)}' for f, (_, s) in biggest)
     if binary_total > max_binary_gb * GB:
-        add('binaries', 'warn', '%d tracked binaries, %s (%s)' % (binary_files, gb(binary_total), named),
+        add('binaries', 'warn', f'{binary_files} tracked binaries, {gb(binary_total)} ({named})',
             ' ; '.join(f'gwt-rawstore migrate {f} --remove' for f, _ in biggest) + '   then commit the rawstore.tsv files')
     else:
-        add('binaries', 'ok', '%d tracked binaries, %s' % (binary_files, gb(binary_total)))
+        add('binaries', 'ok', f'{binary_files} tracked binaries, {gb(binary_total)}')
 
     return by_folder, binary_total, biggest
 
@@ -253,5 +252,5 @@ def main(a, out=None):
             out(f"{c['level']:5} {c['check']}: {c['message']}")
             if c['fix']:
                 out('      fix: ' + c['fix'])
-        out('%d finding(s)' % rep['findings'])
+        out(f"{rep['findings']} finding(s)")
     return 1 if rep['findings'] else 0

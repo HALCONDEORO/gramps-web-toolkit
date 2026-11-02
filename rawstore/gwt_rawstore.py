@@ -20,7 +20,7 @@ AWS SigV4 and use path-style addressing, which Garage and MinIO need. Standard l
 """
 import argparse, concurrent.futures, datetime, fnmatch, hashlib, hmac, http.client, os, re, shutil, subprocess, \
     sys, tempfile, time, urllib.error, urllib.parse, urllib.request, xml.etree.ElementTree as ET
-from gwt_rawstore_kinds import BINARY_EXT, is_binary_name
+from gwt_rawstore_kinds import BINARY_EXT as BINARY_EXT, is_binary_name
 import gwt_rawstore_doctor   # imported here so a wheel without it fails on any run, not only on `doctor`
 
 MANIFEST = 'rawstore.tsv'
