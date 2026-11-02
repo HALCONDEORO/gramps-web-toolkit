@@ -93,7 +93,7 @@ def check_date(value):
     day over 31. Raises ValueError when it is not eight digits (the columns are shifted)."""
     m = _DATE.match(value)
     if not m:
-        raise ValueError('date %r is not AAAAMMJJ' % value)
+        raise ValueError(f'date {value!r} is not AAAAMMJJ')
     y, mo, d = (int(x) for x in m.groups())
     return y or None, mo > 12 or d > 31
 
@@ -101,14 +101,14 @@ def check_date(value):
 def parse_line(line):
     """One line as a dict of its fields, or LayoutError (with the reason) when it is not in the layout."""
     if len(line) < MIN_LENGTH:
-        raise LayoutError('line is %d characters, the layout needs at least %d' % (len(line), MIN_LENGTH))
+        raise LayoutError(f'line is {len(line)} characters, the layout needs at least {MIN_LENGTH}')
     if len(line) > MAX_LENGTH:
-        raise LayoutError('line is %d characters, the layout holds at most %d (two records on one line, or a file '
-                          'whose lines end in CR alone)' % (len(line), MAX_LENGTH))
+        raise LayoutError(f'line is {len(line)} characters, the layout holds at most {MAX_LENGTH} (two records on one line, '
+                          'or a file whose lines end in CR alone)')
     name = _field(line, NAME)
     sex = line[SEX[0]:SEX[1]]
     if sex not in SEXES:
-        raise LayoutError('sex %r is not 1 or 2' % sex)
+        raise LayoutError(f'sex {sex!r} is not 1 or 2')
     surname, star, given = name.partition('*')
     rec = {'surname': surname.rstrip('/').strip(), 'given': given.rstrip('/').strip(), 'sex': SEXES[sex],
            'malformed': [] if star else ['name']}
@@ -117,7 +117,7 @@ def parse_line(line):
         try:
             rec[key[:-5] + '_year'], odd = check_date(rec[key])
         except ValueError as e:
-            raise LayoutError('%s: %s' % (key.replace('_', ' '), e))
+            raise LayoutError(f"{key.replace('_', ' ')}: {e}")
         if odd:
             rec['malformed'].append(key)
     for key, span in (('birth_place_code', BIRTH_CODE), ('birth_commune', BIRTH_TOWN), ('birth_country', BIRTH_COUNTRY),
@@ -143,11 +143,11 @@ def candidate(rec, path, lineno, encoding):
     """One parsed line as a gwt-rank candidate record."""
     place = rec['birth_commune']
     if rec['birth_country']:
-        place = '%s, %s' % (place, rec['birth_country']) if place else rec['birth_country']
+        place = f"{place}, {rec['birth_country']}" if place else rec['birth_country']
     by, dy = rec['birth_year'], rec['death_year']
     c = {'source': SOURCE,
          # the death's date, place and act number are how INSEE itself names a death (its opposition file uses them)
-         'id': '%s-%s-%s' % (rec['death_date'], rec['death_place_code'], rec['act']),
+         'id': f"{rec['death_date']}-{rec['death_place_code']}-{rec['act']}",
          'name': ' '.join(x for x in (rec['given'], rec['surname']) if x),
          'role': 'Principal', 'principal': True,
          'given': rec['given'] or None, 'surnames': [rec['surname']] if rec['surname'] else None,
@@ -186,13 +186,13 @@ def read_files(paths, surnames):
                 try:
                     rec = parse_line(line)
                 except LayoutError as e:
-                    raise LayoutError('%s line %d: %s' % (path, lineno, e))
+                    raise LayoutError(f'{path} line {lineno}: {e}')
                 odd += bool(rec['malformed'])
                 if surname_matches(rec['surname'], wanted):
                     matched += 1
                     cands.append(candidate(rec, path, lineno, enc))
         if not lines:
-            raise EmptyFile('%s holds no line' % path)
+            raise EmptyFile(f'{path} holds no line')
         files.append({'file': os.path.basename(path), 'sha256': h.hexdigest(), 'lines': lines, 'matched': matched,
                       'malformed': odd})
     return cands, files
