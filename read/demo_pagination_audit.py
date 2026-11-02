@@ -13,6 +13,12 @@ import sys
 from gwt_pagination_audit import audit
 
 
+def check(condition, detail):
+    """Do not drop demonstration checks under Python -O."""
+    if not condition:
+        raise AssertionError(detail)
+
+
 def page(n, ids, terminal=False, **over):
     p = {"page_id": f"p{n}", "index": n,
          "source_url": f"https://example.invalid/p{n}", "ids": list(ids),
@@ -101,13 +107,13 @@ CASES = [
 def run_case(cid, manifest, verdict, codes, extra):
     report = audit(copy.deepcopy(manifest))
     got = [s["code"] for s in report["stops"]]
-    assert report["verdict"] == verdict, f"{cid}: verdict {report['verdict']}"
-    assert got == codes, f"{cid}: stops {got} != {codes}"
+    check((report["verdict"] == verdict), (f"{cid}: verdict {report['verdict']}"))
+    check((got == codes), (f"{cid}: stops {got} != {codes}"))
     for k, v in extra.items():
-        assert report[k] == v, f"{cid}: {k} {report[k]!r} != {v!r}"
+        check((report[k] == v), (f"{cid}: {k} {report[k]!r} != {v!r}"))
     # R2 spec: per-page evidence stops
     if cid == "R2":
-        assert report["pages"][0]["stops"] == ["REPEATED_ID"], cid
+        check((report["pages"][0]["stops"] == ["REPEATED_ID"]), (cid))
     return report
 
 
