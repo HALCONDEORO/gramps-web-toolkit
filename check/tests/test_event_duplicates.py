@@ -120,3 +120,14 @@ def test_other_person_with_same_event_is_not_duplicate_on_either_person():
     other = selftest._get(data, 'people', 'I0002')
     other['event_ref_list'].append(selftest._ref('hE0900', role='Primary'))
     assert findings(data) == []
+
+def test_citation_unknown_date_qualifiers_are_not_collapsed():
+    data, event, _, _ = fixture()
+    first = data['citations'][0]
+    first['date'] = selftest._date()
+    citation = copy.deepcopy(first)
+    citation.update(handle='hC0900', gramps_id='C0900')
+    citation['date']['modifier'] = 1
+    data['citations'].append(citation)
+    event['citation_list'] = ['hC0001', 'hC0900']
+    assert findings(data, name='same-person-citation') == []

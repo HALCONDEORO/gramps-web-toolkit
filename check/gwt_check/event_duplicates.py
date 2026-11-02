@@ -23,48 +23,64 @@ def _groups(rows):
     return [list(group.values()) for group in grouped.values() if len(group) > 1]
 
 
+def _linked_events(tree, person):
+    events = []
+    linked = {}
+    for ref in person.get('event_ref_list') or []:
+        event = tree['events'].get(ref.get('ref'))
+        if event:
+            linked[event['handle']] = event
+            date = _date_key(event.get('date'))
+            place = event.get('place')
+            key = (event.get('type'), date, place, ref.get('role'))
+            if date and place in tree['places'] and event.get('type'):
+                events.append((key, event))
+    return events, linked
+
+
+def _citation_groups(tree, owner):
+    rows = []
+    for handle in owner.get('citation_list') or []:
+        citation = tree['citations'].get(handle)
+        if not citation:
+            continue
+        source = citation.get('source_handle')
+        page = citation.get('page')
+        if source in tree['sources'] and isinstance(page, str) and page.strip():
+            key = (source, page, json.dumps(citation.get('date'), sort_keys=True, ensure_ascii=False))
+            rows.append((key, citation))
+    return _groups(rows)
+
+
+def _report_events(person, events, out, in_scope):
+    pid = person.get('gramps_id') or person['handle']
+    for group in _groups(events):
+        if in_scope('people', person['handle']) or any(in_scope('events', e['handle']) for e in group):
+            ids = sorted(e.get('gramps_id') or e['handle'] for e in group)
+            out.add('same-person-event', f"{pid} {','.join(ids)}",
+                    'same stored type, date, place and role; review descriptions, citations, notes and privacy; '
+                    'no survivor selected, nothing changed')
+
+
+def _report_citations(tree, person, owners, out, in_scope):
+    pid = person.get('gramps_id') or person['handle']
+    for owner in owners:
+        for group in _citation_groups(tree, owner):
+            related = [('people', person['handle'])]
+            related += [('people' if owner is person else 'events', owner['handle'])]
+            related += [('citations', c['handle']) for c in group]
+            if any(in_scope(t, h) for t, h in related):
+                ids = sorted(c.get('gramps_id') or c['handle'] for c in group)
+                oid = owner.get('gramps_id') or owner['handle']
+                out.add('same-person-citation', f"{pid} {oid} {','.join(ids)}",
+                        'same owner, source, literal page and stored date; review confidence, media, notes '
+                        'and privacy; no survivor selected, nothing changed')
+
+
 def check_person_duplicates(tree, out, in_scope):
     """Only compare linked objects of one person; matching is a review hint."""
     for person in tree['people'].values():
-        pid = person.get('gramps_id') or person['handle']
-        events = []
-        linked_events = {}
-        for ref in person.get('event_ref_list') or []:
-            event = tree['events'].get(ref.get('ref'))
-            if event:
-                linked_events[event['handle']] = event
-                date = _date_key(event.get('date'))
-                place = event.get('place')
-                key = (event.get('type'), date, place, ref.get('role'))
-                if date and place in tree['places'] and event.get('type'):
-                    events.append((key, event))
-        for group in _groups(events):
-            if in_scope('people', person['handle']) or any(in_scope('events', e['handle']) for e in group):
-                ids = sorted(e.get('gramps_id') or e['handle'] for e in group)
-                out.add('same-person-event', f"{pid} {','.join(ids)}",
-                        'same stored type, date, place and role; review descriptions, citations, notes and privacy; '
-                        'no survivor selected, nothing changed')
-        # Citations directly on the person and on its events are candidates only
-        # within the SAME owning object. Different event owners are not collapsed.
-        owners = [person] + list(linked_events.values())
-        for owner in owners:
-            citations = []
-            for handle in owner.get('citation_list') or []:
-                citation = tree['citations'].get(handle)
-                if not citation:
-                    continue
-                source = citation.get('source_handle')
-                page = citation.get('page')
-                if source in tree['sources'] and isinstance(page, str) and page.strip():
-                    key = (source, page, _date_key(citation.get('date')))
-                    citations.append((key, citation))
-            for group in _groups(citations):
-                related = [('people', person['handle'])]
-                related += [('people' if owner is person else 'events', owner['handle'])]
-                related += [('citations', c['handle']) for c in group]
-                if any(in_scope(t, h) for t, h in related):
-                    ids = sorted(c.get('gramps_id') or c['handle'] for c in group)
-                    oid = owner.get('gramps_id') or owner['handle']
-                    out.add('same-person-citation', f"{pid} {oid} {','.join(ids)}",
-                            'same owner, source, literal page and stored date; review confidence, media, notes '
-                            'and privacy; no survivor selected, nothing changed')
+        events, linked = _linked_events(tree, person)
+        _report_events(person, events, out, in_scope)
+        # Different event owners are never collapsed.
+        _report_citations(tree, person, [person] + list(linked.values()), out, in_scope)
