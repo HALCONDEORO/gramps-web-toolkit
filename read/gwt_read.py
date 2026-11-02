@@ -358,30 +358,38 @@ def cmd_insee_search(a):
     try:
         cands, files = gwt_insee.read_files(a.files, surnames)
     except gwt_insee.LayoutError as e:
-        err('%s; nothing was written' % e)
+        err(f'{e}; nothing was written')
         return EXIT_EMPTY
     except gwt_insee.EmptyFile as e:
-        err('%s; nothing was written' % e)
+        err(f'{e}; nothing was written')
         return EXIT_ERROR
     except OSError as e:
-        err('cannot read %s: %s; nothing was written' % (e.filename or 'a file', e.strerror or e))
+        err(f"cannot read {e.filename or 'a file'}: {e.strerror or e}; nothing was written")
         return EXIT_ERROR      # a file that cannot be read is an error, never "no results"
+    return _write_insee_search(a, surnames, cands, files)
+
+
+def _insee_warnings(files):
     for f in files:
         if f['malformed']:
-            err('%s: %d line%s %s a value out of INSEE\'s own rules (month over 12, day over 31, or a name with no '
-                '"*"), kept as written and marked "malformed"' % (f['file'], f['malformed'],
-                                                                  '' if f['malformed'] == 1 else 's',
-                                                                  'keeps' if f['malformed'] == 1 else 'keep'))
+            plural = '' if f['malformed'] == 1 else 's'
+            verb = 'keeps' if f['malformed'] == 1 else 'keep'
+            err(f"{f['file']}: {f['malformed']} line{plural} {verb} a value out of INSEE's own rules "
+                '(month over 12, day over 31, or a name with no "*"), kept as written and marked "malformed"')
+
+
+def _write_insee_search(a, surnames, cands, files):
+    _insee_warnings(files)
     sums = sorted(f['sha256'] for f in files)
     words = ['insee'] + sorted(gwt_insee.fold(' '.join(surnames)))
     key = gwt_reader.search_key('\n'.join(['insee'] + sums + sorted(' '.join(gwt_insee.fold(s)) for s in surnames)),
                                 words)
     env = gwt_reader.envelope('insee:' + ' '.join(f['file'] for f in files), None, files=files, surnames=surnames,
-                              text='\n'.join('%s:%d %s' % (c['file'], c['line'], c['name']) for c in cands))
+                              text='\n'.join(f"{c['file']}:{c['line']} {c['name']}" for c in cands))
     base = gwt_reader.write_search(a.out, key, env, cands)
     gwt_reader.print_paths(gwt_insee.SOURCE, base, out)
-    out('results\t%d of %d lines in %d file%s' % (len(cands), sum(f['lines'] for f in files), len(files),
-                                                  '' if len(files) == 1 else 's'))
+    plural = '' if len(files) == 1 else 's'
+    out(f"results\t{len(cands)} of {sum(f['lines'] for f in files)} lines in {len(files)} file{plural}")
     return EXIT_OK if cands else EXIT_EMPTY
 
 
@@ -489,6 +497,10 @@ def main(argv=None, urlopen=None, gate=None):
     a = parser().parse_args(argv)
     if a.site == 'insee':
         return cmd_insee_search(a)      # offline: no gate, no cache, no fetcher
+    return _online_main(a, urlopen, gate)
+
+
+def _online_main(a, urlopen, gate):
     if a.site == 'pares':
         # cookies live in memory for this run only: the session cookie never reaches the cache or a file
         urlopen = urlopen or urllib.request.build_opener(urllib.request.HTTPCookieProcessor()).open
@@ -508,6 +520,10 @@ def main(argv=None, urlopen=None, gate=None):
         R = gwt_reader.Reader(FSCache(a.cache_dir, rules=BOE_RULES), gate, a.lane,
                               urllib_fetcher(None, a.user_agent, urlopen), log=err)
         return _run(R, cmd_boe_search, a)
+    return _familysearch_main(a, urlopen, gate)
+
+
+def _familysearch_main(a, urlopen, gate):
     urlopen = urlopen or urllib.request.urlopen
     token = token_from_env()
     if not token:

@@ -19,7 +19,7 @@ def line(name='LORIOT*PAUL/', sex='1', bd='19200101', bcode='64990', btown='BRUN
     return s.ljust(width)[:width] if width >= 176 else s[:width]
 
 
-class Run(unittest.TestCase):
+class Run:
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.out = os.path.join(self.tmp.name, 'out')
@@ -42,7 +42,8 @@ class Run(unittest.TestCase):
         lines = dict(l.split('\t', 1) for l in o.getvalue().splitlines() if '\t' in l)
         return code, lines, o.getvalue() + e.getvalue()
 
-    def cands(self, lines):
+    @staticmethod
+    def cands(lines):
         with open(lines['candidates']) as f:
             return json.load(f)['candidates']
 
@@ -50,7 +51,7 @@ class Run(unittest.TestCase):
         return glob.glob(os.path.join(self.out, '*'))
 
 
-class Candidates(Run):
+class Candidates(Run, unittest.TestCase):
     def test_a_line_is_a_principal_with_birth_year_and_commune_as_written_and_the_death(self):
         code, lines, _ = self.run_insee([FIX], ['Ortega'])
         self.assertEqual(code, 0)
@@ -64,6 +65,7 @@ class Candidates(Run):
 
     def test_full_dates_codes_and_act_stay_as_fields_gwt_rank_does_not_score(self):
         code, lines, _ = self.run_insee([FIX], ['Ortega'])
+        self.assertEqual(code, 0)
         c = self.cands(lines)[0]
         self.assertEqual((c['birth_date'], c['death_date'], c['birth_place_code'], c['death_place_code'], c['act']),
                          ('19210314', '19850702', '99134', '64999', '0000123'))
@@ -72,10 +74,12 @@ class Candidates(Run):
 
     def test_a_birth_in_france_has_the_commune_alone(self):
         code, lines, _ = self.run_insee([FIX], ['Duval'])
+        self.assertEqual(code, 0)
         self.assertEqual(self.cands(lines)[0]['events']['birth']['place'], 'LESPIAC-SUR-ORBE')
 
     def test_surname_matches_whole_words_only(self):
         code, lines, _ = self.run_insee([FIX], ['Ortega'])
+        self.assertEqual(code, 0)
         names = [c['name'] for c in self.cands(lines)]
         self.assertEqual(names, ['TOMAS ORTEGA', 'MARIA ROSA ORTEGA SANZ'])    # never ORTEGAS
         self.assertFalse(gwt_insee.surname_matches('ORTEGAS', {('ortega',)}))
@@ -95,19 +99,23 @@ class Candidates(Run):
 
     def test_a_surname_of_several_words_keeps_only_lines_with_all_of_them(self):
         code, lines, _ = self.run_insee([FIX], ['Ortega Sanz'])
+        self.assertEqual(code, 0)
         self.assertEqual([c['name'] for c in self.cands(lines)], ['MARIA ROSA ORTEGA SANZ'])
 
     def test_surname_is_folded_for_case_and_accents(self):
         code, lines, _ = self.run_insee([FIX], ['ortéga'])
+        self.assertEqual(code, 0)
         self.assertEqual(len(self.cands(lines)), 2)
 
     def test_surname_repeats_and_one_pass_serves_a_branch(self):
         code, lines, out = self.run_insee([FIX], ['Ortega', 'Sanz'])
+        self.assertEqual(code, 0)
         self.assertEqual([c['line'] for c in self.cands(lines)], [1, 4, 5])   # ORTEGA SANZ once, not twice
         self.assertIn('results\t3 of 6 lines in 1 file', out)
 
     def test_an_unknown_year_is_no_year_and_the_date_is_kept_as_written(self):
         code, lines, _ = self.run_insee([FIX], ['Sanz'])
+        self.assertEqual(code, 0)
         c = [c for c in self.cands(lines) if c['name'] == 'PILAR SANZ'][0]
         self.assertEqual(c['events']['birth']['year'], None)
         self.assertEqual((c['birth_date'], c['death_date']), ('00000000', '19850900'))
@@ -121,6 +129,7 @@ class Candidates(Run):
 
     def test_a_cp850_byte_is_read_as_cp850_and_marked(self):
         code, lines, _ = self.run_insee([FIX], ['Sanz'])
+        self.assertEqual(code, 0)
         c = [c for c in self.cands(lines) if c['name'] == 'PILAR SANZ'][0]
         self.assertEqual(c['birth_commune'], 'VILLENEUVE-LES-PRES 2°')
         self.assertEqual(c['encoding'], 'cp850')
@@ -129,6 +138,7 @@ class Candidates(Run):
     def test_a_utf8_line_is_read_as_utf8(self):
         p = self.write('u.txt', raw=(line(btown='VILLAZUL-ÉTANG') + '\n').encode('utf-8'))
         code, lines, _ = self.run_insee([p], ['Loriot'])
+        self.assertEqual(code, 0)
         c = self.cands(lines)[0]
         self.assertEqual(c['birth_commune'], 'VILLAZUL-ÉTANG')
         self.assertNotIn('encoding', c)
@@ -137,18 +147,21 @@ class Candidates(Run):
         # some years mix Latin-1 lines with CP850 ones: 0xF1 is ñ in Latin-1, '±' in CP850
         p = self.write('l.txt', raw=(line(btown='VILLAZU\xf1A', bcountry='ESPAGNE') + '\n').encode('latin-1'))
         code, lines, _ = self.run_insee([p], ['Loriot'])
+        self.assertEqual(code, 0)
         c = self.cands(lines)[0]
         self.assertEqual((c['birth_commune'], c['encoding']), ('VILLAZUñA', 'latin-1'))
 
     def test_a_latin1_degree_sign_is_not_read_as_a_cp850_box(self):
         p = self.write('d.txt', raw=(line(btown='VILLENEUVE 3\xb0') + '\n').encode('latin-1'))
         code, lines, _ = self.run_insee([p], ['Loriot'])
+        self.assertEqual(code, 0)
         self.assertEqual(self.cands(lines)[0]['birth_commune'], 'VILLENEUVE 3°')
 
     def test_a_latin1_birthplace_still_scores_in_gwt_rank(self):
         p = self.write('r.txt', raw=(line(name='ORTEGA*TOMAS/', bd='19210314', btown='VILLAZU\xd1A') + '\n')
                        .encode('latin-1'))
         code, lines, _ = self.run_insee([p], ['Ortega'])
+        self.assertEqual(code, 0)
         o = io.StringIO()
         with contextlib.redirect_stdout(o), contextlib.redirect_stderr(io.StringIO()):
             gwt_rank.main([lines['candidates'], '--given', 'Tomás', '--surname', 'Ortega',
@@ -160,12 +173,14 @@ class Candidates(Run):
         p = self.write('c.txt', raw=(line(btown='VILLAZUL 4°', bcountry='ÉTANG', dd='19850705', act='Décès 7')
                                      + '\n').encode('utf-8'))
         code, lines, _ = self.run_insee([p], ['Loriot'])
+        self.assertEqual(code, 0)
         c = self.cands(lines)[0]
         self.assertEqual((c['death_date'], c['death_place_code'], c['act']), ('19850705', '64990', 'Décès 7'))
 
     def test_several_files_in_one_pass(self):
         p = self.write('deces-1986.txt', line(name='ORTEGA*LUIS/', dd='19860305'))
         code, lines, out = self.run_insee([FIX, p], ['Ortega'])
+        self.assertEqual(code, 0)
         self.assertEqual([(c['file'], c['line']) for c in self.cands(lines)],
                          [('insee-deces-1985.txt', 1), ('insee-deces-1985.txt', 4), ('deces-1986.txt', 1)])
         self.assertIn('3 of 7 lines in 2 files', out)
@@ -176,6 +191,7 @@ class Candidates(Run):
     def test_the_envelope_holds_each_file_sha256(self):
         p = self.write('deces-1986.txt', line(name='ORTEGA*LUIS/', dd='19860305'))
         code, lines, _ = self.run_insee([FIX, p], ['Ortega'])
+        self.assertEqual(code, 0)
         with open(lines['evidence']) as f:
             env = json.load(f)
         want = []
@@ -193,6 +209,7 @@ class Candidates(Run):
     def test_blank_lines_are_not_rows(self):
         p = self.write('b.txt', raw=(line() + '\r\n\r\n' + line(name='LORIOT*ANNE/', sex='2') + '\r\n').encode('ascii'))
         code, lines, _ = self.run_insee([p], ['Loriot'])
+        self.assertEqual(code, 0)
         self.assertEqual([c['line'] for c in self.cands(lines)], [1, 3])
 
     def test_no_match_exits_2(self):
@@ -220,7 +237,7 @@ class Candidates(Run):
         self.assertEqual(self.cands(lines)[0]['act'], '0000001')
 
 
-class Malformed(Run):
+class Malformed(Run, unittest.TestCase):
     """A line out of the layout stops the run with exit 2 and nothing written, even a line no --surname matches."""
     def assert_stops(self, bad, why):
         p = self.write('deces-bad.txt', line(name='ORTEGA*ANA/'), bad, line(name='ORTEGA*JUAN/'))
@@ -259,7 +276,7 @@ class Malformed(Run):
 
 
 
-class Unreadable(Run):
+class Unreadable(Run, unittest.TestCase):
     """A file that cannot be read, or holds no line, is an error (exit 1, nothing written), never "no results"."""
     def test_a_missing_file_exits_1_and_writes_nothing(self):
         code, _, out = self.run_insee([FIX, os.path.join(self.tmp.name, 'nope.txt')], ['Zorvalo'])
@@ -275,7 +292,7 @@ class Unreadable(Run):
         self.assertEqual(self.written(), [])
 
 
-class OddValues(Run):
+class OddValues(Run, unittest.TestCase):
     """Values INSEE itself wrote that break its own rules (month 13, day 60, a full 80-character name with no "*") are
     kept as written and marked, never fatal: one such line in a year file must not block the whole year."""
     def test_a_month_13_or_day_60_is_kept_with_its_year_and_marked(self):
@@ -304,9 +321,10 @@ class OddValues(Run):
         self.assertNotIn('malformed', self.cands(lines)[0])
 
 
-class EndToEnd(Run):
+class EndToEnd(Run, unittest.TestCase):
     def test_gwt_rank_reads_the_candidates_and_finds_the_strong_row(self):
         code, lines, _ = self.run_insee([FIX], ['Ortega', 'Sanz'])
+        self.assertEqual(code, 0)
         o = io.StringIO()
         with contextlib.redirect_stdout(o), contextlib.redirect_stderr(io.StringIO()):
             rc = gwt_rank.main([lines['candidates'], '--given', 'Tomás', '--surname', 'Ortega',
