@@ -1,6 +1,15 @@
 # Mutations the apply tests must catch. One row each: file | exact text | replacement | why
 # `python3 .github/scripts/run_tests.py --mutants --only apply` applies each row to a scratch copy
 # of apply/ and fails when the tests still pass. The text must occur exactly once in the file.
+gwt_apply/ops.py | if same_day_review_required(self.c, winner, loser, self._name_key): | if False: | same-day contradictory namesakes stop before note save or merge
+gwt_apply/merge_guard.py | if not any(name) or name != _name(loser, name_key): | if False: | different or missing names do not trigger the narrow review hold
+gwt_apply/merge_guard.py | if ref.get(relation) != "Birth" or not parent: | if not parent: | only explicit biological child references supply parent evidence
+gwt_apply/merge_guard.py | for role, relation in (("father", "frel"), ("mother", "mrel")): | for role, relation in (("father", "frel"),): | shared fathers do not hide conflicting biological mothers
+gwt_apply/merge_guard.py | names[role].add(name) | names[role] = {name} | every alternate biological family contributes parent names
+gwt_apply/merge_guard.py | if not common: | if False: | a same-type exact day match is necessary even for conflicting parents
+gwt_apply/merge_guard.py | if source and isinstance(page, str) and page.strip(): | if isinstance(page, str) and page.strip(): | missing citation sources never invent a common source
+gwt_apply/merge_guard.py | if any(wc[source].isdisjoint(lc[source]) for source in wc.keys() & lc.keys()): | if bool(wc) and bool(lc) and wc != lc: | common act plus extra pages and different sources are not disjoint act evidence
+gwt_apply/merge_guard.py | if value.get("modifier", 0) != 0 or value.get("quality", 0) != 0 or value.get("newyear", 0) != 0: | if False: | approximate estimated and noncivil dates cannot establish a same-day match
 gwt_apply/dupes.py | if a.spouses & b.spouses: | if False: | preflight flags a namesake who shares a spouse with a tree person
 gwt_apply/ops.py | if str(ev.get("type")).lower() != etype.lower(): | if str(ev.get("type")) != etype: | add_event matches an existing event type whatever its case
 gwt_apply/client.py | if r.status_code >= 500 or "database is locked" in r.text[:2000].lower(): | if r.status_code >= 500: | a "database is locked" answer is retried even when its status is not 5xx
