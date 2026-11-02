@@ -1,11 +1,11 @@
 variant_queries.py |     if status not in _STATUSES: |     if False: | an unknown status is accepted
 variant_queries.py |     if doc["requires_human_review"] is not True: |     if False: | a plan not requiring human review is accepted
-variant_queries.py |     if status == "ambiguous" and (len(candidates) < 2 or suggestions): |     if False: | a flattened or single-candidate ambiguous result is accepted
-variant_queries.py |     if status == "unmatched" and (candidates or suggestions): |     if False: | an unmatched result with candidates is accepted
-variant_queries.py |         if got != expected or any(s["cluster_id"] != cluster["cluster_id"] for s in suggestions): |         if False: | matched suggestions trimmed or with a foreign cluster_id are accepted
-variant_queries.py |                 if expand_year and year is not None: |                 if True: | year-window rows appear without the opt-in
-variant_queries.py |             if expand_letters: |             if True: | letter-equivalence rows appear without the opt-in
-variant_queries.py |         rows.sort(key=_row_order) |         rows.sort(key=lambda r: "") | query rows come out unsorted
+variant_queries.py |     if len(candidates) < 2 or suggestions: |     if False: | a flattened or single-candidate ambiguous result is accepted
+variant_queries.py |     if candidates or suggestions: |     if False: | an unmatched result with candidates is accepted
+variant_queries.py |     if got != expected or any(s["cluster_id"] != cluster["cluster_id"] for s in suggestions): |     if False: | matched suggestions trimmed or with a foreign cluster_id are accepted
+variant_queries.py |         if expand_year and year is not None: |         if True: | year-window rows appear without the opt-in
+variant_queries.py |         if expand_letters: |         if True: | letter-equivalence rows appear without the opt-in
+variant_queries.py |     rows.sort(key=_row_order) |     rows.sort(key=lambda r: "") | query rows come out unsorted
 variant_queries.py |     groups.sort(key=lambda g: g["cluster_id"]) |     groups.sort(key=lambda g: "") | candidate clusters come out unsorted
 variant_queries.py |             "candidates": copy.deepcopy(suggest_result["candidates"]), |             "candidates": suggest_result["candidates"], | the plan aliases the caller's candidates
 variant_queries.py |         if not 1 <= year <= MAX_YEAR: |         if False: | a year outside 1..2100 is accepted
@@ -13,5 +13,5 @@ variant_queries.py |     if any("\ud800" <= char <= "\udfff" for char in value):
 variant_queries.py |     if _fold(target) != normalized_alias: |     if False: | a surname_target that is not the suggested alias is accepted
 variant_queries.py |     if len(hits) != 1: |     if False: | a surname_target absent or repeated in surnames is accepted
 variant_queries.py |         if not isinstance(value, bool): |         if False: | a non-boolean expansion flag is accepted
-variant_queries.py |                     year_from = max(1, year - 1) |                     year_from = year - 1 | the year window can reach year 0
-variant_queries.py |                     year_to = min(MAX_YEAR, year + 1) |                     year_to = year + 1 | the year window can pass 2100
+variant_queries.py |             year_from = max(1, year - 1) |             year_from = year - 1 | the year window can reach year 0
+variant_queries.py |             year_to = min(MAX_YEAR, year + 1) |             year_to = year + 1 | the year window can pass 2100

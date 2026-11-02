@@ -246,7 +246,7 @@ def _cli(tmp_path, doc, p, *extra):
     pj.write_text(json.dumps(p), encoding="utf-8")
     return subprocess.run([sys.executable, MODULE, str(sj), str(pj),
                            "invented-source", *extra],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, check=False)
 
 
 def test_cli_exit_codes_and_output(tmp_path):
@@ -272,7 +272,7 @@ def test_cli_invalid_input_exits_2(tmp_path):
     pj = tmp_path / "person.json"
     pj.write_text(json.dumps(person()), encoding="utf-8")
     run = subprocess.run([sys.executable, MODULE, str(sj), str(pj), "invented-source"],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, check=False)
     assert run.returncode == 2 and "duplicate" in run.stderr
 
 

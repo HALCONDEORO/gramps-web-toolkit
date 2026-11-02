@@ -93,6 +93,40 @@ def _validate_cluster(cluster, label):
         _text(alias["provenance"], f"{label}.provenance")
 
 
+def _validate_suggestion(i, sug):
+    if not isinstance(sug, dict) or set(sug) != {"cluster_id", "spelling", "provenance"}:
+        raise ValueError(f"suggestions[{i}]: expected fields cluster_id, spelling, provenance")
+    _text(sug["cluster_id"], f"suggestions[{i}].cluster_id")
+    _text(sug["spelling"], f"suggestions[{i}].spelling")
+    _text(sug["provenance"], f"suggestions[{i}].provenance")
+
+
+def _check_matched(candidates, suggestions):
+    if len(candidates) != 1 or not suggestions:
+        raise ValueError("matched: exactly one candidate and nonempty suggestions expected")
+    cluster = candidates[0]
+    expected = sorted((a["spelling"], a["provenance"]) for a in cluster["aliases"])
+    got = sorted((s["spelling"], s["provenance"]) for s in suggestions)
+    if got != expected or any(s["cluster_id"] != cluster["cluster_id"] for s in suggestions):
+        raise ValueError("matched: suggestions must mirror the candidate's aliases "
+                         "and cluster_id exactly; a trimmed or foreign list is refused")
+
+
+def _check_ambiguous(candidates, suggestions):
+    if len(candidates) < 2 or suggestions:
+        raise ValueError("ambiguous: several candidates and no flattened suggestions expected")
+
+
+def _check_unmatched(candidates, suggestions):
+    if candidates or suggestions:
+        raise ValueError("unmatched: no candidates or suggestions expected")
+
+
+_STATUS_SHAPES = {"matched": _check_matched,
+                  "ambiguous": _check_ambiguous,
+                  "unmatched": _check_unmatched}
+
+
 def _validate_suggest(doc):
     if not isinstance(doc, dict) or set(doc) != set(_SUGGEST_FIELDS):
         raise ValueError(f"suggest result: expected fields {', '.join(_SUGGEST_FIELDS)}")
@@ -109,24 +143,8 @@ def _validate_suggest(doc):
     for i, cluster in enumerate(candidates):
         _validate_cluster(cluster, f"candidates[{i}]")
     for i, sug in enumerate(suggestions):
-        if not isinstance(sug, dict) or set(sug) != {"cluster_id", "spelling", "provenance"}:
-            raise ValueError(f"suggestions[{i}]: expected fields cluster_id, spelling, provenance")
-        _text(sug["cluster_id"], f"suggestions[{i}].cluster_id")
-        _text(sug["spelling"], f"suggestions[{i}].spelling")
-        _text(sug["provenance"], f"suggestions[{i}].provenance")
-    if status == "matched" and (len(candidates) != 1 or not suggestions):
-        raise ValueError("matched: exactly one candidate and nonempty suggestions expected")
-    if status == "matched":
-        cluster = candidates[0]
-        expected = sorted((a["spelling"], a["provenance"]) for a in cluster["aliases"])
-        got = sorted((s["spelling"], s["provenance"]) for s in suggestions)
-        if got != expected or any(s["cluster_id"] != cluster["cluster_id"] for s in suggestions):
-            raise ValueError("matched: suggestions must mirror the candidate's aliases "
-                             "and cluster_id exactly; a trimmed or foreign list is refused")
-    if status == "ambiguous" and (len(candidates) < 2 or suggestions):
-        raise ValueError("ambiguous: several candidates and no flattened suggestions expected")
-    if status == "unmatched" and (candidates or suggestions):
-        raise ValueError("unmatched: no candidates or suggestions expected")
+        _validate_suggestion(i, sug)
+    _STATUS_SHAPES[status](candidates, suggestions)
     return status
 
 
@@ -193,6 +211,52 @@ def _row_order(row):
             row["query"], row["position"])
 
 
+def _grouped_spellings(status, suggest_result):
+    """Spellings to query per candidate cluster; ambiguity keeps every owner."""
+    if status == "matched":
+        return [(suggest_result["candidates"][0]["cluster_id"], False,
+                 [(sug["spelling"], sug["provenance"])
+                  for sug in suggest_result["suggestions"]])]
+    if status == "ambiguous":
+        return [(c["cluster_id"], True,
+                 [(a["spelling"], a["provenance"]) for a in c["aliases"]])
+                for c in suggest_result["candidates"]]
+    return []
+
+
+def _suggestion_rows(spelling, provenance, cluster_id, segment, position,
+                     given, words, year, expand_year):
+    rows = []
+    for query in _orders(spelling, given, words, position):
+        rows.append(_row(query, spelling, cluster_id, provenance,
+                         "suggestion", None, year, year, segment, position))
+        if expand_year and year is not None:
+            year_from = max(1, year - 1)
+            year_to = min(MAX_YEAR, year + 1)
+            rows.append(_row(f"{query} {year_from}-{year_to}", spelling,
+                             cluster_id, provenance, "expansion",
+                             {"kind": "year-window", "reason": YEAR_REASON},
+                             year_from, year_to, segment, position))
+    return rows
+
+
+def _cluster_rows(cluster_id, spellings, given, words, position, segment,
+                  year, expand_letters, expand_year):
+    rows = []
+    for spelling, provenance in spellings:
+        rows.extend(_suggestion_rows(spelling, provenance, cluster_id, segment,
+                                     position, given, words, year, expand_year))
+        if expand_letters:
+            for variant in _letter_variants(spelling):
+                for query in _orders(variant, given, words, position):
+                    rows.append(_row(query, variant, cluster_id, provenance,
+                                     "expansion",
+                                     {"kind": "letter-equivalence", "reason": LETTER_REASON},
+                                     year, year, segment, position))
+    rows.sort(key=_row_order)
+    return rows
+
+
 def build_queries(suggest_result, person, source, *, expand_letters=False, expand_year=False):
     """Build the deterministic query plan for one suggest() result.
 
@@ -215,38 +279,11 @@ def build_queries(suggest_result, person, source, *, expand_letters=False, expan
     words = person["surnames"].split()
 
     groups = []
-    if status == "matched":
-        grouped = [(suggest_result["candidates"][0]["cluster_id"], False,
-                    [(sug["spelling"], sug["provenance"])
-                     for sug in suggest_result["suggestions"]])]
-    elif status == "ambiguous":
-        grouped = [(c["cluster_id"], True,
-                    [(a["spelling"], a["provenance"]) for a in c["aliases"]])
-                   for c in suggest_result["candidates"]]
-    else:
-        grouped = []
-    for cluster_id, ambiguous, spellings in grouped:
-        rows = []
-        for spelling, provenance in spellings:
-            for query in _orders(spelling, given, words, position):
-                rows.append(_row(query, spelling, cluster_id, provenance,
-                                 "suggestion", None, year, year, segment, position))
-                if expand_year and year is not None:
-                    year_from = max(1, year - 1)
-                    year_to = min(MAX_YEAR, year + 1)
-                    rows.append(_row(f"{query} {year_from}-{year_to}", spelling,
-                                     cluster_id, provenance, "expansion",
-                                     {"kind": "year-window", "reason": YEAR_REASON},
-                                     year_from, year_to, segment, position))
-            if expand_letters:
-                for variant in _letter_variants(spelling):
-                    for query in _orders(variant, given, words, position):
-                        rows.append(_row(query, variant, cluster_id, provenance,
-                                         "expansion",
-                                         {"kind": "letter-equivalence", "reason": LETTER_REASON},
-                                         year, year, segment, position))
-        rows.sort(key=_row_order)
-        groups.append({"cluster_id": cluster_id, "ambiguous": ambiguous, "queries": rows})
+    for cluster_id, ambiguous, spellings in _grouped_spellings(status, suggest_result):
+        groups.append({"cluster_id": cluster_id, "ambiguous": ambiguous,
+                       "queries": _cluster_rows(cluster_id, spellings, given, words,
+                                                position, segment, year,
+                                                expand_letters, expand_year)})
     groups.sort(key=lambda g: g["cluster_id"])
 
     return {"tool": "gwt-variant-queries", "status": status,
