@@ -200,31 +200,31 @@ def run(args, client) -> int:
             print(f"{c.index}\t{c.label}\t{url}")
         return 0
     store = Store(args.out)
-    failed = 0
-    for c in cs:
-        stem = f"{c.index:04d}_{slug(c.label, 40)}"
-        if getattr(args, "native", False) and c.service:
-            failed += not _fetch_native(client, store, stem, c.label, c.service, manifest_url, referer)
-            continue
-        urls = candidates(c)
-        if store.done(stem, c.label, urls[0] if urls else "", manifest_url):
-            continue
-        tried = []
-        for url in urls:
-            r = client.get(url, referer=referer, stream=True)
-            ctype = r.headers.get("Content-Type", "")
-            if r.ok and not ctype.startswith("text/"):
-                p = store.write(stem, r.iter_content(1 << 16), ctype, c.label, url, manifest_url)
-                print(f"{p}", file=sys.stderr)
-                break
-            tried.append(f"{url} -> {r.status_code} {ctype}")
-            r.close()
-        else:
-            failed += 1
-            print(f"gwt-fetch: canvas {c.index} ({c.label}) failed: {'; '.join(tried)}", file=sys.stderr)
+    failed = sum(not _fetch_canvas(args, client, store, c, manifest_url, referer) for c in cs)
     if store.manifest.exists():
         print(f"gwt-fetch: manifest rows in {store.manifest}", file=sys.stderr)
     return 1 if failed else 0
+
+
+def _fetch_canvas(args, client, store, c, manifest_url, referer):
+    stem = f"{c.index:04d}_{slug(c.label, 40)}"
+    if getattr(args, "native", False) and c.service:
+        return _fetch_native(client, store, stem, c.label, c.service, manifest_url, referer)
+    urls = candidates(c)
+    if store.done(stem, c.label, urls[0] if urls else "", manifest_url):
+        return True
+    tried = []
+    for url in urls:
+        r = client.get(url, referer=referer, stream=True)
+        ctype = r.headers.get("Content-Type", "")
+        if r.ok and not ctype.startswith("text/"):
+            p = store.write(stem, r.iter_content(1 << 16), ctype, c.label, url, manifest_url)
+            print(f"{p}", file=sys.stderr)
+            return True
+        tried.append(f"{url} -> {r.status_code} {ctype}")
+        r.close()
+    print(f"gwt-fetch: canvas {c.index} ({c.label}) failed: {'; '.join(tried)}", file=sys.stderr)
+    return False
 
 
 # ---------------------------------------------------------------- Image API base, native width
@@ -251,7 +251,7 @@ def image_bases(spec: str, pages: str | None) -> list[tuple[int, str]]:
     want = parse_pages(pages)
     if not want:
         raise SystemExit(f"gwt-fetch: --pages {pages} selects no page")
-    return [(n, PAGE.sub(lambda m: format(n, m.group(1) or ""), base)) for n in want]
+    return [(n, PAGE.sub(lambda m, page=n: format(page, m.group(1) or ""), base)) for n in want]
 
 
 def pixel_width(data: bytes) -> int | None:
