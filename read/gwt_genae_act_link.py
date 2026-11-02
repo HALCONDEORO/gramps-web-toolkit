@@ -456,7 +456,8 @@ def _write_all(pairs):
         for (_path, text), dest in zip(pairs, dests):
             fd, tmp = tempfile.mkstemp(dir=os.path.dirname(dest), prefix='.tmp-genae-')
             tmps.append((tmp, dest))
-            with os.fdopen(fd, 'w', encoding='utf-8', newline='') as fh:
+            os.close(fd)
+            with open(tmp, 'w', encoding='utf-8', newline='') as fh:
                 fh.write(text)
         for tmp, dest in tmps:
             os.replace(tmp, dest)

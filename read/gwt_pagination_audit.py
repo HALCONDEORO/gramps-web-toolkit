@@ -15,6 +15,7 @@ Verdicts: ``complete`` or ``STOP``. Incomplete data is never reported as
 "none found": an empty result is only ``complete`` when a known terminal page
 and a declared total of 0 agree. Repeated ids always STOP.
 """
+from pathlib import Path
 import json
 import sys
 import unicodedata
@@ -379,7 +380,7 @@ def _no_dup_keys(pairs):
 
 def load_manifest(path):
     """Read a manifest file; duplicate JSON object keys are rejected."""
-    with open(path, encoding="utf-8") as fh:
+    with Path(path).open(encoding="utf-8") as fh:
         return json.load(fh, object_pairs_hook=_no_dup_keys)
 
 

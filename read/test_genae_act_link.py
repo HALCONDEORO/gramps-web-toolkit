@@ -69,7 +69,8 @@ class Stages(unittest.TestCase):
 
 
 class Verification(unittest.TestCase):
-    def ev(self, readings):
+    @staticmethod
+    def ev(readings):
         return dict(GOOD, readings=readings)
 
     def test_two_independent_readings_never_promote(self):
@@ -326,9 +327,8 @@ class Output(unittest.TestCase):
                 if len(calls) == 2:
                     raise OSError('disk gremlin')
                 return real(src, dst)
-            with mock.patch('os.replace', flaky):
-                with self.assertRaises(OSError) as cm:
-                    L._write_all([(a, 'new-a'), (b, 'new-b')])
+            with mock.patch('os.replace', flaky), self.assertRaises(OSError) as cm:
+                L._write_all([(a, 'new-a'), (b, 'new-b')])
             self.assertIn('restored', str(cm.exception))
             self.assertEqual(open(a).read(), 'old-a')
             self.assertFalse(os.path.exists(b))
@@ -336,9 +336,10 @@ class Output(unittest.TestCase):
             self.assertFalse([n for n in os.listdir(d) if n.startswith('.tmp-genae-')])
             # rollback itself failing is reported, not hidden
             calls.clear()
-            with mock.patch('os.replace', flaky), mock.patch.object(L, '_rollback', return_value=[a]):
-                with self.assertRaises(OSError) as cm:
-                    L._write_all([(a, 'new-a'), (b, 'new-b')])
+            with (mock.patch('os.replace', flaky),
+                  mock.patch.object(L, '_rollback', return_value=[a]),
+                  self.assertRaises(OSError) as cm):
+                L._write_all([(a, 'new-a'), (b, 'new-b')])
             self.assertIn('ROLLBACK FAILED', str(cm.exception))
 
     def test_cli_writes_files(self):
