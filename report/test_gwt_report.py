@@ -76,12 +76,12 @@ def big_pedigree(path, gens=11, drop=()):
         for c in children:
             people[c]['parent_family_list'].append('h' + gid)
     for n in range(1, 2 ** (gens + 1)):
-        add('P%d' % n, n % 2 if n > 1 else 1)
+        add(f'P{n}', n % 2 if n > 1 else 1)
     for gid, g in (('UF', 1), ('Cf', 1), ('WF', 0), ('UM', 0), ('Cm', 1), ('HM', 1)):
         add(gid, g)
     for n in range(1, 2 ** gens):
-        kids = ['P%d' % n] + (['UF'] if n == 2 else ['UM'] if n == 3 else [])
-        fam('F%d' % n, 'P%d' % (2 * n), 'P%d' % (2 * n + 1), kids)
+        kids = [f'P{n}'] + (['UF'] if n == 2 else ['UM'] if n == 3 else [])
+        fam(f'F{n}', f'P{2 * n}', f'P{2 * n + 1}', kids)
     fam('FUF', 'UF', 'WF', ['Cf'])
     fam('FUM', 'HM', 'UM', ['Cm'])
     people = [p for gid, p in people.items() if gid not in drop]
@@ -113,7 +113,7 @@ class KinTest(unittest.TestCase):
     def test_second_cousins_share_a_couple_with_ahnentafel_numbers(self):
         r = self.kin('A3', 'B3')['relationships']
         self.assertEqual(len(r), 1)
-        self.assertEqual([(c, na, nb) for c, na, nb in r[0]['ancestors']], [('hI1', 8, 14), ('hI2', 9, 15)])
+        self.assertEqual(list(r[0]['ancestors']), [('hI1', 8, 14), ('hI2', 9, 15)])
         self.assertEqual(r[0]['generations'], [3, 3])
         self.assertFalse(r[0]['half'])
         # a direct line is one relationship, never one more per ancestor above the nearer person
@@ -130,8 +130,7 @@ class KinTest(unittest.TestCase):
         T = copy.deepcopy(self.T)
         unlink(T, 'hA2', 'hFA1')
         self.assertEqual(self.kin('A3', 'B3', T)['relationships'], [])
-        code, out, _ = run('kin', KIN, 'A3', 'B3')
-        self.assertIn('second cousin', out)
+        self.assertIn('second cousin', run('kin', KIN, 'A3', 'B3')[1])
 
     def test_in_laws_and_stepchildren_are_not_blood(self):
         for a, b in (('A2', 'HB3'), ('B1', 'HB2'), ('A1', 'S1'), ('A1', 'WA2'), ('A1', 'WA3')):
@@ -187,7 +186,7 @@ class KinTest(unittest.TestCase):
         self.assertEqual([r['name'] for r in rels], [
             {'en': 'first cousin', 'es': 'prima hermana', 'fr': 'cousine germaine'},
             {'en': 'second cousin', 'es': 'prima segunda', 'fr': 'cousine issue de germain'}])
-        self.assertEqual([(c, na, nb) for c, na, nb in rels[1]['ancestors']], [('hG1', 8, 14), ('hG2', 9, 15)])
+        self.assertEqual(list(rels[1]['ancestors']), [('hG1', 8, 14), ('hG2', 9, 15)])
         self.assertFalse(any(r['half'] for r in rels))
 
     def test_own_ancestor_loop_ends(self):
@@ -198,7 +197,7 @@ class KinTest(unittest.TestCase):
         self.assertEqual([r['name']['en'] for r in rels], ['half first cousin'])
 
     def test_weak_tag_option(self):
-        code, out, _ = run('kin', KIN, 'A3', 'B3', '--json', '--weak-tag', 'nothing-like-it')
+        out = run('kin', KIN, 'A3', 'B3', '--json', '--weak-tag', 'nothing-like-it')[1]
         self.assertEqual(json.loads(out)['relationships'][0]['links']['weak'], 0)
 
     def test_spanish_and_french_weak_words_are_defaults(self):
@@ -210,18 +209,17 @@ class KinTest(unittest.TestCase):
     def test_paths_stop_at_30_generations(self):
         T = {'people': {}, 'families': {}}
         for n in range(32):  # L0 is the child of L1, ... L31
-            T['people']['hL%d' % n] = {'handle': 'hL%d' % n, 'gramps_id': 'L%d' % n,
-                                       'parent_family_list': ['hFL%d' % n] if n < 31 else []}
+            T['people'][f'hL{n}'] = {'handle': f'hL{n}', 'gramps_id': f'L{n}',
+                                     'parent_family_list': [f'hFL{n}'] if n < 31 else []}
             if n < 31:
-                T['families']['hFL%d' % n] = {'handle': 'hFL%d' % n, 'father_handle': 'hL%d' % (n + 1),
-                                              'child_ref_list': [{'ref': 'hL%d' % n}]}
+                T['families'][f'hFL{n}'] = {'handle': f'hFL{n}', 'father_handle': f'hL{n + 1}',
+                                            'child_ref_list': [{'ref': f'hL{n}'}]}
         paths, _ = R.ancestor_paths(T, 'hL0')
         self.assertIn('hL30', paths)
         self.assertNotIn('hL31', paths)
 
     def test_json_and_lang(self):
-        code, out, _ = run('kin', KIN, 'A3', 'B4', '--json')
-        data = json.loads(out)
+        data = json.loads(run('kin', KIN, 'A3', 'B4', '--json')[1])
         self.assertEqual(data['relationships'][0]['name']['es'], 'sobrina tercera')
         self.assertEqual(data['relationships'][0]['ancestors'][0]['id'], 'I1')
         self.assertEqual(data['relationships'][0]['path_b'], ['B4', 'B3', 'B2', 'B1', 'I1'])
@@ -353,9 +351,8 @@ class DigestTest(unittest.TestCase):
         self.assertEqual(run('digest', '--from', OLD, '--to', other)[0], 0)
 
     def test_told_needs_audience(self):
-        with redirect_stderr(io.StringIO()):
-            with self.assertRaises(SystemExit) as cm:
-                R.main(['digest', '--from', OLD, '--to', NEW, '--told', self.told])
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as cm:
+            R.main(['digest', '--from', OLD, '--to', NEW, '--told', self.told])
         self.assertEqual(cm.exception.code, 2)
 
     def test_bad_told_row_exits_2(self):
@@ -384,12 +381,20 @@ class DigestTest(unittest.TestCase):
         new['families']['hF3']['event_ref_list'] = [{'ref': 'hE7'}]
         new['citations']['hC7'] = dict(new['citations']['hC1'], handle='hC7', gramps_id='C7', note_list=[],
                                        media_list=[], confidence=1, page='see https://archive.example.org/b/7.')
-        next(c for c in new['families']['hF3']['child_ref_list'] if c['ref'] == 'hI12')['citation_list'] = ['hC7']
+        child = next((c for c in new['families']['hF3']['child_ref_list'] if c['ref'] == 'hI12'), None)
+        self.assertIsNotNone(child)
+        child['citation_list'] = ['hC7']
         groups = R.digest(old, new)
-        owners = lambda gid: sorted(g['person'] for g in groups for it in g['items'] if it['id'] == gid)
+
+        def owners(gid):
+            return sorted(g['person'] for g in groups for it in g['items'] if it['id'] == gid)
+
+        def item(gid):
+            found = next((it for g in groups for it in g['items'] if it['id'] == gid), None)
+            self.assertIsNotNone(found, gid)
+            return found
         self.assertEqual(owners('E7'), ['hI4', 'hI6'])
         self.assertEqual(owners('C7'), ['hI12'])
-        item = lambda gid: next(it for g in groups for it in g['items'] if it['id'] == gid)
         self.assertIn('Baptism, 1921', item('E7')['text'])                     # a date with only a year
         self.assertEqual(item('C7')['urls'], ['https://archive.example.org/b/7'])  # sentence dot left out
         self.assertTrue(item('C7')['weak'])                                     # confidence 0 or 1 is weak

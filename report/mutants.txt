@@ -15,18 +15,18 @@ gwt_report.py | len({at.get(n // 2) for n in ns}) < 2 | False | implex lists the
 gwt_report.py | if parent in seen: | if False: | a person recorded as their own ancestor never multiplies the paths
 gwt_report.py | if h in old[t] or (o.get('private') and not include_private): | if h in old[t]: | private people and objects stay out of a digest unless asked for
 gwt_report.py | if h in old[t] or (o.get('private') | if False or (o.get('private') | a digest lists only what the old snapshot lacks
-gwt_report.py |             if gid in told: |             if False: | the told filter: what this audience was already told is left out
+gwt_report.py |         if gid in told: |         if False: | the told filter: what this audience was already told is left out
 gwt_report.py | if cells[0] == audience: | if True: | only the rows of the chosen audience count as told
 gwt_report.py | g.update(side=side, distance=sum(r['generations']), | g.update(side=side, distance=0, | people are ordered by kin distance to the root, nearest first
-gwt_report.py |                     if p and new['people'][p].get('private') and not include_private: |                     if False: | a new event or citation of a private person does not show that person
+gwt_report.py |         if p and new['people'][p].get('private') and not include_private: |         if False: | a new event or citation of a private person does not show that person
 gwt_report.py | cur, path, seen = todo.popleft() | cur, path, seen = todo.pop() | the ancestor walk goes one generation at a time, so the path cap drops the most distant paths, never a whole side
 gwt_report.py |     if cut: |     if False: | a digest says when kin paths were cut, so a person filed as not blood kin may still be kin
 gwt_report.py | head = '' if fh.read(1) == b'\n' else '\n' | head = '' | a told file edited by hand without a last newline gets one before the new rows, so no id is lost
 gwt_report.py | 'weak', 'debil', 'faible') | 'weak') | a tag named with the Spanish or French word for weak marks a weak link by default
 gwt_report.py | if old['_tree'] and new['_tree'] and old['_tree'] != new['_tree']: | if False: | a digest of two different trees is refused, never thousands of lines of noise
 gwt_report.py | (a.tzinfo is None) == (b.tzinfo is None) and a > b: | False: | an OLD snapshot taken after NEW gets a warning that they may be swapped
-gwt_report.py | esc = lambda s: html.escape(s, quote=False) | esc = lambda s: s | a name or a source title with < or & never breaks the html text
-gwt_report.py | title, side_head, person_head = '<b>%s</b>', '\n<b><u>%s</u></b>', '\n<b>%s</b>%s\n' | title, side_head, person_head = '<h1>%s</h1>', '\n<h2>%s</h2>', '\n<h3>%s</h3>%s\n' | the html output keeps to the inline tags chat apps take; block tags are rejected there
+gwt_report.py | return html.escape(s, quote=False) | return s | a name or a source title with < or & never breaks the html text
+gwt_report.py | title, side_head, person_head = ('<b>', '</b>'), ('\n<b><u>', '</u></b>'), ('\n<b>', '</b>') | title, side_head, person_head = ('<h1>', '</h1>'), ('\n<h2>', '</h2>'), ('\n<h3>', '</h3>') | the html output keeps to the inline tags chat apps take; block tags are rejected there
 gwt_report.py | (t == 'citations' and (o.get('confidence') or 0) <= 1) | (t == 'citations' and (o.get('confidence') or 0) < 1) | a citation of confidence 0 or 1 is labelled weak
 gwt_report.py | 'both sides' if {'father', 'mother'} <= roles | 'both sides' if False | kin reached through the root's father and mother are on both sides
 gwt_report.py |             add(r.get('ref'), spouses) |             add(r.get('ref'), spouses[:1]) | a family event belongs to both spouses

@@ -8,7 +8,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
-
+- `gwt-report kin` names offline relationships and `gwt-report digest` lists new objects since the previous family update. Includes wheel packaging, command dispatcher, synthetic fixtures and mutation tests; does not write to Gramps.
 
 - Conservative `merge_place` and `delete_place` operations with explicit reasons, hierarchy/type/fact guards, backlink checks, dry-run planning and place-merge snapshot invalidation. Recovery requires a verified backup.
 
@@ -169,7 +169,6 @@ None.
 - `gwt-check check` lists findings in the same order on every run (it depended on the hash seed).
 - `gwt-check cites` and `links` read text about a quarter faster on a large tree: accent folding is cached per character with a plain-ASCII shortcut, and the act-word patterns are compiled once. Same output (measured on an invented 20,000-person tree: cites 2.65 s to 1.95 s, links 3.07 s to 2.27 s, median of 5).
 - `gwt-check` reports `note-marker-no-tag`: a note that says «hipótesis» or «homónimo» without the tag of that name, in a tree that has such a tag. A note that says the hypothesis was discarded, replaced or refuted is not reported.
-
 
 - `gwt-check repos --classify` sorts the sources with no repository by what they name (a repository the tree has, another institution, nothing), with the institutions grouped so one new repository can serve many sources. It only reports.
 

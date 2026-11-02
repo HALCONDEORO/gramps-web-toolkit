@@ -64,56 +64,84 @@ class Tree:
         (HERE / name).write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
 
 
-def kin_tree():
-    t = Tree()
+def find(items, key, value):
+    """The one item whose `key` is `value`; a fixture that lacks it is a bug in this script, so say so."""
+    found = next((x for x in items if x[key] == value), None)
+    if found is None:
+        raise LookupError(f"the fixture has no {key} {value}")
+    return found
+
+
+def kin_main_people(t):
     t.add("I1", "Adam", "Root", 1)
     t.add("I2", "Eve", "Stone", 0)
     t.add("I3", "Lilith", "Moss", 0)
     for i in range(1, 7):
-        t.add("A%d" % i, "Arno%d" % i, "Field", 1)
-        t.add("B%d" % i, "Bea%d" % i, "Hill", 0)
+        t.add(f"A{i}", f"Arno{i}", "Field", 1)
+        t.add(f"B{i}", f"Bea{i}", "Hill", 0)
     for i in range(2, 7):
-        t.add("WA%d" % i, "Wife%d" % i, "Lake", 0)
-        t.add("HB%d" % i, "Husband%d" % i, "Brook", 1)
+        t.add(f"WA{i}", f"Wife{i}", "Lake", 0)
+        t.add(f"HB{i}", f"Husband{i}", "Brook", 1)
     for gid, first, sn, g in (("H1", "Hanna", "Root", 0), ("H2", "Hugo", "Vale", 1), ("HV", "Victor", "Vale", 1),
                               ("C1", "Carl", "Root", 1), ("C2", "Cid", "Root", 1), ("E2", "Elsa", "Brook", 0),
                               ("X1", "Xena", "Root", 0), ("K1", "Kai", "Field", 1), ("S1", "Saul", "Ford", 1),
                               ("SF", "Sara", "Ford", 0)):
         t.add(gid, first, sn, g)
+
+
+def kin_main_families(t):
     t.family("F1", "I1", "I2", ["A1", "B1", "C1"])
     t.family("F2", "I1", "I3", ["H1"])
     t.family("F3", "HV", "H1", ["H2"])
     # line A: A_i with wife WA_{i+1}... sons; line B: HB_{i+1} with B_i... daughters
     for i in range(1, 6):
-        t.family("FA%d" % i, "A%d" % i, "WA%d" % (i + 1), ["A%d" % (i + 1)] + ([("K1", "Adopted", "Adopted"),
-                 ("S1", "Stepchild", "Stepchild")] if i == 1 else []))
-        t.family("FB%d" % i, "HB%d" % (i + 1), "B%d" % i, ["B%d" % (i + 1)] + (["E2"] if i == 1 else []))
+        a_kids = [f"A{i + 1}"]
+        if i == 1:
+            a_kids += [("K1", "Adopted", "Adopted"), ("S1", "Stepchild", "Stepchild")]
+        t.family(f"FA{i}", f"A{i}", f"WA{i + 1}", a_kids)
+        t.family(f"FB{i}", f"HB{i + 1}", f"B{i}", [f"B{i + 1}"] + (["E2"] if i == 1 else []))
     t.family("FS", None, "SF", ["S1"])
     t.family("FC", "C1", None, ["C2"])
     t.family("FX", "C2", "E2", ["X1"])
-    # double cousins
+
+
+def kin_double_people(t):
     for gid, first, sn, g in (("G1", "Gil", "Dale", 1), ("G2", "Gwen", "Dale", 0), ("P1", "Pete", "Dale", 1),
                               ("Q1", "Quinn", "Dale", 0), ("W1", "Wanda", "Shaw", 0), ("AF", "Al", "Dale", 1),
                               ("BF", "Ben", "Dale", 1), ("BM", "Beth", "Cole", 0), ("QH", "Quentin", "Cole", 1),
                               ("DA", "Dan", "Dale", 1), ("DB", "Dora", "Dale", 0)):
         t.add(gid, first, sn, g)
+
+
+def kin_double_families(t):
     t.family("FG", "G1", "G2", ["P1", "Q1"])
     t.family("FP", "P1", "W1", ["AF", "BF"])
     t.family("FQ", "QH", "Q1", ["BM"])
     t.family("FDA", "AF", None, ["DA"])
     t.family("FDB", "BF", "BM", ["DB"])
-    # marks on links
+
+
+def kin_link_marks(t):
     t.o["Note"].append({"handle": "hN1", "gramps_id": "N1", "text": {"string": "[probable] index line only"},
                         "type": "Research"})
-    fa1 = next(f for f in t.o["Family"] if f["gramps_id"] == "FA1")
-    next(c for c in fa1["child_ref_list"] if c["ref"] == "hA2")["note_list"].append("hN1")
+    fa1 = find(t.o["Family"], "gramps_id", "FA1")
+    find(fa1["child_ref_list"], "ref", "hA2")["note_list"].append("hN1")
     t.o["Tag"].append({"handle": "htag1", "name": "Hipótesis", "gramps_id": ""})
     t.people["A3"]["tag_list"].append("htag1")
     t.o["Source"].append({"handle": "hS1", "gramps_id": "S1", "title": "Parish book"})
     t.o["Citation"].append({"handle": "hC1", "gramps_id": "C1", "source_handle": "hS1", "page": "folio 3",
                             "confidence": 3, "note_list": [], "attribute_list": [], "media_list": [], "tag_list": []})
-    fb1 = next(f for f in t.o["Family"] if f["gramps_id"] == "FB1")
-    next(c for c in fb1["child_ref_list"] if c["ref"] == "hB2")["citation_list"].append("hC1")
+    fb1 = find(t.o["Family"], "gramps_id", "FB1")
+    find(fb1["child_ref_list"], "ref", "hB2")["citation_list"].append("hC1")
+
+
+def kin_tree():
+    t = Tree()
+    kin_main_people(t)
+    kin_main_families(t)
+    kin_double_people(t)  # double cousins
+    kin_double_families(t)
+    kin_link_marks(t)  # marks on links
     t.dump("kin-tree.json", "2026-01-01T00:00:00+00:00")
 
 
@@ -138,11 +166,11 @@ def digest_trees():
     old.dump("digest-old.json", "2026-01-01T00:00:00+00:00")
     new = base()
     new.add("I12", "Lena", "Gale", 0)              # a new cousin: Ugo and Mia's daughter
-    next(f for f in new.o["Family"] if f["gramps_id"] == "F3")["child_ref_list"].append(
+    find(new.o["Family"], "gramps_id", "F3")["child_ref_list"].append(
         {"ref": "hI12", "frel": "Birth", "mrel": "Birth", "citation_list": [], "note_list": []})
     new.people["I12"]["parent_family_list"].append("hF3")
     new.add("I8", "Rosa", "Pine", 0, tag_list=["htag1"])   # mother's sister, tagged weak
-    next(f for f in new.o["Family"] if f["gramps_id"] == "F4")["child_ref_list"].append(
+    find(new.o["Family"], "gramps_id", "F4")["child_ref_list"].append(
         {"ref": "hI8", "frel": "Birth", "mrel": "Birth", "citation_list": [], "note_list": []})
     new.people["I8"]["parent_family_list"].append("hF4")
     new.add("I11", "Tim", "Reed", 1)              # Mia's brother: an in-law's kin, no blood path
