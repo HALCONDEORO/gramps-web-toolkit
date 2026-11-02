@@ -369,7 +369,7 @@ class Client:
 
     def _read_list(self, cls: str, keys: list[str]) -> list[dict]:
         """One class's list with only `keys`: from the snapshot when there is one, else from the server."""
-        if self.snapshot is not None:
+        if self.snapshot is not None and cls not in self.unsnapped:
             return [{k: o.get(k) for k in ["handle", *keys]} for o in self.snapshot.get(cls, {}).values()]
         r = self._request("GET", f"/{NAMESPACE[cls]}/", params={"keys": ",".join(["handle", *keys])})
         if r.status_code != 200:
@@ -500,7 +500,10 @@ class Client:
             self.log(method="POST", path=path, body=body or {}, planned=True)
             return
         # a merge rewrites people, families and notes that pointed at the loser: stop trusting the snapshot for them
-        self.unsnapped |= {"Person", "Family", "Note"} | ({"Citation"} if cls == "Source" else set())
+        self.unsnapped |= {"Person", "Family", "Note"} | ({"Citation"} if cls == "Source" else set()) | (
+            {"Place", "Event"} if cls == "Place" else set())
+        if cls == "Place":
+            self._lists = {k: v for k, v in self._lists.items() if k[0] not in ("Place", "Event")}
         self.stale |= {(cls, winner), (cls, loser)}
         try:
             r = self._request("POST", path, write=True, json=body or {})

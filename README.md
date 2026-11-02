@@ -39,6 +39,8 @@ The toolkit works for genealogy in any country. One module, `spanish-poller`, is
 - `gwt-spanish-poller` (Spain only): watches Spanish civil-registry requests and the DEHú inbox read-only, and flags cases that vanish
 - `ocr-bench`: scores OCR, HTR and LLM readings of the same pages on how many names they recover
 
+- `gwt-report`: names how two people are related (in English, Spanish and French) with their common ancestors and implex, and lists what is new in the tree since the family was last told, with links
+
 ## Quick start
 
 Watch the toolkit refuse a duplicate in two minutes, with no server. The tree in `examples/` is a snapshot of 30 invented people, and `changes.jsonl` adds a wife and a son for Tomás Ortega Sanz, but adds Tomás again as a new person although he is already in the tree.

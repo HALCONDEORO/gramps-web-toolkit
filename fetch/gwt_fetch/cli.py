@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import boe, coverage, digibib, europeana, gazeta, geo, iiif, index_locator, leads, names, notarial, touraine, variants
+from . import boe, coverage, digibib, europeana, gazeta, geo, geo_fr, iiif, index_locator, leads, names, notarial, touraine, variants
 
 
 def _max_images(text: str) -> int:
@@ -27,7 +27,11 @@ def parser() -> argparse.ArgumentParser:
         sp.add_argument("--list", action="store_true", help="print what would be fetched, download nothing")
 
     s = sub.add_parser("iiif", help="download canvases from a IIIF manifest or a known viewer URL")
-    s.add_argument("url")
+    s.add_argument("url", nargs="?", help="manifest URL or viewer URL (omit with --image-base)")
+    s.add_argument("--image-base", metavar="URL",
+                   help="a IIIF Image API base or its info.json, no manifest needed; {page} in it takes each --pages number")
+    s.add_argument("--native", action="store_true",
+                   help="fetch each canvas at the width its info.json gives, refusing a rescaled file")
     pick(s)
 
     s = sub.add_parser("digibib", help="download pages from a DIGIBIB viewer (BVPH, Defensa, ...)")
@@ -84,6 +88,12 @@ def parser() -> argparse.ArgumentParser:
                    help="CartoCiudad types to keep (Municipio, poblacion, toponimo, callejero); empty for all")
     s.add_argument("--province")
     s.add_argument("--limit", type=int, default=3, help="rows per place")
+
+    s = sub.add_parser("geo-fr", help="read-only French current commune candidates; never writes the tree")
+    s.add_argument("places", nargs="+")
+    s.add_argument("--department", help="exact department code, e.g. 37, 41, 49 or 2A")
+    s.add_argument("--insee-code", help="exact current five-character commune code")
+    s.add_argument("--limit", type=int, default=10, help="1..30 candidates; truncation is marked for review")
 
     s = sub.add_parser("touraine", help="search and read civil registers on archives.touraine.fr (Indre-et-Loire)")
     t = s.add_subparsers(dest="action", required=True)
@@ -153,7 +163,7 @@ def main(argv=None) -> int:
         return variants.run(args)
     if args.cmd == "names" and not args.source:
         args.source = ["gazeta", "boe"]
-    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "names": names, "europeana": europeana, "geo": geo, "touraine": touraine, "coverage": coverage, "notarial-plan": notarial, "index-locate": index_locator}[args.cmd]
+    mod = {"iiif": iiif, "digibib": digibib, "gazeta": gazeta, "boe": boe, "names": names, "europeana": europeana, "geo": geo, "geo-fr": geo_fr, "touraine": touraine, "coverage": coverage, "notarial-plan": notarial, "index-locate": index_locator}[args.cmd]
     if args.cmd == "touraine" and args.action == "catalogue":
         from . import touraine_catalogue
         mod = touraine_catalogue

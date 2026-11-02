@@ -12,6 +12,7 @@ from .checks import CHECKS, INFO_CHECKS
 from .client import ApiError, Client, url_problem
 from .report import check, check_names
 from .links import LEVELS
+from . import media
 from .tree import READ_MARGIN, BadInput, Tree, load, save
 
 
@@ -78,16 +79,7 @@ def live_dump(args, settled=None, seed: Tree | None = None) -> dict:
         else:
             since = None
             if seed is not None:
-                if seed.tree_id != client.tree:
-                    what = f"a dump of tree {seed.tree_id!r}" if seed.tree_id else "a file that records no tree"
-                    raise BadInput(f"--from {seed.source}: {what}, but the login is in tree {client.tree!r}")
-                if seed.read_started is None:
-                    raise BadInput(f"--from {seed.source}: says nowhere when it was read "
-                                   "(no read_started, dumped_at or taken)")
-                if seed.read_started_guessed:
-                    print(f"gwt-check: --from {seed.source} has no read_started; taking its read to have started "
-                          f"{READ_MARGIN // 60} min before it was written, and reading again what changed since",
-                          file=sys.stderr)
+                _validate_seed(seed, client)
                 objs = {t: dict(rows) for t, rows in seed.objs.items()}
                 since = seed.read_started - STAMP_SLACK
             else:
@@ -105,11 +97,31 @@ def live_dump(args, settled=None, seed: Tree | None = None) -> dict:
             else:
                 raise BadInput(f"the tree kept changing: {moved} object(s) still moving after {PASSES} passes")
             data["passes"] = n
+        _annotate_media(args, client, data, seed)
     except ApiError as exc:
         raise BadInput(str(exc)) from exc
     print(f"read tree {client.tree} in {time.monotonic() - t0:.0f} s, {client.requests} requests",
           file=sys.stderr)
     return data
+
+
+def _annotate_media(args, client, data, seed):
+    if hasattr(args, "download"):  # check and dump; links, cites, fill-places and repos never use it
+        data[media.STATUS] = media.annotate(client, data["objects"], seed.media_status if seed else None,
+                                            download=args.download, workers=args.workers)
+
+
+def _validate_seed(seed, client):
+    if seed.tree_id != client.tree:
+        what = f"a dump of tree {seed.tree_id!r}" if seed.tree_id else "a file that records no tree"
+        raise BadInput(f"--from {seed.source}: {what}, but the login is in tree {client.tree!r}")
+    if seed.read_started is None:
+        raise BadInput(f"--from {seed.source}: says nowhere when it was read "
+                       "(no read_started, dumped_at or taken)")
+    if seed.read_started_guessed:
+        print(f"gwt-check: --from {seed.source} has no read_started; taking its read to have started "
+              f"{READ_MARGIN // 60} min before it was written, and reading again what changed since",
+              file=sys.stderr)
 
 
 def load_known(path: str) -> dict[tuple[str, str], str]:
@@ -162,6 +174,7 @@ def print_report(report: dict, limit: int) -> None:
     if info.get("dup-person-fuzzy skipped, parents differ by name"):
         print(f"dup-person-fuzzy pairs skipped, father and mother differ by name: "
               f"{len(info['dup-person-fuzzy skipped, parents differ by name'])} (listed with --json)")
+    media.print_media_info(info)
     if "sources without repository" in info:
         print(f"sources without repository: {info['sources without repository']} (list them with gwt-check repos --unlinked)")
     if "diff" in report:
@@ -469,7 +482,7 @@ def _filter_settled_report(args, data, report, seen, persistent):
         report["passes"] = data["passes"]
         if data.get("settled"):
             unconfirmed = (seen[-1] & seen[-2]) - seen[-3]
-            keep = lambda fs: [f for f in fs if f["info"]  # noqa: E731
+            keep = lambda fs: [f for f in fs if f["info"] or f["check"] in media.AFTER_READ  # noqa: E731
                                or (f["check"], f["key"]) in persistent[-1] | unconfirmed]
             report["in_flight"] = len(report["findings"]) - len(keep(report["findings"]))
             report["findings"], report["new"] = keep(report["findings"]), keep(report["new"])
@@ -504,6 +517,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("dump", help="save the live tree to a JSON file (.gz to compress)")
     p.add_argument("out")
+    p.add_argument("--download", action="store_true", help="also measure every image's thumbnail (needs Pillow)")
     live_opts(p)
 
     p = sub.add_parser("check", help="run every check on a dump, or on the live tree",
@@ -524,6 +538,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="a dump or gwt-apply snapshot of this tree: start from it and read again only what changed "
                         "since, instead of the whole tree; implies --baseline OLD unless --baseline or --known is given")
     p.add_argument("--limit", type=int, default=30, help="findings printed per check (default 30)")
+    p.add_argument("--download", action="store_true",
+                   help="read every image's thumbnail for media-tiny, media-uniform and media-dup-page (live tree, needs Pillow)")
     live_opts(p)
 
     p = sub.add_parser("mark-known", help="accept findings of a report as known, with the reason, in a known file")
@@ -635,6 +651,9 @@ def main(argv: list[str] | None = None) -> int:
         if handler is not None:
             return handler(args)
         check_names(set(args.ignore_check))  # before a dump that can take minutes
+        if args.download and args.tree:
+            raise BadInput("--download reads the thumbnails from the live tree; it takes no TREE (save one with "
+                           "gwt-check dump --download)")
         t0 = time.monotonic()
         known, seed = _known_and_seed(args)
         since = load(args.since) if args.since else None
@@ -661,7 +680,7 @@ def main(argv: list[str] | None = None) -> int:
             data = live_dump(args, settled, seed)
             if args.save_dump:
                 save(data, args.save_dump)
-            tree = Tree(data["objects"], source="live tree")
+            tree = Tree(data["objects"], source="live tree", media_status=data.get(media.STATUS))
         t1 = time.monotonic()
         report = run(tree)
         if not args.tree:

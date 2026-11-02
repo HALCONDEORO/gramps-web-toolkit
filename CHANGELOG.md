@@ -8,6 +8,10 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
+- `gwt-report kin` names offline relationships and `gwt-report digest` lists new objects since the previous family update. Includes wheel packaging, command dispatcher, synthetic fixtures and mutation tests; does not write to Gramps.
+
+- Conservative `merge_place` and `delete_place` operations with explicit reasons, hierarchy/type/fact guards, backlink checks, dry-run planning and place-merge snapshot invalidation. Recovery requires a verified backup.
+
 - Read-only FamilySearch viewer method notes distinguish observed film/image metadata from access and evidence. Undocumented endpoints may change; same-tab session, sequential low-rate access, stop-on-challenge and image rights remain explicit. No live identifiers or downloader code.
 - Archive-request drafting guide: keep sourced date/spelling variants, flag impossible book ranges, continue existing institutional threads, request whole household sheets and order direct-line records before optional searches. Synthetic examples only; no send or access authority.
 
@@ -49,6 +53,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 - Catalogue offline tests now reject denial-title, non-English human-challenge, reCAPTCHA-widget and unmarked empty terminal candidates. Previous synthetic-empty-table positive assertions used an unsafe completion oracle; coverage guard unit tests now explicitly assume completeness without claiming archive compatibility. No live archive validation or invented terminal marker.
 - A person with no death born more than 100 years ago is presumed dead (`LIVING_YEARS` 110 to 100 in `gwt-check`), so `living-media-sensitive` and `living-visible` are less strict for people born 100 to 110 years ago. No change list is affected.
 - `gwt-read insee search --files F [F ...] --surname S [--surname S2 ...]` reads INSEE's French deaths files ("fichier des personnes décédées", data.gouv.fr) offline: no request, no gate, no cache. Each line whose surname matches any `--surname` (whole words, case and accents folded) becomes a `principal` gwt-rank candidate with a birth event (year, commune and country as written) and a death event (year, place code). The full dates, codes and act number stay as fields gwt-rank does not score. Every line is checked: a line whose columns do not line up (a date that is not eight digits, a sex that is not 1 or 2, a line too short, or one longer than two records) exits 2 with the file and line, and nothing is written. A value INSEE wrote that breaks its own rules (month 13, day 60, a name with no `*`) is kept as written and marked `"malformed"`, and each file's count is in the envelope and on stderr. A file that cannot be read or holds no line exits 1, so it never reads as "no results". Columns count characters. A line that is not valid UTF-8 is read as CP850 or Latin-1, whichever gives more accented letters (CP850 on a tie), since the years differ, and marked `"encoding": "cp850"` or `"latin-1"`.
+- `gwt-leads --archives FILE` tells each gap which archive keeps its record and whether its year is online there. The file is a TSV with `match`, `archive`, `series`, `years` and `url` columns, plus an optional `access` (`online`, `browser`, `letter`, `unknown`; empty reads `unknown`). A row matches any level of the gap's event place, whole names folded for case and accents; the deepest level wins, then the first row. `url` takes `{place}` and `{year}` only. A matched gap gets a `where` object in `--format json` and a `where:` part in the `--format queue` note; `online` is unknown for a "before" or "after" year. The file is read as plain UTF-8 tab-separated text, so a quote is an ordinary character, and a gap looks up each level of its place, so a commune-sized file stays fast. A bad file (not UTF-8, a repeated column among others) exits 2. Without the flag the output is unchanged. `examples/archives.tsv` is an invented file.
 
 
 ### Fixed
@@ -167,7 +172,6 @@ None.
 - `gwt-check check` lists findings in the same order on every run (it depended on the hash seed).
 - `gwt-check cites` and `links` read text about a quarter faster on a large tree: accent folding is cached per character with a plain-ASCII shortcut, and the act-word patterns are compiled once. Same output (measured on an invented 20,000-person tree: cites 2.65 s to 1.95 s, links 3.07 s to 2.27 s, median of 5).
 - `gwt-check` reports `note-marker-no-tag`: a note that says «hipótesis» or «homónimo» without the tag of that name, in a tree that has such a tag. A note that says the hypothesis was discarded, replaced or refuted is not reported.
-
 
 - `gwt-check repos --classify` sorts the sources with no repository by what they name (a repository the tree has, another institution, nothing), with the institutions grouped so one new repository can serve many sources. It only reports.
 
