@@ -27,7 +27,11 @@ def parser() -> argparse.ArgumentParser:
         sp.add_argument("--list", action="store_true", help="print what would be fetched, download nothing")
 
     s = sub.add_parser("iiif", help="download canvases from a IIIF manifest or a known viewer URL")
-    s.add_argument("url")
+    s.add_argument("url", nargs="?", help="manifest URL or viewer URL (omit with --image-base)")
+    s.add_argument("--image-base", metavar="URL",
+                   help="a IIIF Image API base or its info.json, no manifest needed; {page} in it takes each --pages number")
+    s.add_argument("--native", action="store_true",
+                   help="fetch each canvas at the width its info.json gives, refusing a rescaled file")
     pick(s)
 
     s = sub.add_parser("digibib", help="download pages from a DIGIBIB viewer (BVPH, Defensa, ...)")

@@ -7,7 +7,8 @@ Python 3.11 or newer with `requests` for downloads. The offline `coverage` and `
 `iiif` works with any IIIF archive in any country. `digibib`, `gazeta`, `boe` and `geo` cover Spanish sources only. `europeana` searches every provider in any country; `--provider Hispana` narrows it to Spain.
 
 ```
-gwt-fetch iiif URL [--pages 1-5,9] [--labels REGEX] [--out DIR] [--list]
+gwt-fetch iiif URL [--pages 1-5,9] [--labels REGEX] [--native] [--out DIR] [--list]
+gwt-fetch iiif --image-base URL/info.json [--pages 1-20] [--out DIR] [--list]
 gwt-fetch digibib URL [--pages ...] [--out DIR] [--list]
 gwt-fetch touraine search QUERY [--start N] [--limit N]
 gwt-fetch touraine catalogue "<place>" [--per-page 20|40|80] [--max-pages N]
@@ -39,9 +40,26 @@ Give it a IIIF Presentation manifest URL (v2 or v3), or a viewer URL from a port
 
 `--pages` takes 1-based canvas positions (`1-5,9,12-`); `--labels` takes a regular expression matched against the canvas label (`--labels '^pag\. (1|2)$'`). `--list` prints position, label and URL and downloads nothing.
 
+`full/max` is not always the native size: Antenati caps it at 10 megapixels. `--native` reads each canvas's `info.json` and asks for `full/<width>,/0/default.jpg` at the width it gives. The run checks the width of the image that comes back, and when the server sent another width (rescaled up or down) it saves nothing for that canvas, prints both widths and exits 1. Read names and dates at native width: a preview is for finding the act, not for reading it. A canvas already saved from `full/max` in the same `--out` folder is kept, and the native file goes beside it as `NNNN_<label>_native.jpg`; a canvas already saved at native width is skipped without a request. With `--list`, `--native` prints each canvas's `info.json` URL.
+
+The cap is the server's own `maxArea` in `info.json`, and `--native` asks above it, on servers that already take seconds per image. Use it for the pages you will read, not for whole registers.
+
+### `--image-base`: an Image API with no manifest
+
+Some viewers serve a IIIF Image API (`.../info.json`) and no Presentation manifest; French departmental archives are the common case. Their `full/max` and `full/full` can redirect to the HTML viewer, and a width above the native one comes back upscaled without an error. `--image-base` takes the image's base URL or its `info.json` and fetches it at native width, with the same width check as `--native`. Put `{page}` where the page number goes and give `--pages` with an end (`1-20`, not `12-`), since there is no manifest to count the pages:
+
+```
+gwt-fetch iiif --image-base 'https://archives.example.fr/iiif/ark:/00000/abc/f{page}/info.json' --pages 10-12 --out /tmp/reg
+```
+
+Where the archive pads its page numbers (`f_0007`), write `{page:04}`. `--pages` without `{page}` in the URL, a range that selects nothing, and `--labels` stop with a message.
+
+Each file is `NNNN_<last path part>.jpg` (`0010_f10.jpg`), and its row has the `info.json` URL as `manifest_url`. A page whose `info.json` fails is reported and the rest still download. Passing an `info.json` as the plain URL stops with a message that points here.
+
 | Portal | Works | Viewer URL to manifest |
 |---|---|---|
-| Portale Antenati (Italy) | Yes, tested | The unit page `https://antenati.cultura.gov.it/ark:/12657/an_ua4076426/` holds the link `https://dam-antenati.cultura.gov.it/antenati/containers/5vj8KVP/manifest`; `gwt-fetch` reads it from the page. Image requests need `Referer: https://antenati.cultura.gov.it/`, which `gwt-fetch` sends. `full/full` returns 403 and `full/max` works. The server caps output at 10 megapixels (`maxArea` in `info.json`), so a 4929×3781 scan arrives at 3610×2769. |
+| Portale Antenati (Italy) | Yes, tested | Paste the manifest URL, `https://dam-antenati.cultura.gov.it/antenati/containers/5vj8KVP/manifest` (the viewer's IIIF link). The unit page `https://antenati.cultura.gov.it/ark:/12657/an_ua4076426/` also works where the portal answers, but its firewall refuses many addresses outside Italy. The manifest and image servers answer 403 unless the Referer is `https://antenati.cultura.gov.it/`; `gwt-fetch` sends that for every `dam-antenati` and `iiif-antenati` URL. `full/full` returns 403 and `full/max` is capped at 10 megapixels (`maxArea` in `info.json`), so a 4929×3781 scan arrives at 3610×2769; add `--native` for the 4929 px original. |
+| Canadiana (Canada, LAC microfilm) | Yes, tested | `https://heritage.canadiana.ca/view/{id}/{page}` becomes `https://heritage.canadiana.ca/iiif/{id}/manifest` (Presentation 3). A reel's manifest is several megabytes. The site's robots.txt asks for 10 seconds between requests, so `gwt-fetch` waits at least that long on a Canadiana run; a longer `--delay` is kept. |
 | Memòria Digital de Catalunya (and any CONTENTdm site) | Yes, tested | `https://mdc.csuc.cat/digital/collection/{alias}/id/{id}` becomes `https://mdc.csuc.cat/iiif/2/{alias}:{id}/manifest.json`. Images arrive at native size. |
 | Europeana | Yes, tested | `https://www.europeana.eu/{lang}/item/{collection}/{id}` becomes `https://iiif.europeana.eu/presentation/{collection}/{id}/manifest`. When the provider has no Image API, Europeana's manifest points at its own thumbnail proxy (`api.europeana.eu/thumbnail/v2/url.json?uri=...`); `gwt-fetch` takes the original file from `uri` instead. The original can be a PDF. |
 | Any Mirador or Universal Viewer link | Yes | A `?manifest=` or `?iiif-content=` parameter is used as the manifest. |
@@ -51,11 +69,21 @@ Give it a IIIF Presentation manifest URL (v2 or v3), or a viewer URL from a port
 | Galiciana, Arquivo Dixital de Galicia | Yes, through `digibib` or Europeana | `arquivo.galiciana.gal/arpadweb` has no challenge; its single-file objects come back as PDF. |
 | Biblioteca Digital Hispánica (BNE) | Needs a browser | `bdh-rd.bne.es` returns a 403 block page to scripted clients for viewer pages and for `pdf.raw` image URLs, from a datacenter address and from a home connection alike. No IIIF endpoint was found. |
 
+These archives serve plain manifests that `gwt-fetch iiif` reads as they are; build the URL from the item's id. Each template answered with a manifest in November 2026:
+
+| Archive | Manifest URL |
+|---|---|
+| Riksarkivet (Sweden) | `https://lbiiif.riksarkivet.se/arkis!{bildid}/manifest` |
+| ANNO, Austrian National Library newspapers | `https://iiif.onb.ac.at/presentation/ANNO/{code}{yyyymmdd}/manifest/` |
+| Bayerische Staatsbibliothek (digitale-sammlungen) | `https://api.digitale-sammlungen.de/iiif/presentation/v2/{bsb_id}/manifest` |
+| National Diet Library (Japan) | `https://dl.ndl.go.jp/api/iiif/{pid}/manifest.json` |
+| Internet Archive | `https://iiif.archive.org/iiif/{identifier}/manifest.json` |
+
 Antenati traps from real downloads (two Italian birth registers of the 1850s and 1860s):
 
 - The image server is slow: 10 to 60 seconds per image, about 20 on average. Five pages take close to two minutes, so run big selections in the background and let the resume logic carry a run that gets cut off.
 - A plain `curl` gets 403 from both `antenati.cultura.gov.it` (search and unit pages) and the image server. The user agent has to start with `Mozilla/5.0`, and image requests need the portal as `Referer`.
-- The web viewer shows about 1600 px and `full/full` returns a Cloudflare 403, which led one researcher to settle for 1600 px. `full/max` returns the largest size allowed: 3530×2716 for one page, 2122×1684 for another, depending on the scan.
+- The web viewer shows about 1600 px and `full/full` returns a Cloudflare 403, which led one researcher to settle for 1600 px. `full/max` returns the largest size allowed: 3530×2716 for one page, 2122×1684 for another, depending on the scan. `--native` asks for `full/<width>,` and gets the scan's own width.
 - A canvas label is only `pag. N`. To find an act, list the canvases (`--list`), fetch a few pages around the estimate into `/tmp`, read the «Num. d'ordine» on each, then fetch just the right page into your research folder.
 
 ## `touraine`: civil registers of Indre-et-Loire (AD37)
@@ -140,7 +168,6 @@ For 1800–1806, `chain` orders CAT-A (1800–1802), CAT-B (1802–1803), CAT-C 
 `catalogue_coverage` is `1800-1803,1805-1806`; `catalogue_gaps` is `1804`. Both reuse the existing inclusive-range helpers. `overlaps` identifies 1802 with CAT-A and CAT-B; adjacent overlap segments combine only when their catalogue IDs agree. `unknown_coverage` lists CAT-U, whose tentative dates never fill 1804. Gaps are years without exact coverage in the supplied metadata, not evidence that records were lost or never existed. With no matching entries, the entire period is a catalogue gap.
 
 Every chain entry has `status: "candidate"`, its clipped `search_period` (or `null`), the original `metadata`, supplied references and a `next_step`. Ordering is chronological, then office and ID, with unknown dates last; it is a search itinerary, not a claim that one office succeeded another. Consult the supplied references and record literal evidence yourself. Catalogue coverage never establishes that a contract was found, or supports marriage or parentage. There is no person matching, inferred relationship or queue/tree write. Exit 0 means a valid plan, including gaps or no candidates; input errors exit 2.
-
 ## `digibib`: DIGIBIB viewers without IIIF
 
 DIGIBÍS's DIGIBIB runs BVPH, the Biblioteca Virtual de Defensa, Galiciana and many regional digital libraries. None of these installs serve IIIF. The viewer URL is `.../catalogo_imagenes/grupo.do?path=N`. Each page view (`&presentacion=pagina&posicion=K`) names one image as `imagen_id.do?idImagen=M`, and that URL with `&formato=jpg` returns the full JPEG. `gwt-fetch digibib` walks those page views. When the object is a single file, `grupo.do` serves the file itself (often a PDF); it is saved as `0001_document.pdf`.
