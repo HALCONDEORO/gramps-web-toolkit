@@ -218,7 +218,7 @@ class Candidates(Run, unittest.TestCase):
         self.assertEqual(self.cands(lines), [])
 
     def test_no_surname_is_a_usage_error(self):
-        code, _, out = self.run_insee([FIX], [])
+        code, _, _out = self.run_insee([FIX], [])
         self.assertEqual(code, 64)
         self.assertEqual(self.written(), [])
 
@@ -226,7 +226,7 @@ class Candidates(Run, unittest.TestCase):
         boom = mock.Mock(side_effect=AssertionError('network, gate or cache used'))
         with mock.patch.object(gwt_read, 'Gate', boom), mock.patch.object(gwt_read, 'FSCache', boom), \
                 mock.patch('urllib.request.urlopen', boom), mock.patch('socket.socket', boom):
-            code, lines, _ = self.run_insee([FIX], ['Ortega'])
+            code, _lines, _ = self.run_insee([FIX], ['Ortega'])
         self.assertEqual(code, 0)
         boom.assert_not_called()
 
@@ -241,7 +241,7 @@ class Malformed(Run, unittest.TestCase):
     """A line out of the layout stops the run with exit 2 and nothing written, even a line no --surname matches."""
     def assert_stops(self, bad, why):
         p = self.write('deces-bad.txt', line(name='ORTEGA*ANA/'), bad, line(name='ORTEGA*JUAN/'))
-        code, lines, out = self.run_insee([p], ['Ortega'])
+        code, _lines, out = self.run_insee([p], ['Ortega'])
         self.assertEqual(code, 2, out)
         self.assertIn('deces-bad.txt line 2', out)
         self.assertIn(why, out)
@@ -269,7 +269,7 @@ class Malformed(Run, unittest.TestCase):
     def test_a_cr_only_file_is_one_long_line_and_stops(self):
         p = self.write('cr.txt', raw=('\r'.join([line(name='ORTEGA*ANA/'), line(name='ORTEGA*LUIS/'),
                                                   line(name='ORTEGA*JUAN/')]) + '\r').encode('ascii'))
-        code, lines, out = self.run_insee([p], ['Ortega'])
+        code, _lines, out = self.run_insee([p], ['Ortega'])
         self.assertEqual(code, 2, out)
         self.assertIn('cr.txt line 1: line is 596 characters', out)
         self.assertEqual(self.written(), [])
