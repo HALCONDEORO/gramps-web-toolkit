@@ -141,3 +141,30 @@ gwt_fetch/leads.py |     return bool(DOUBT.search(clause.replace('(?)', ' '))) |
 gwt_fetch/leads.py |         clause_end = end + stop.start() |         clause_end = end | doubt after the name is outside the clause evidence
 gwt_fetch/leads.py | and not _doubtful(_clause(body, found.start(), end)) | and True | subject filtering silently drops negated or doubtful parent clues
 gwt_fetch/notarial.py | if not math.isfinite(number): | if False: | overflowing JSON exponents must not produce Infinity in preserved metadata
+# Mutations the fetch tests must catch. One row each: file | exact text | replacement | why
+# `python3 .github/scripts/run_tests.py --mutants --only fetch` applies each row to a scratch copy
+# of fetch/ and fails when the tests still pass. The text must occur exactly once in the file.
+gwt_fetch/iiif.py | if host in ("dam-antenati.cultura.gov.it", "iiif-antenati.cultura.gov.it"): | if False: | an Antenati manifest or image URL is sent with the portal as Referer, which its WAF requires
+gwt_fetch/iiif.py | return url, portal_referer(url) or url | return url, url | a pasted Antenati manifest URL gets the portal Referer, not its own URL
+gwt_fetch/iiif.py | return manifest, portal_referer(manifest) or url | return manifest, url | an Antenati manifest inside a viewer's ?manifest= gets the portal Referer
+gwt_fetch/iiif.py |     if got != width: |     if got is None: | an image whose pixel width is not info.json's width is refused, never saved
+gwt_fetch/iiif.py | url = f"{base}/full/{width},/0/default.jpg" | url = f"{base}/full/max/0/default.jpg" | an Image API base is fetched at info.json's width, not at full/max
+gwt_fetch/iiif.py | if getattr(args, "native", False) and c.service: | if False: | --native fetches each canvas at its info.json width
+gwt_fetch/iiif.py | m = _is_canadiana(u.hostname or "") and re.match(r"/view/([^/?#]+)", u.path) | m = None | a Canadiana viewer URL becomes its manifest
+gwt_fetch/iiif.py | if _is_image_info(manifest): | if False: | an info.json passed as a manifest stops with a pointer to --image-base
+gwt_fetch/iiif.py |     except Exception as e:  # a missing page or a broken info.json fails this image, not the run |     except ZeroDivisionError as e: | a page with no info.json fails that page and the rest still download
+gwt_fetch/iiif.py |     if row and not NATIVE_URL.search(row["image_url"]): |     if False: | --native after a capped full/max run in the same folder adds the native file instead of skipping
+gwt_fetch/iiif.py |     if row: |     if None: | a --native resume skips a page saved at native width without fetching its info.json
+gwt_fetch/iiif.py |     if not want: |     if False: | a --pages range that selects nothing stops with a message instead of exiting 0 with no file
+gwt_fetch/iiif.py | raise SystemExit("gwt-fetch: --pages needs {page} in --image-base; the URL has no {page}") | pass | --pages with an --image-base that has no {page} stops instead of fetching one image
+gwt_fetch/iiif.py | return [(n, PAGE.sub(lambda m: format(n, m.group(1) or ""), base)) for n in want] | return [(n, PAGE.sub(str(n), base)) for n in want] | {page:04} pads the page number with zeros
+gwt_fetch/iiif.py | return host == "canadiana.ca" or host.endswith(".canadiana.ca") | return host.endswith("canadiana.ca") | a lookalike host such as evilcanadiana.ca is not rewritten as Canadiana
+gwt_fetch/iiif.py | and client.delay < CANADIANA_DELAY: | and False: | a Canadiana run waits the 10 s its robots.txt asks for, without --delay
+gwt_fetch/iiif.py |     if not args.url: |     if False: | iiif with neither a URL nor --image-base stops with a message, not a traceback
+gwt_fetch/iiif.py | if not r.ok or ctype.startswith("text/"): | if not r.ok: | an HTML page served in place of an image is named as such and not saved
+gwt_fetch/iiif.py | referer = portal_referer(base) or f"{base}/info.json" | referer = f"{base}/info.json" | an Antenati --image-base gets the portal Referer its WAF requires
+gwt_fetch/iiif.py | if not isinstance(doc, dict) or "sequences" in doc or "items" in doc: | if not isinstance(doc, dict): | a manifest whose @context names the Image API is still read as a manifest
+gwt_fetch/iiif.py | return list(dict.fromkeys(want)) | return want | a page named twice in --pages is fetched once
+gwt_fetch/iiif.py |     if store.done(stem, label, url, source): |     if False: | a native file on disk without a row gets its row back, with no second image request
+gwt_fetch/iiif.py |         if marker == 0xFF:  # fill byte |         if False: | fill bytes before a JPEG marker do not hide the image's width
+gwt_fetch/iiif.py |     if data[:2] != b"\xff\xd8": |     if False: | a file that is not a JPEG is never read as one
