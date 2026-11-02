@@ -95,7 +95,7 @@ A read-only check of how a research repo uses the disk, for repos that many agen
 
 It also prints `gc.auto` and `maintenance.auto` as information. On Linux the Time Machine check is skipped with a note.
 
-It never fetches. It runs only `git version`, `rev-parse`, `count-objects -v`, `config --get`, `ls-files` and `tmutil isexcluded`, never a command that reads an object, and starts every git with `GIT_NO_LAZY_FETCH=1` as well. A binary outside a sparse checkout is skipped, not read from the object store. Why these checks: [hard-won lessons 7, 8 and 55 to 57](hard-won.md#git-and-disk).
+It never fetches. It runs only `git version`, `rev-parse`, `count-objects -v`, `config --get`, `ls-files` and `tmutil isexcluded`, never a command that reads an object, and starts every git with `GIT_NO_LAZY_FETCH=1` as well. A binary outside a sparse checkout is skipped, not read from the object store. Why these checks: [hard-won lessons 7, 8 and 56 to 58](hard-won.md#git-and-disk).
 
 ```sh
 python3 -m unittest rawstore/test_doctor.py

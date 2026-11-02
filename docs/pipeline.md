@@ -168,7 +168,7 @@ Branches that reach the fewest generations get more lanes. Each round also has f
 
 ## The repo every lane shares
 
-Many lanes read and commit to one research repo, often a `blob:none` partial clone. Three habits keep it from filling the disk ([hard-won.md](hard-won.md#git-and-disk), lessons 55 to 57):
+Many lanes read and commit to one research repo, often a `blob:none` partial clone. Three habits keep it from filling the disk ([hard-won.md](hard-won.md#git-and-disk), lessons 56 to 58):
 
 - Every agent runs with `GIT_NO_LAZY_FETCH=1`, so a command that would download history fails instead.
 - Lanes read a fresh file over the forge's raw URL, or the main thread fetches what changed in one batch; never one `git show origin/main:<path>` per read.
