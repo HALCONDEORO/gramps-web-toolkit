@@ -1,8 +1,9 @@
 # FamilySearch viewer notes
 
 A read-only troubleshooting method for an image that the signed-in viewer already
-allows the user to open. These notes describe observed internal viewer behaviour,
-not a supported API contract. Undocumented endpoints can change without notice.
+allows the user to open. These notes record a user-reported observation of internal viewer behaviour.
+The endpoint names, response fields, ordering and image path below have not been
+independently verified; they are not a supported API contract. Undocumented endpoints can change without notice.
 Do not treat a successful metadata request as permission to open, download or
 publish an image. Verify the current response shape and displayed image every time.
 
@@ -24,20 +25,21 @@ publish an image. Verify the current response shape and displayed image every ti
 ## Separate film metadata from an image
 
 In an already-authorized viewer tab, inspect the requests that the viewer itself
-made. The following names are descriptive leads, not URLs to construct blindly:
+made. The following are unverified user-reported shapes, not checked live examples
+or URLs to construct blindly. No sanitized response fixture is available here:
 
-1. The observed `image-data` response can identify a `dgsNum`. Preserve it as a
+1. The user-reported `image-data` response may identify a `dgsNum`. Preserve it as a
    string of nine decimal digits, including leading zeros. Do not convert it to
    an integer, invent padding for an unverified identifier or confuse it with
    a catalogue reference or an account ID. If the current response differs, stop
    and verify it rather than silently guessing a new schema.
-2. An observed `film-data` response may provide `.images`, an ordered list of
+2. The user-reported `film-data` response may provide `.images`, an ordered list of
    image ARKs. Where the current response confirms that contract, the displayed
    image N corresponds to `images[N - 1]`. This can avoid repeatedly scrolling
    the filmstrip. Check bounds and the actual viewer image: a list position is
    not an act number, page or folio, and it does not prove access to every image.
 3. For a single image that the viewer already permits, a full-image request may
-   use the observed deepzoom suffix `/dz/v1/<ARK>/$dist`. Use only the exact request
+   use the user-reported deepzoom suffix `/dz/v1/<ARK>/$dist`. Use only the exact request
    and host observed in that tab, not an assumed hostname or a URL copied from
    another session. Hosts can vary by session. An ARK may need its existing encoded
    representation; do not invent transformations. A metadata response, redirect,
