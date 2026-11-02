@@ -129,3 +129,12 @@ gwt_apply/client.py |             self.repointed[loser] = winner |             s
 gwt_apply/client.py |         while handle in self.repointed and handle not in seen: |         if handle in self.repointed: | chained source merges are followed one step only
 gwt_apply/client.py |         if cls == "Citation" and "source_handle" in keys and self.repointed: |         if False: | the cached citation list is used as it was read before the merge
 gwt_apply/client.py |         while handle in self.repointed and handle not in seen: |         if handle in self.repointed and handle not in seen: | the lookup follows one hop, so a citation three merges back keeps a source already merged away
+gwt_apply/place_ops.py | if len(types) > 1: | if False: | places of different types must not merge
+gwt_apply/place_ops.py | if _inside(applier, winner, loser) or _inside(applier, loser, winner): | if False: | containment cannot become a self-enclosing place
+gwt_apply/place_ops.py | if _parents(winner) != _parents(loser): | if False: | different parent sets require review
+gwt_apply/place_ops.py | if loser.get(key) not in (None, '') and winner.get(key) != loser[key]: | if False: | the loser must not silently lose scalar facts or privacy
+gwt_apply/place_ops.py | if current is None or json.dumps(handle) in json.dumps(current): | if False: | a referenced place must not be deleted
+gwt_apply/place_ops.py | if any(kind.lower() not in ('event', 'place') for kind, _ in holders): | if False: | unsupported references require review
+gwt_apply/place_ops.py | if handle is None or not applier.c.exists('Place', handle): | if False: | missing place is a conflict, never a successful delete
+gwt_apply/place_ops.py | obj['place'] = winner['handle'] | obj['place'] = loser['handle'] | following dry-run steps see moved event references
+gwt_apply/client.py | {"Place", "Event"} if cls == "Place" else set() | set() | a real place merge invalidates snapshot reads of events and child places

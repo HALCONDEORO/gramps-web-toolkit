@@ -8,6 +8,8 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
+- Conservative `merge_place` and `delete_place` operations with explicit reasons, hierarchy/type/fact guards, backlink checks, dry-run planning and place-merge snapshot invalidation. Recovery requires a verified backup.
+
 - Read-only FamilySearch viewer method notes distinguish observed film/image metadata from access and evidence. Undocumented endpoints may change; same-tab session, sequential low-rate access, stop-on-challenge and image rights remain explicit. No live identifiers or downloader code.
 - Archive-request drafting guide: keep sourced date/spelling variants, flag impossible book ranges, continue existing institutional threads, request whole household sheets and order direct-line records before optional searches. Synthetic examples only; no send or access authority.
 

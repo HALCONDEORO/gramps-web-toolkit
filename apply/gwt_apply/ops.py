@@ -69,6 +69,8 @@ SPECS: dict[str, tuple[set[str], set[str]]] = {
     "merge_family": ({"winner", "loser"}, {"reason"}),
     "merge_event": ({"winner", "loser"}, {"reason"}),
     "merge_source": ({"winner", "loser"}, {"reason"}),
+    "merge_place": ({"winner", "loser", "reason"}, set()),
+    "delete_place": ({"place", "reason", "expect_unreferenced"}, set()),
     "add_association": ({"person", "target", "relation"}, set()),
 }
 MERGE_LISTS = [  # what Gramps' merge carries from the loser to the winner, list by list
@@ -85,7 +87,7 @@ REF_OWN_LISTS = ("note_list", "citation_list", "attribute_list")  # what a Media
 # by hand further down.
 NOT_TEXT = {"set", "target", "object", "attach", "children", "namesake_of", "use_loser", "address",
             "allow_namesake", "new_couple_of", "allow_new_couple", "probable", "confidence", "lat", "long", "expect",
-            "drop_link_sources", "from", "to"}
+            "drop_link_sources", "from", "to", "expect_unreferenced"}
 TEXT_CHECKED_BELOW = {("add_repository", "name"), ("add_repository", "type"), ("link_repository", "media_type"),
                       ("add_association", "relation"), ("add_transcription", "margin_reading"),
                       ("update_child_ref", "confirm_probable"), ("add_person", "gender"),
@@ -372,6 +374,8 @@ def validate(ops: list[dict]) -> list[str]:
                     raise ValueError("person and target are the same")
                 if not isinstance(op.get("relation"), str) or not op["relation"].strip():
                     raise ValueError("relation is a non-empty text, e.g. DNA")
+            if name == "delete_place" and op.get("expect_unreferenced") is not True:
+                raise ValueError("delete_place needs expect_unreferenced: true")
             if name.startswith("merge_") and op.get("winner") == op.get("loser"):
                 raise ValueError("winner and loser are the same")
             if name == "merge_person" and set(op.get("use_loser") or []) - set(USE_LOSER):
@@ -2116,6 +2120,14 @@ class Applier:
                 page = f" ({row['page']})" if row.get("page") else ""
                 holders.append(f"  Citation {self.label(row)}{page}: cites {self.label(winner)} instead of {self.label(loser)}")
         return holders
+
+    def merge_place(self, op):
+        from .place_ops import merge_place
+        merge_place(self, op)
+
+    def delete_place(self, op):
+        from .place_ops import delete_place
+        delete_place(self, op)
 
     def merge_source(self, op):
         """Two sources that are one register entered twice: the loser's citations cite the winner, then the loser goes.

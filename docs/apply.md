@@ -417,3 +417,11 @@ The revert never overwrites anything that differs from what the run left:
 With `--apply` the tree lock is taken before the plan reads anything. Each object is read again right before it is written, and an object that changed since the plan is skipped. Busy answers are tried again. If the revert stops halfway, run the same command again: what is already undone reads as a skip. At the end it reads every restored object back and checks every deleted one again.
 
 The exit code is 0 when the run is undone. It is 1 on a problem, when a `manual` step is left, or when an object changed since the run and was left alone. The revert writes its own log, as an apply does: with `--apply`, `gwt-apply-revert-<run id>.jsonl` in the same per-tree folder, or `<stem>.<run id><suffix>` next to `--log`; a plan writes one only with `--log`. A revert is a tree write like any other, so run it as that tree's only writer and check the tree after it.
+
+## Conservative place maintenance
+
+`merge_place` takes `winner`, `loser`, `reason`, `key` and `ruling`. It uses the server's place merge, moves events and child places to the winner, keeps the loser's complete record in a research note, and refuses different types, different parent sets, containment loops, conflicting coordinates/codes or weaker privacy. This is an explicitly reviewed identity decision, never a name-match rule.
+
+`delete_place` takes `place`, `reason`, `expect_unreferenced: true`, `key` and `ruling`. It refuses any remaining backlinks and a missing place. First use `update_event`/`update_place` to move references, or use `merge_place`. A deletion is not silently repeated when its original request lost its answer: inspect the tree and log before continuing.
+
+Run `PYTHONPATH=apply python3 -m gwt_apply changes.jsonl` to plan without writes. Only `--apply` writes. The same CLI tree identity, lock, log and backup options apply. Take and verify a server checkpoint first. Place merges and deletions are not automatically undone by `--revert`; recovery requires the verified backup and a coordinated restore. A passing dry run is not approval to write.
