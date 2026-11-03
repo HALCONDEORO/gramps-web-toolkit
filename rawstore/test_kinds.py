@@ -68,7 +68,8 @@ class ByteKindBinarySource(unittest.TestCase):
 class StagingKnownTextVsBinary(unittest.TestCase):
     """check_staged with git() mocked: numstat '-' = git sees binary; digits = git sees text."""
 
-    def run_check(self, numstat, sizes, max_kb=1, allow=()):
+    @staticmethod
+    def run_check( numstat, sizes, max_kb=1, allow=()):
         out = '\0'.join(numstat) + '\0'
         calls = []
 
@@ -114,7 +115,8 @@ class StagingKnownTextVsBinary(unittest.TestCase):
 class StagingExactOutput(unittest.TestCase):
     """Exact refusal text and entry filtering; log receives (message, file=stderr) so capture both."""
 
-    def run_logged(self, numstat, sizes, max_kb=1):
+    @staticmethod
+    def run_logged( numstat, sizes, max_kb=1):
         out = '\0'.join(numstat) + '\0'
         logs = []
 
