@@ -1,0 +1,12 @@
+# Mutations tests/test_media_edges.py must catch (same row format as mutants.txt: file | exact text | replacement | why).
+gwt_check/media.py | if isinstance(status.get(h), dict) else {} | if True else {} | a status that is not a dict is unchecked, not a crash
+gwt_check/media.py | not isinstance(h, str) or | False or | a dhash that is not a string is no hash
+gwt_check/media.py | len(h) != HASH_SIDE * HASH_SIDE // 4: | len(h) == 0: | a dhash of the wrong length is no hash
+gwt_check/media.py | except ValueError: | except KeyError: | a dhash of the right length that is not hex is no hash
+gwt_check/media.py | isinstance(got.get("w"), int) and isinstance(got.get("h"), int) and | True and | a size that is not an int is never tiny
+gwt_check/media.py | isinstance(got.get("tone"), (int, float)) and | True and | a tone that is not a number is never uniform
+gwt_check/media.py | "application/xhtml+xml", "application/x-tar" | "application/x-tar" | an XHTML file is shown only as an icon
+gwt_check/media.py | "application/x-gzip", "application/zip"} | "application/zip"} | an x-gzip file is shown only as an icon
+gwt_check/media.py | "application/x-gzip", "application/zip"} | "application/x-gzip"} | a zip file is shown only as an icon
+gwt_check/media.py | ("text/", "message/") | ("text/",) | a message/ file is shown only as an icon
+gwt_check/media.py | ("text/", "message/") | ("message/",) | a text/ file is shown only as an icon
