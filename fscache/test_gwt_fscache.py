@@ -134,6 +134,17 @@ class FSCacheTest(unittest.TestCase):
         self.assertEqual(self.cache.fetch('GET', RECORD, None, None, fake)[2], b'new')
         self.assertEqual(len(fake.calls), 2)
 
+    def test_forget_drops_one_answer(self):
+        fake = Fake()
+        self.cache.fetch('GET', RECORD, None, None, fake)
+        self.cache.fetch('GET', IMAGE, None, None, fake)
+        self.assertTrue(self.cache.forget('GET', RECORD))
+        self.assertFalse(self.cache.forget('GET', RECORD))
+        self.assertIsNone(self.cache.lookup('GET', RECORD))
+        _, meta, body = self.cache._paths(self.cache.key('GET', RECORD, None, None))
+        self.assertFalse(os.path.exists(meta) or os.path.exists(body), 'forget left part of the answer on disk')
+        self.assertIsNotNone(self.cache.lookup('GET', IMAGE), 'forget dropped another answer')
+
     def test_binary_bodies_round_trip(self):
         png = bytes(range(256)) * 40
         fake = Fake({IMAGE: (200, png)})
@@ -161,7 +172,7 @@ class FSCacheTest(unittest.TestCase):
         self.assertEqual(cli('get', RECORD), (0, b'body-1', 'HTTP 200 HIT\n'))
         self.assertEqual(cli('get', '--offline', RECORD)[0], 0)
         self.assertEqual(len(fake.calls), 1)
-        code, out, _ = cli('stats')
+        _code, out, _ = cli('stats')
         self.assertEqual(json.loads(out)['entries'], 1)
 
     def test_cli_token_file(self):

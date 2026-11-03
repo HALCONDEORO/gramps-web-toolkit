@@ -163,6 +163,7 @@ nav:
       - Variant queries: variant-queries.md
       - gwt-mh: myheritage.md
       - gwt-read: read.md
+      - gwt-read sources: sources/index.md
       - gwt-rawstore: rawstore.md
       - ocr-bench: ocr-bench.md
       - gwt-spanish-poller: spanish-poller.md

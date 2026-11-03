@@ -15,6 +15,10 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Added
 
+- `gwt-read <source> control` runs the source's canary searches (public, neutral queries with a known minimum of rows) without the cache, and exits 3 with a `void` line when one reads less. `search --controls before|after|both` runs them around one search, read without the cache: a short canary before means no search, after means the run is void, and the files and cached answers the search left are removed. Each source declares the marks of a page with rows and the site's own "nothing found" words; `gwt_reader.classify()` calls any other page `unknown`, a STOP. Sources now come from one registry (`gwt_reader.SOURCE_MODULES`, `read/_template.py`, [gwt-read sources](https://geiserx.github.io/gramps-web-toolkit/sources/)), and `run_tests.py --mutants` also reads `<pkg>/mutants.d/*.txt`. Existing commands, options and output are unchanged, except the new optional `place_orig` key on FamilySearch candidates (below).
+- `gwt-read familysearch record`: a 403 whose answer says `Access to artifact denied` or names the record's permissions without `ThemisPrmAnyone`, or a 403 while the `--control-ark` record still answers, is `restricted` (exit 5, an envelope with `access: restricted`), and the gate only logs it as a denial. A plain 403 with no `--control-ark`, or one whose control read fails, is still a block.
+- `gwt-fscache`: `FSCache.forget(method, url, headers)` drops one stored answer.
+- `gwt-read familysearch` candidates carry `place_orig`, the event place as the index typed it, when the record has one: the `_ORIG` place and parish fields, and the typed place some collections keep inside `EXT_DATA` or `FS_UNSUPPORTED`.
 - `gwt-report kin` names offline relationships and `gwt-report digest` lists new objects since the previous family update. Includes wheel packaging, command dispatcher, synthetic fixtures and mutation tests; does not write to Gramps.
 
 - Conservative `merge_place` and `delete_place` operations with explicit reasons, hierarchy/type/fact guards, backlink checks, dry-run planning and place-merge snapshot invalidation. Recovery requires a verified backup.
@@ -54,6 +58,10 @@ Every release has a **Change lists** heading. It names each change that makes a 
 - `gwt-check cite-gaps`: events with no citation whose owner has a citation that writes the event's exact date, with the quote; proposals only, `--ops` writes `attach_existing` ops with an empty ruling. Never fails.
 - `gwt-access set --alias`: another name for an archive. `show`, `plan` and `corpus --into` find a row by name or alias, so `corpus --into` no longer adds a second row for an archive that has a short name.
 - `gwt-check server` (history, undo-check, relation, search, living) and `gwt-check timeline` ask the Gramps Web server read-only. `gwt-apply --server-backup` stores a server backup before the first write and writes nothing if the server refuses; it never restores. **`--server-backup` has not been tried against a live server**: the login it was developed with got HTTP 403 on `/api/backups/`, so it is tested only against the fake server.
+
+### Fixed
+
+- `.github/scripts/check_wheel.sh` now compares real paths on macOS, imports every source module in the registry, and runs `gwt read <source> --help` for each.
 
 ### Changed
 
