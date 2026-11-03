@@ -7,6 +7,13 @@ Every release has a **Change lists** heading. It names each change that makes a 
 ## [Unreleased]
 
 ### Added
+- Offline queue audit, static install doctor with explicit UNKNOWN results, and Retry-After proposals that never alter live gate state.
+
+### Fixed
+
+- Vital-pointer checks accept primary Gramps fallback event types when no exact primary Birth/Death exists, without changing tree data or treating fallback dates as exact vital dates. Invalid indices, missing targets, wrong roles and wrong-side events remain findings.
+
+### Added
 
 - `gwt-report kin` names offline relationships and `gwt-report digest` lists new objects since the previous family update. Includes wheel packaging, command dispatcher, synthetic fixtures and mutation tests; does not write to Gramps.
 
@@ -280,3 +287,7 @@ Lists written for the first public commit of `gwt-apply` behave differently in t
 - Variants: normalize explicit local configuration paths and reject non-regular files before reading.
 
 - Report same-person event and citation duplicate candidates without selecting a survivor or changing the tree.
+
+### Offline evidence review tools
+
+- Act evidence packets, transcription contrast, pagination audits and Genae-to-act checklists. All are offline, preserve uncertainty and never verify or write an act automatically.

@@ -477,3 +477,9 @@ media, citation confidence, privacy flags and evidence before deciding. No survi
 is selected and no API write, merge, unlink or delete is performed. Any later cleanup
 needs a verified checkpoint and its own reviewed change list. An anniversary screen
 alone cannot establish that two underlying objects are duplicates.
+
+## Vital pointer fallbacks
+
+The read-only birth/death pointer check accepts primary Gramps fallback events when no primary exact Birth or Death event exists. Birth fallbacks are Baptism, Christening and Stillbirth; death fallbacks are Burial, Cremation, Cause Of Death, Probate and Stillbirth. These are display fallbacks, not proof of an exact birth/death date. A missing pointer is not required to point at a fallback. A pointer to a missing event, wrong role, unrelated type or invalid index remains a finding. If an exact primary vital event exists, it takes precedence over a fallback. Nothing rewrites events or converts a baptism into a birth.
+
+The fallback types follow Gramps `EventType.is_birth_fallback` and `is_death_fallback`: https://github.com/gramps-project/gramps/blob/master/gramps/gen/lib/eventtype.py .
