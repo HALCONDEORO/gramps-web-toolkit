@@ -104,3 +104,9 @@ gramps-web-toolkit is released under the [GPL-3.0-or-later](https://github.com/H
 - [pagination-audit](pagination-audit.md): review-only evidence and completeness checks; no network or tree writes.
 - [genae-act-link](genae-act-link.md): review-only evidence and completeness checks; no network or tree writes.
 - [transcription-review](transcription-review.md): review-only evidence and completeness checks; no network or tree writes.
+
+## Offline maintenance checks
+
+- [Queue audit](queue-audit.md): review schema, dependencies and stale queue work without changing the queue.
+- [Install doctor](install-doctor.md): static packaging checks; uncertain dynamic targets remain UNKNOWN.
+- [Retry-After proposals](retry-after.md): parse server hints offline without sleeping or changing live gate state.

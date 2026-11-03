@@ -8,6 +8,9 @@ from pathlib import Path
 from .version import version
 
 TOOLS = {
+    "queue-audit": ("gwt_queue_audit", "offline read-only queue consistency audit"),
+    "install-doctor": ("gwt_install_doctor", "offline static packaging diagnostic"),
+    "retry-after": ("gwt_retry_after", "offline Retry-After proposal, never changes live gate state"),
     "act-packet": ("gwt_act_packet", "offline evidence review, never writes to a tree"),
     "pagination-audit": ("gwt_pagination_audit", "offline evidence review, never writes to a tree"),
     "genae-act-link": ("gwt_genae_act_link", "offline evidence review, never writes to a tree"),

@@ -1,0 +1,21 @@
+
+# Mutation rows for gate/gwt_retry_after.py (manual, offline; apply one at a time).
+# Format: gwt_retry_after.py | EXACT UNIQUE OLD text | EXACT NEW text | reason (test(s) that must fail)
+# OLD occurs exactly once in gate/gwt_retry_after.py; NEW is the literal replacement (no prose).
+# Run: python3 -m unittest gate/test_retry_after.py  (expect failure per row, then revert)
+
+gwt_retry_after.py | _DELTA_RE = re.compile(r"[0-9]{1,12}") | _DELTA_RE = re.compile(r"[0-9]{1,13}") | M01 digit limit {1,12}->{1,13}: AdversarialTests.test_delta_digit_limit_boundary
+gwt_retry_after.py | clamped = delay > max_delay | clamped = delay >= max_delay | M02 clamp boundary >-> >=: AdversarialTests.test_clamp_boundary_is_not_clamped
+gwt_retry_after.py | if delta < -tolerance: | if delta <= -tolerance: | M03 skew tolerance boundary <-> <=: AdversarialTests.test_skew_tolerance_boundary_inclusive
+gwt_retry_after.py | if server_date is None: | if True: | M04 ignore server Date: ParseTests.test_clock_skew_uses_server_date, AdversarialTests.test_server_date_overrides_local_now
+gwt_retry_after.py | if not h.isascii(): | if False: | M05 drop ASCII host check (U+212A Kelvin): AdversarialTests.test_kelvin_sign_host_rejected_ascii_k_accepted
+gwt_retry_after.py | return a if a.blocked_until >= b.blocked_until else b | return a if a.blocked_until > b.blocked_until else b | M06 merge tie >=->>: AdversarialTests.test_merge_tie_keeps_first
+gwt_retry_after.py | os.fchmod(fd, 0o600) | os.fchmod(fd, 0o644) | M07 file mode 0600->0644: PersistTests.test_create_mode_and_roundtrip, AdversarialTests.test_no_leftovers_and_0600_after_update_and_conflict
+gwt_retry_after.py | os.link(tmp, path) | os.replace(tmp, path) | M08 create-if-absent becomes overwrite: PersistTests.test_create_conflict_if_exists
+gwt_retry_after.py | if read_revision(path) != expected: | if read_revision(path) == expected: | M09 revision check inverted: PersistTests.test_stale_revision_conflict, AdversarialTests.test_two_writers_same_revision_one_loses
+gwt_retry_after.py | os.unlink(lock) | pass | M10 lock file leaked: PersistTests.test_create_mode_and_roundtrip (listdir), AdversarialTests.test_no_leftovers_and_0600_after_update_and_conflict
+gwt_retry_after.py | rel_tol=0.0, abs_tol=1e-3): | rel_tol=1e-9, abs_tol=1e-3): | M11 relative tolerance restored: AdversarialTests.test_load_huge_epoch_mismatch_not_accepted
+gwt_retry_after.py | rel_tol=0.0, abs_tol=1e-3): | rel_tol=0.0, abs_tol=1e3): | M12 absolute tolerance widened: AdversarialTests.test_load_huge_epoch_mismatch_not_accepted
+gwt_retry_after.py | except OverflowError:  # huge int | except ZeroDivisionError:  # huge int | M13 huge int overflow escapes _is_num: AdversarialTests.test_huge_int_is_not_num_and_never_overflows, AdversarialTests.test_load_huge_int_is_corrupt
+gwt_retry_after.py | p = replace(p, host=normalize_host(p.host), scope=validate_scope(p.scope)) | p = replace(p, scope=validate_scope(p.scope)) | M14 loaded host not normalized: AdversarialTests.test_load_uses_normalized_host
+gwt_retry_after.py | or p.delay_seconds <= 0: | or p.delay_seconds < 0: | M15 zero delay accepted when coherent: AdversarialTests.test_load_zero_delay_coherent_is_rejected

@@ -136,6 +136,9 @@ nav:
       - gwt-import-excel: import-excel.md
       - gwt-leads: leads.md
       - gwt-report: report.md
+      - queue-audit: queue-audit.md
+      - install-doctor: install-doctor.md
+      - retry-after: retry-after.md
   - Research tools:
       - gwt-queue: queue.md
       - gwt-ledger: ledger.md
