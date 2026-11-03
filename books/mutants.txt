@@ -1,5 +1,5 @@
 gwt_books.py | guess = min(max(guess, lo[0] + 1), hi[0] - 1) | pass | the next image is never a landmark and never outside the window around the target
-gwt_books.py |         if hi[0] - lo[0] <= 1: |         if False: | two images next to each other end the search, no image between them is suggested
+gwt_books.py |     if hi[0] - lo[0] <= 1: |     if False: | two images next to each other end the search, no image between them is suggested
 gwt_books.py |     if lo and hi and lo[1] == target: |     if False: | a landmark dated exactly the target is reported as found
 gwt_books.py |             seen[int(r['image'])] = (parse_date(r['date']), r['note']) |             seen.setdefault(int(r['image']), (parse_date(r['date']), r['note'])) | a re-read image keeps its latest date
 gwt_books.py |     if any(c in text for c in '\t\r\n'): |     if False: | a tab or line break in a book label or note is refused, so the log stays one row per line
@@ -9,7 +9,7 @@ gwt_books.py |     if total and marks and total < marks[-1][0]: |     if False: 
 gwt_books.py |     name = clean(text, '--book').strip() |     name = clean(text, '--book') | the book label drops its edge spaces in every command
 gwt_books.py |     return 1 if image is None else 0 |     return 0 | next exits 1 when it has no image to suggest
 gwt_books.py |         return (1, hi[0] - 1, hi[0] - 1) |         return (1, hi[0], hi[0]) | the zone before the first landmark ends one image earlier
-gwt_books.py |         writer.writerow(('book', 'image', 'date', 'note')) |         pass | the CSV starts with its header
+gwt_books.py |     writer.writerow(('book', 'image', 'date', 'note')) |     pass | the CSV starts with its header
 gwt_books.py |     if args.out and same_file(args.out, log): |     if False: | export never writes over the log file, whatever name reaches it
 gwt_books.py |         return True |         return False | a path that resolves to the log is the log
 gwt_books.py |     return os.path.exists(a) and os.path.exists(b) and os.path.samefile(a, b) |     return False | a symlink or hard link to the log is the log
