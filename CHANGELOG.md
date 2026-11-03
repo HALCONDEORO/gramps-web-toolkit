@@ -7,6 +7,13 @@ Every release has a **Change lists** heading. It names each change that makes a 
 ## [Unreleased]
 
 ### Added
+- Offline queue audit, static install doctor with explicit UNKNOWN results, and Retry-After proposals that never alter live gate state.
+
+### Fixed
+
+- Vital-pointer checks accept primary Gramps fallback event types when no exact primary Birth/Death exists, without changing tree data or treating fallback dates as exact vital dates. Invalid indices, missing targets, wrong roles and wrong-side events remain findings.
+
+### Added
 
 - `gwt-read <source> control` runs the source's canary searches (public, neutral queries with a known minimum of rows) without the cache, and exits 3 with a `void` line when one reads less. `search --controls before|after|both` runs them around one search, read without the cache: a short canary before means no search, after means the run is void, and the files and cached answers the search left are removed. Each source declares the marks of a page with rows and the site's own "nothing found" words; `gwt_reader.classify()` calls any other page `unknown`, a STOP. Sources now come from one registry (`gwt_reader.SOURCE_MODULES`, `read/_template.py`, [gwt-read sources](https://geiserx.github.io/gramps-web-toolkit/sources/)), and `run_tests.py --mutants` also reads `<pkg>/mutants.d/*.txt`. Existing commands, options and output are unchanged, except the new optional `place_orig` key on FamilySearch candidates (below).
 - `gwt-read familysearch record`: a 403 whose answer says `Access to artifact denied` or names the record's permissions without `ThemisPrmAnyone`, or a 403 while the `--control-ark` record still answers, is `restricted` (exit 5, an envelope with `access: restricted`), and the gate only logs it as a denial. A plain 403 with no `--control-ark`, or one whose control read fails, is still a block.
@@ -262,3 +269,7 @@ Lists written for the first public commit of `gwt-apply` behave differently in t
 - Variants: normalize explicit local configuration paths and reject non-regular files before reading.
 
 - Report same-person event and citation duplicate candidates without selecting a survivor or changing the tree.
+
+### Offline evidence review tools
+
+- Act evidence packets, transcription contrast, pagination audits and Genae-to-act checklists. All are offline, preserve uncertainty and never verify or write an act automatically.

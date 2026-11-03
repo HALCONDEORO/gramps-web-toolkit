@@ -71,3 +71,30 @@ gwt_read.py | return v if isinstance(v, str) and v else None | return v | place_
 gwt_reader.py | if not (isinstance(c, dict) and isinstance(c.get('argv'), list) and c['argv'] | if not (isinstance(c, dict) and isinstance(c.get('argv'), list) | a canary must name at least one search option: an empty search is not a canary
 gwt_read.py | if not isinstance(t, str) or not t: | if not t: | place_orig keeps only text, never an object a field holds
 gwt_read.py | R.cache.store = store | pass | a void forgets only the answers its search cached, never the canaries' own
+
+# Mutations the pagination audit tests must catch. One row each: file | exact text | replacement | why
+# Same format as mutants.txt. The text must occur exactly once in the file.
+gwt_pagination_audit.py | if declared[0] != unique_count or declared[0] != returned_count: | if declared[0] != unique_count: | a declared total that matches unique ids but not returned ids is a TOTAL_MISMATCH
+gwt_pagination_audit.py | if _is_int(total) and total > 0: | if _is_int(total) and total >= 0: | a confirmed-empty result (declared total 0) has no coverage ratio and never divides by zero
+gwt_pagination_audit.py | if len(set(declared)) > 1: | if len(set(declared)) > 2: | two different declared totals are a TOTAL_CONFLICT
+gwt_pagination_audit.py | elif len(set(ids)) != len(ids): | elif False: | an id repeated inside one page is reported as repeated within that page
+gwt_pagination_audit.py | if val is True: | if val: | a truthy non-bool wall/truncated flag is BAD_FLAG, not a real WALL
+gwt_pagination_audit.py | if not _is_name(page.get("source_url")): | if page.get("source_url") is None: | an empty or non-string source_url is MISSING_SOURCE_URL
+gwt_pagination_audit.py | if idx in seen_idx: | if False: | two pages with the same index are DUPLICATE_PAGE even with different page ids
+gwt_pagination_audit.py | if lo not in (0, 1): | if lo not in (0, 1, 2): | a manifest whose first page index is 2 is missing earlier pages
+gwt_pagination_audit.py | if len(ids) > size: | if len(ids) >= size: | a page with exactly the expected number of ids is not OVERSIZE
+gwt_pagination_audit.py | elif len(ids) < size and page.get("terminal") is not True: | elif len(ids) < size: | a short terminal page is the normal last page, not SHORT_PAGE
+# Mutations test_genae_act_link.py must catch. One row each: file | exact text | replacement | why
+# Same format as mutants.txt. The text must occur exactly once in the file.
+gwt_genae_act_link.py | if len(readers) < 2 or len(crops) < 2: | if len(readers) < 1 or len(crops) < 2: | one reader giving two crops is not two independent readings
+gwt_genae_act_link.py | if clash: | if False: | a third reading that disagrees with the others blocks agreement
+gwt_genae_act_link.py | if problems:  # an incomplete reading | if False:  # an incomplete reading | an invalid third reading blocks readings-agree instead of being dropped
+gwt_genae_act_link.py | stage = 'readings-agree' if zoom else stage | stage = 'readings-agree' | one reading never reaches readings-agree
+gwt_genae_act_link.py | 'state': 'por-confirmar-acta', | 'state': cand.get('state') or 'por-confirmar-acta', | no input ever yields verificado-zoom: the state is fixed
+gwt_genae_act_link.py | if cid.strip() in seen: | if cid in seen: | a duplicate id that differs only by spaces is still a duplicate
+gwt_genae_act_link.py | if not isinstance(cid, str) or not cid.strip(): | if not isinstance(cid, str): | an empty candidate id is rejected
+gwt_genae_act_link.py | elif not valid_iso(_clean(r['date_iso'])): | elif False: | a reading with an impossible calendar date is invalid
+gwt_genae_act_link.py | if c.startswith(('/', '~')) or | if c.startswith(('~',)) or | an absolute crop path is invalid provenance
+gwt_genae_act_link.py | if not isinstance(crop, str) or not crop.strip(): | if not isinstance(crop, str): | an empty crop is missing provenance
+gwt_genae_act_link.py | return os.path.exists(a) and os.path.exists(b) and os.path.samefile(a, b) | return False | a hard link to the input is refused, so the input is never overwritten
+gwt_genae_act_link.py | fields[k] = a or b | fields[k] = b or a | evidence never overwrites the candidate's own value

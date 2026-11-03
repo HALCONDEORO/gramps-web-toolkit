@@ -136,12 +136,19 @@ nav:
       - gwt-import-excel: import-excel.md
       - gwt-leads: leads.md
       - gwt-report: report.md
+      - queue-audit: queue-audit.md
+      - install-doctor: install-doctor.md
+      - retry-after: retry-after.md
   - Research tools:
       - gwt-queue: queue.md
       - gwt-ledger: ledger.md
       - gwt-books: books.md
       - gwt-dates: dates.md
       - gwt-acts: acts.md
+      - act-packet: act-packet.md
+      - pagination-audit: pagination-audit.md
+      - genae-act-link: genae-act-link.md
+      - transcription-review: transcription-review.md
       - Military records: military.md
       - Finding church and civil registers: finding-registers.md
       - FamilySearch viewer notes: familysearch-viewer.md

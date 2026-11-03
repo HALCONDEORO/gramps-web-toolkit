@@ -1,0 +1,12 @@
+# Mutations the pagination audit tests must catch. One row each: file | exact text | replacement | why
+# Same format as mutants.txt. The text must occur exactly once in the file.
+gwt_pagination_audit.py | if declared[0] != unique_count or declared[0] != returned_count: | if declared[0] != unique_count: | a declared total that matches unique ids but not returned ids is a TOTAL_MISMATCH
+gwt_pagination_audit.py | if _is_int(total) and total > 0: | if _is_int(total) and total >= 0: | a confirmed-empty result (declared total 0) has no coverage ratio and never divides by zero
+gwt_pagination_audit.py | if len(set(declared)) > 1: | if len(set(declared)) > 2: | two different declared totals are a TOTAL_CONFLICT
+gwt_pagination_audit.py | elif len(set(ids)) != len(ids): | elif False: | an id repeated inside one page is reported as repeated within that page
+gwt_pagination_audit.py | if val is True: | if val: | a truthy non-bool wall/truncated flag is BAD_FLAG, not a real WALL
+gwt_pagination_audit.py | if not _is_name(page.get("source_url")): | if page.get("source_url") is None: | an empty or non-string source_url is MISSING_SOURCE_URL
+gwt_pagination_audit.py | if idx in seen_idx: | if False: | two pages with the same index are DUPLICATE_PAGE even with different page ids
+gwt_pagination_audit.py | if lo not in (0, 1): | if lo not in (0, 1, 2): | a manifest whose first page index is 2 is missing earlier pages
+gwt_pagination_audit.py | if len(ids) > size: | if len(ids) >= size: | a page with exactly the expected number of ids is not OVERSIZE
+gwt_pagination_audit.py | elif len(ids) < size and page.get("terminal") is not True: | elif len(ids) < size: | a short terminal page is the normal last page, not SHORT_PAGE

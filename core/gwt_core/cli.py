@@ -7,7 +7,15 @@ from pathlib import Path
 
 from .version import version
 
-TOOLS = {  # name: (module with main(argv), one line)
+TOOLS = {
+    "queue-audit": ("gwt_queue_audit", "offline read-only queue consistency audit"),
+    "install-doctor": ("gwt_install_doctor", "offline static packaging diagnostic"),
+    "retry-after": ("gwt_retry_after", "offline Retry-After proposal, never changes live gate state"),
+    "act-packet": ("gwt_act_packet", "offline evidence review, never writes to a tree"),
+    "pagination-audit": ("gwt_pagination_audit", "offline evidence review, never writes to a tree"),
+    "genae-act-link": ("gwt_genae_act_link", "offline evidence review, never writes to a tree"),
+    "transcription-review": ("gwt_transcription_review", "offline evidence review, never writes to a tree"),
+  # name: (module with main(argv), one line)
     "surname-clusters": ("gwt_fetch.surname_clusters", "offline human-maintained surname suggestions, never identity evidence"),
     "apply": ("gwt_apply.cli", "apply a JSON Lines change list to a tree, dry-run until --apply"),
     "check": ("gwt_check.cli", "read-only checks of a whole tree, with a self-test"),
