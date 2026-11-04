@@ -107,7 +107,7 @@ class IndependentReviewRegressions(unittest.TestCase):
     def test_generation_boundary_reports_cutoff(self):
         T=tree();T['people']['p']['parent_family_list']=['up'];T['people']['grand']={'handle':'grand'}
         T['families']['up']={'father_handle':'grand','child_ref_list':[{'ref':'p','frel':'Birth'}]}
-        slots,issues=P.ancestry(T,'child',1)
+        _,issues=P.ancestry(T,'child',1)
         self.assertTrue(any(x['reason']=='generation-limit' for x in issues))
 
 class ReviewV5Regressions(unittest.TestCase):

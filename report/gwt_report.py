@@ -1022,11 +1022,13 @@ def main(argv=None):
     weak = tuple(fold(w) for w in args.weak_tag) if args.weak_tag else WEAK_TAGS
     try:
         if args.cmd in ['pedigree-completeness', 'evidence-fan']:
-            from gwt_pedigree_reports import run
+            from importlib import import_module
+            run = import_module('gwt_pedigree_reports').run
             try:return run(args)
             except (OSError, ValueError) as exc:raise BadInput('invalid report input') from exc
         if args.cmd == 'occupations':
-            from gwt_occupations import run
+            from importlib import import_module
+            run = import_module('gwt_occupations').run
             try:
                 return run(args)
             except (OSError, ValueError) as exc:

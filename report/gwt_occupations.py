@@ -2,25 +2,12 @@
 import collections
 import json
 import gwt_report as R
+from gwt_pedigree_reports import deceased
 
 
 def event_type(value):
     return R.text_of(value)
 
-
-def deceased(T, person, include_private=False):
-    from gwt_pedigree_reports import conflicted
-    for ref in person.get('event_ref_list', []):
-        event = T['events'].get(ref.get('ref'), {})
-        if (ref.get('role') != 'Primary' or event_type(event.get('type')) not in
-                {'Death', 'Burial', 'Cremation'}):
-            continue
-        if conflicted(T, event) or conflicted(T, ref):
-            continue
-        if not include_private and (event.get('private') or ref.get('private')):
-            continue
-        return True
-    return False
 
 
 def event_year(event):
@@ -54,9 +41,51 @@ def category_map(path):
     return data
 
 
+def occupation_rows(T, handle, person, paths, categories, include_private, excluded):
+    """Collect one allowed person's events in original reference order."""
+    from gwt_pedigree_reports import existing_citations, conflicted
+    rows = []
+    seen = set()
+    for ref in person.get('event_ref_list', []):
+        eh = ref.get('ref')
+        if eh in seen:
+            continue
+        event = T['events'].get(eh, {})
+        if conflicted(T, event):
+            excluded['conflicting_occupation'] += 1
+            continue
+        if event_type(event.get('type')) != 'Occupation':
+            continue
+        if ref.get('role') != 'Primary':
+            excluded['non_primary_occupation'] += 1
+            continue
+        if (event.get('private') or ref.get('private')) and not include_private:
+            excluded['private_event'] += 1
+            continue
+        seen.add(eh)
+        literal = event.get('description')
+        if not isinstance(literal, str) or not literal.strip() or literal.strip() == '[REDACTED]':
+            excluded['missing_or_redacted_literal'] += 1
+            continue
+        citations = existing_citations(T, event.get('citation_list', []), include_private)
+        if not citations:
+            excluded['uncited_occupation'] += 1
+            continue
+        place = T['places'].get(event.get('place'), {})
+        if place.get('private') and not include_private:place = {}
+        rows.append(dict(person=person.get('gramps_id', handle), event=event.get('gramps_id', eh),
+                         literal=literal, category=categories.get(literal), citations=citations,
+                         place_id=place.get('gramps_id'), place=place.get('title') or None,
+                         century=century(event),
+                         period25=((event_year(event)-1)//25)*25+1 if event_year(event) else None,
+                         period50=((event_year(event)-1)//50)*50+1 if event_year(event) else None,
+                         generations=sorted(set(paths.get(handle, [])))))
+    return rows
+
+
 def report(T, root=None, categories=None, include_private=False):
     categories = categories or {}
-    from gwt_pedigree_reports import ancestry, existing_citations, conflicted
+    from gwt_pedigree_reports import ancestry
     slots, issues = ancestry(T, root, include_private=include_private)
     paths = collections.defaultdict(list)
     for slot, handle in slots.items():
@@ -74,41 +103,7 @@ def report(T, root=None, categories=None, include_private=False):
         if person.get('private') and not include_private:
             excluded['private_person'] += 1
             continue
-        seen = set()
-        for ref in person.get('event_ref_list', []):
-            eh = ref.get('ref')
-            if eh in seen:
-                continue
-            event = T['events'].get(eh, {})
-            if conflicted(T, event):
-                excluded['conflicting_occupation'] += 1
-                continue
-            if event_type(event.get('type')) != 'Occupation':
-                continue
-            if ref.get('role') != 'Primary':
-                excluded['non_primary_occupation'] += 1
-                continue
-            if (event.get('private') or ref.get('private')) and not include_private:
-                excluded['private_event'] += 1
-                continue
-            seen.add(eh)
-            literal = event.get('description')
-            if not isinstance(literal, str) or not literal.strip() or literal.strip() == '[REDACTED]':
-                excluded['missing_or_redacted_literal'] += 1
-                continue
-            citations = existing_citations(T, event.get('citation_list', []), include_private)
-            if not citations:
-                excluded['uncited_occupation'] += 1
-                continue
-            place = T['places'].get(event.get('place'), {})
-            if place.get('private') and not include_private:place = {}
-            rows.append(dict(person=person.get('gramps_id', handle), event=event.get('gramps_id', eh),
-                             literal=literal, category=categories.get(literal), citations=citations,
-                             place_id=place.get('gramps_id'), place=place.get('title') or None,
-                             century=century(event),
-                             period25=((event_year(event)-1)//25)*25+1 if event_year(event) else None,
-                             period50=((event_year(event)-1)//50)*50+1 if event_year(event) else None,
-                             generations=sorted(set(paths.get(handle, [])))))
+        rows.extend(occupation_rows(T, handle, person, paths, categories, include_private, excluded))
     frequencies = collections.Counter(r['literal'] for r in rows)
     dimensions = {}
     for dim in ['category', 'place_id', 'century', 'period25', 'period50', 'generations']:
