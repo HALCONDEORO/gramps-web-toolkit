@@ -88,3 +88,56 @@ class PreflightTest(unittest.TestCase):
             with self.assertRaises(ValueError):run(path)
 
 if __name__=='__main__':unittest.main()
+
+from gwt_public_preflight import wikitree_contract
+
+
+def evidence(row):
+    record={'ark':'ark:/synthetic/record'}
+    values={k: row[k] for k in ('nombre_literal_acta','apellido_literal_acta','tipo_fecha_principal','fecha_principal','indicador_fecha','tipo_fecha_secundaria','fecha_secundaria','indicador_fecha_secundaria')}
+    return {'format':'gwt-public-evidence/1','people':{row['id_gramps']:{'record':record,
+        'readings':[{'reader':reader,'record':record.copy(),'values':values.copy()} for reader in ('synthetic-a','synthetic-b')],
+        'primary_date_basis':'primary-record','privacy':'Open','relationships':[],
+        'match_search':{'completed':True,'checked_at':'2026-01-01T00:00:00Z','matches':[]}}}}
+
+
+class WikiTreeTest(unittest.TestCase):
+    def test_contract_never_approves_upload_and_enforces_single_step(self):
+        row=fixture();result=wikitree_contract([row],evidence(row))
+        self.assertEqual(result['rows'][0]['errors'],[]);self.assertFalse(result['publish_allowed'])
+        self.assertEqual(result['execution_constraints']['max_creates_per_step'],1)
+
+    def test_each_attestation_gate(self):
+        row=fixture()
+        for key,bad,code in [('record',{},'record-locator'),('readings',[],'structured-readings-disagree'),
+                             ('primary_date_basis','secondary-only','secondary-event-requires-before'),
+                             ('privacy','Private','open-profile-required'),('relationships',['parent'],'evidence-relationships-forbidden'),
+                             ('match_search',{'completed':True,'checked_at':'2026-01-01','matches':['synthetic-match']},'destination-match-no-create')]:
+            with self.subTest(key=key):
+                current=copy.deepcopy(row)
+                if key=='primary_date_basis':current['indicador_fecha']='exacta'
+                ev=evidence(current);ev['people'][current['id_gramps']][key]=bad
+                self.assertIn(code,wikitree_contract([current],ev)['rows'][0]['errors'])
+
+    def test_reader_identity_agreement_record_binding_and_exclusion(self):
+        row=fixture()
+        for field in ('reader','record','values'):
+            ev=evidence(row);readings=ev['people'][row['id_gramps']]['readings']
+            readings[1][field]=readings[0][field] if field=='reader' else {}
+            self.assertIn('structured-readings-disagree',wikitree_contract([row],ev)['rows'][0]['errors'])
+        self.assertIn('explicit-exclusion',wikitree_contract([row],evidence(row),excluded_ids=[row['id_gramps']])['rows'][0]['errors'])
+
+    def test_age_threshold_and_pre1700_and_burial(self):
+        for year,blocked in [('1916',True),('1915',False),('1699',True)]:
+            row=fixture();row['fecha_principal']=year+'-01-02';row['fecha_corte']='2026-01-03'
+            errors=wikitree_contract([row],evidence(row))['rows'][0]['errors']
+            self.assertEqual(bool(errors),blocked)
+        row=fixture();row['fecha_principal']='2000-01-02';row['tipo_fecha_principal']='Death';row['tipo_fecha_secundaria']='Burial'
+        self.assertNotIn('deceased-not-established',wikitree_contract([row],evidence(row))['rows'][0]['errors'])
+        row['apellido_literal_acta']='';row['control_apellido_literal']='VACIO_NO_INFERIR_APELLIDO'
+        self.assertIn('destination-requires-surname',wikitree_contract([row],evidence(row))['rows'][0]['errors'])
+
+    def test_malformed_evidence_is_blocked(self):
+        row=fixture()
+        for ev in (None,{}, {'format':'bad','people':{}}, {'format':'gwt-public-evidence/1','people':[]}):
+            self.assertIn('evidence-schema',wikitree_contract([row],ev)['rows'][0]['errors'])

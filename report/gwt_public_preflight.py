@@ -38,6 +38,8 @@ def source_url_ok(value):
 
 
 def cutoff_ok(value):
+    if not isinstance(value, str):
+        return False
     if date_ok(value):
         return True
     try:
@@ -111,11 +113,84 @@ def validate_rows(rows, *, surname_required=False):
                                      'destination-contract', 'destination-deduplication'], 'rows': results}
 
 
-def run(path, surname_required=False):
+def run(path, surname_required=False, evidence_path=None, excluded_ids=()):
     with open(path, newline='', encoding='utf-8-sig') as stream:
         reader = csv.DictReader(stream)
         if reader.fieldnames is None or len(reader.fieldnames) != len(set(reader.fieldnames)) or set(reader.fieldnames) != set(FIELDS):
             raise ValueError('schema')
-        report = validate_rows(reader, surname_required=surname_required)
+        rows = list(reader)
+        if evidence_path:
+            with open(evidence_path, encoding='utf-8') as evidence_stream:
+                evidence = json.load(evidence_stream)
+            report = wikitree_contract(rows, evidence, excluded_ids=excluded_ids)
+        else:
+            report = validate_rows(rows, surname_required=surname_required)
     print(json.dumps(report, ensure_ascii=True, sort_keys=True))
     return 2 if any(row['errors'] for row in report['rows']) else 0
+
+
+def wikitree_contract(rows, evidence, *, excluded_ids=()):
+    """Check explicit attestations, not their authenticity. Publication stays disabled."""
+    report = validate_rows(rows, surname_required=True)
+    if not isinstance(evidence, dict) or set(evidence) != {'format', 'people'} or evidence['format'] != 'gwt-public-evidence/1' or not isinstance(evidence['people'], dict):
+        for result in report['rows']:
+            result['errors'].append('evidence-schema')
+            result['state'] = 'blocked'
+        return report
+    for row, result in zip(rows, report['rows']):
+        if not isinstance(row, dict) or set(row) != set(FIELDS) or any(not isinstance(v, str) for v in row.values()):
+            continue
+        errors = result['errors']
+        person_id = row['id_gramps']
+        if person_id in excluded_ids:
+            errors.append('explicit-exclusion')
+        ev = evidence['people'].get(person_id)
+        if not isinstance(ev, dict):
+            errors.append('missing-evidence')
+            result['state'] = 'blocked'
+            continue
+        record = ev.get('record')
+        if not isinstance(record, dict) or not ((isinstance(record.get('ark'), str) and record['ark'].strip().startswith('ark:/')) or all(isinstance(record.get(k), str) and record[k].strip() for k in ('film', 'image'))):
+            errors.append('record-locator')
+        readings = ev.get('readings')
+        expected = {k: row[k] for k in ('nombre_literal_acta', 'apellido_literal_acta', 'tipo_fecha_principal', 'fecha_principal', 'indicador_fecha', 'tipo_fecha_secundaria', 'fecha_secundaria', 'indicador_fecha_secundaria')}
+        valid = isinstance(readings, list) and len(readings) >= 2
+        readers = set()
+        if valid:
+            for reading in readings:
+                if not isinstance(reading, dict) or not isinstance(reading.get('reader'), str) or not reading['reader'].strip() or reading.get('record') != record or reading.get('values') != expected:
+                    valid = False
+                    break
+                readers.add(reading['reader'].strip())
+        if not valid or len(readers) < 2:
+            errors.append('structured-readings-disagree')
+        cutoff = row['fecha_corte'][:10]
+        birth = row['fecha_principal']
+        cutoff_date = dt.date.fromisoformat(cutoff) if date_ok(cutoff) else None
+        birth_date = dt.date.fromisoformat(birth) if date_ok(birth) else None
+        age = None
+        if birth_date and cutoff_date and row['tipo_fecha_principal'] == 'Birth':
+            age = cutoff_date.year - birth_date.year - ((cutoff_date.month, cutoff_date.day) < (birth_date.month, birth_date.day))
+        death_event = row['tipo_fecha_principal'] == 'Death' or row['tipo_fecha_secundaria'] == 'Burial'
+        if not death_event and not (age is not None and age > 110):
+            errors.append('deceased-not-established')
+        if ev.get('primary_date_basis') == 'secondary-only' and row['indicador_fecha'] != 'antes de':
+            errors.append('secondary-event-requires-before')
+        if ev.get('primary_date_basis') not in ('primary-record', 'secondary-only'):
+            errors.append('primary-date-basis')
+        if birth_date and birth_date.year < 1700:
+            errors.append('pre1700-held-for-owner-order')
+        if age is not None and age > 150 and ev.get('privacy') != 'Open':
+            errors.append('open-profile-required')
+        search = ev.get('match_search')
+        if not isinstance(search, dict) or search.get('completed') is not True or not isinstance(search.get('matches'), list) or not cutoff_ok(search.get('checked_at', '')):
+            errors.append('match-search-required')
+        elif search['matches']:
+            errors.append('destination-match-no-create')
+        if ev.get('relationships') != []:
+            errors.append('evidence-relationships-forbidden')
+        if errors:
+            result['state'] = 'blocked'
+    report['destination'] = 'wikitree'
+    report['execution_constraints'] = {'max_creates_per_step': 1, 'pace': 'moderate; site-specific approval required'}
+    return report

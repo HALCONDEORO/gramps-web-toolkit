@@ -177,3 +177,36 @@ structural checks, not proof someone is deceased. Every row still needs authenti
 independent source readings, checked deceased evidence, a destination schema contract
 and destination duplicate checks. Those contracts and the write workflow are outside
 this first patch. Passing this command must never trigger a public upload.
+
+### WikiTree attestation contract (still blocked for publication)
+
+`--wikitree-evidence evidence.json` adds structured checks and always requires a
+literal surname. `--exclude-id LOCAL_ID` is repeatable for private exclusions; do
+not put a family's excluded identities in source code, fixtures or public logs.
+
+The JSON shape is `{"format":"gwt-public-evidence/1","people":{...}}`, keyed by
+local CSV `id_gramps`. Each value has:
+
+- `record`: an `ark` beginning `ark:/`, or nonblank `film` and `image`;
+- `readings`: at least two objects with distinct `reader`, the same `record`, and
+  `values` equal to the CSV's literal given/surname, both event kinds, both dates
+  and both date indicators. Free-text notes cannot replace these fields;
+- `primary_date_basis`: `primary-record` or `secondary-only`; the latter requires
+  the primary date indicator `antes de`, not an invented exact birth/death date;
+- `privacy`: `Open` when the birth is over 150 years before the cutoff;
+- `relationships`: an empty list;
+- `match_search`: `completed: true`, an ISO `checked_at`, and `matches: []`.
+  Any match blocks creation rather than choosing or merging a profile.
+
+Death/burial event evidence or a birth age strictly greater than 110 at the cutoff
+is required. Pre-1700 dates are held for an explicit owner decision, with no
+in-code bypass in this patch. Execution guidance is one create per step and
+moderate site-specific pacing; this command performs zero creates and enforces
+no remote request cadence. All attestations still require independent review:
+JSON can lie, an ARK-shaped string is not a verified act, and an empty match list
+is not a live destination search. No preflight result authenticates these claims.
+
+FamilySearch GEDCOM preparation is not implemented here. A separate contract must
+cap batches at about 100 profiles, standardize dates/places and include sources as
+text, with no living people or relationships. Neither this mode nor exit `0`
+authorizes a FamilySearch import.
