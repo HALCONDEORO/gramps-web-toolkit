@@ -957,6 +957,10 @@ def build_parser():
     d.add_argument('--format', choices=('md', 'html'), default='md')
     d.add_argument('--weak-tag', action='append', metavar='TEXT')
     d.add_argument('--include-private', action='store_true', help='also list objects and people marked private')
+    v = sub.add_parser('public-preflight', help='offline structural deceased CSV checks; never upload approval')
+    v.add_argument('csv')
+    v.add_argument('--surname-required', action='store_true')
+    v.set_defaults(weak_tag=None)
     return p
 
 
@@ -1000,6 +1004,13 @@ def main(argv=None):
     args = p.parse_args(argv)
     weak = tuple(fold(w) for w in args.weak_tag) if args.weak_tag else WEAK_TAGS
     try:
+        if args.cmd == 'public-preflight':
+            from gwt_public_preflight import run
+            try:
+                return run(args.csv, args.surname_required)
+            except (OSError, ValueError):
+                print('gwt-report: public-preflight invalid input', file=sys.stderr)
+                return 2
         if args.cmd == 'kin':
             return run_kin(args, weak)
         return run_digest(p, args, weak)

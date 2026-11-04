@@ -1,0 +1,80 @@
+import copy
+import csv
+import io
+import json
+import tempfile
+import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
+from gwt_public_preflight import FIELDS, validate_rows, run
+
+
+def fixture():
+    row = dict.fromkeys(FIELDS, 'synthetic')
+    row.update(estado='ELEGIBLE_NUCLEO;VALIDAR_ESQUEMA_DESTINO', id_gramps='SYNTH-1',
+               nombre_literal_acta='Invented', apellido_literal_acta='Example',
+               tipo_fecha_principal='Birth', fecha_principal='1800-01-02', indicador_fecha='antes de',
+               tipo_fecha_secundaria='Baptism', fecha_secundaria='1800-01-03', indicador_fecha_secundaria='exacta',
+               url_fuente='https://archive.example.invalid/record', relaciones_exportadas='NINGUNA',
+               lecturas_coincidentes='2+; concordancia de nombre y fecha documentada en nota',
+               criterio_fallecido='Nacimiento literal >110 años', control_apellido_literal='literal', fecha_corte='2026-01-01')
+    return row
+
+
+class PreflightTest(unittest.TestCase):
+    def test_valid_is_only_pending_and_not_mutated(self):
+        row = fixture(); before = copy.deepcopy(row)
+        report = validate_rows([row]); self.assertEqual(report['rows'][0]['errors'], [])
+        self.assertEqual(report['rows'][0]['state'], 'pending-review')
+        self.assertIs(report['publish_allowed'], False); self.assertEqual(row, before)
+
+    def test_each_guard_blocks(self):
+        bad = {'estado': 'living', 'relaciones_exportadas': 'parent', 'lecturas_coincidentes': '1',
+               'fuente': '', 'referencia_exacta': '', 'url_fuente': 'http://archive.invalid',
+               'cita_gramps': '', 'nota_evidencia': '', 'criterio_fallecido': 'guess',
+               'fecha_principal': '1800-02-30', 'indicador_fecha': 'after',
+               'tipo_fecha_principal': 'Marriage', 'fecha_secundaria': 'bad',
+               'indicador_fecha_secundaria': 'about', 'fecha_corte': 'bad',
+               'control_apellido_literal': 'inferred'}
+        for key, value in bad.items():
+            with self.subTest(key=key):
+                row = fixture(); row[key] = value
+                self.assertEqual(validate_rows([row])['rows'][0]['state'], 'blocked')
+
+    def test_surname_blank_never_filled_and_destination_can_block(self):
+        row=fixture();row['apellido_literal_acta']='';row['control_apellido_literal']='VACIO_NO_INFERIR_APELLIDO'
+        self.assertEqual(validate_rows([row])['rows'][0]['errors'], [])
+        self.assertIn('destination-requires-surname', validate_rows([row], surname_required=True)['rows'][0]['errors'])
+        self.assertEqual(row['apellido_literal_acta'], '')
+
+    def test_duplicate_blocks_both_not_first_wins(self):
+        a=fixture(); b=fixture();b['id_gramps']='SYNTH-2'
+        r=validate_rows([a,b]);self.assertTrue(all('duplicate-literal-identity' in x['errors'] for x in r['rows']))
+        b['nombre_literal_acta']='Other';b['id_gramps']=a['id_gramps']
+        self.assertTrue(all('duplicate-id' in x['errors'] for x in validate_rows([a,b])['rows']))
+
+    def test_cutoff_allows_aware_iso_timestamp_not_naive(self):
+        row=fixture();row['fecha_corte']='2026-01-01T10:00:00Z'
+        self.assertEqual(validate_rows([row])['rows'][0]['errors'], [])
+        row['fecha_corte']='2026-01-01T10:00:00'
+        self.assertIn('cutoff-date', validate_rows([row])['rows'][0]['errors'])
+
+    def test_empty_blocks(self):
+        self.assertEqual(validate_rows([])['rows'][0]['state'], 'blocked')
+
+    def test_schema_and_values_fail_closed(self):
+        for row in [None, {}, {**fixture(), 'extra':'x'}, {**fixture(),'fuente':None}, {**fixture(),'fuente':'private\nvalue'}]:
+            self.assertEqual(validate_rows([row])['rows'][0]['state'], 'blocked')
+
+    def test_csv_output_has_only_codes_no_private_values(self):
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/'synthetic.csv';row=fixture();row['nota_evidencia']='DO_NOT_ECHO_SYNTHETIC_MARKER'
+            with path.open('w',newline='') as f:
+                w=csv.DictWriter(f,fieldnames=FIELDS);w.writeheader();w.writerow(row)
+            out=io.StringIO()
+            with redirect_stdout(out):self.assertEqual(run(path),0)
+            self.assertNotIn(row['nota_evidencia'],out.getvalue());self.assertFalse(json.loads(out.getvalue())['publish_allowed'])
+            path.write_text('estado,estado\nx,y\n')
+            with self.assertRaises(ValueError):run(path)
+
+if __name__=='__main__':unittest.main()

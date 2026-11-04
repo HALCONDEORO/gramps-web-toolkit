@@ -146,3 +146,34 @@ cousins	E1	2026-02-03
 ```
 
 The fixtures behind these examples are invented and made by `report/fixtures/make_fixtures.py`.
+
+## public-preflight: structural checks before a deceased-only public workflow
+
+```sh
+gwt report public-preflight candidate.csv --surname-required
+```
+
+This offline mode reads the Spanish-column CSV staging schema used for independent,
+source-backed profiles. It makes no network calls, does not change the tree, emits
+no upload payload, and never approves publication. Structurally valid rows are
+`pending-review`, with `publish_allowed: false` even when the command exits `0`.
+Exit `2` means structural blockers, an invalid header or an unreadable file.
+
+Rows keep literal names and separate date indicators (`exacta` or `antes de`). The
+command does not infer a surname, repair a date, copy a modifier from another event,
+infer relationships, merge people or deduplicate a destination. `--surname-required`
+blocks a blank surname when that destination requires one. Without it, a blank surname
+requires `VACIO_NO_INFERIR_APELLIDO`. Relationships must be `NINGUNA`.
+
+Missing source/citation fields, unsupported status/deceased-basis labels, missing
+claimed two-reading agreement, invalid calendar dates/indicators, schema differences,
+control characters and repeated internal IDs or literal identities block rows.
+Duplicates block every involved row rather than silently choosing one. The output
+contains only row numbers and fixed reason codes, not names, identifiers, notes or
+source URLs. No example or test uses a real family record.
+
+A CSV claim such as `2+` is **not** independent reading evidence. The labels are
+structural checks, not proof someone is deceased. Every row still needs authenticated
+independent source readings, checked deceased evidence, a destination schema contract
+and destination duplicate checks. Those contracts and the write workflow are outside
+this first patch. Passing this command must never trigger a public upload.
