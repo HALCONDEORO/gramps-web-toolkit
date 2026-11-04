@@ -1,0 +1,10 @@
+gwt_occupations.py | if not deceased(T, person, include_private): | if False: | people without explicit primary death evidence are never counted
+gwt_occupations.py | if ref.get('role') != 'Primary': | if False: | witnesses and family roles do not inherit occupations
+gwt_occupations.py | if not citations: | if False: | uncited occupations are not statistics evidence
+gwt_pedigree_reports.py | if not 0 <= max_generation <= 12: | if False: | bounded generations refuse invalid depth
+gwt_pedigree_reports.py | and eligible(T, T['people'][h], include_private)] | ] | unknown unsourced living and private ancestors never count as discovered
+gwt_pedigree_reports.py | if any(r['citation'] not in citations for r in supplied): | if False: | evidence cannot be attributed using someone elses citation
+gwt_occupations.py | if place.get('private') and not include_private:place = {} | if False:place = {} | private place labels and IDs are not emitted by default
+gwt_pedigree_reports.py | if not include_private and (fam.get('private') or ref.get('private') or T['people'][parent].get('private')): | if False: | private family and child references cannot reveal ancestors
+gwt_pedigree_reports.py | if role in blocked_roles or len(parents) != 1: | if len(parents) != 1: | a conflicting competitor blocks the role instead of selecting another father
+gwt_pedigree_reports.py | if relation == 'Adopted': | if False: | adopted parents must not compete for a Birth parent slot

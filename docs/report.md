@@ -213,3 +213,102 @@ authorizes a FamilySearch import.
 Exclusions apply in both structural-only and evidence modes; IDs are stripped the same way as internal duplicate IDs. Age thresholds use dates after the 110th/150th anniversary, not completed whole ages. For a leap-day birth in a non-leap anniversary year, this begins on March 1. Future death/burial events block the row and cannot establish deceased status at the cutoff.
 
 Missing per-person evidence accumulates all applicable codes rather than stopping early. Match searches must be no later than cutoff and within `--max-search-age-days` (default 7, configurable 0-365). Date-only timestamps mean midnight UTC. These checks use the explicit cutoff, not the computer clock; an old packet still requires fresh validation before publishing.
+
+## Structured occupations, offline
+
+`gwt report occupations DUMP [--root ID] [--categories FILE] [--include-private-deceased]`
+prints JSON, reads local files only and never writes the tree. Only a person's own
+Primary Occupation event with at least one existing citation and a nonempty original
+description is counted. Death, Burial or Cremation must also be a Primary event of
+that person. Witnesses and relatives do not inherit an occupation. Free-text notes
+are never mined for guesses. Private people, events and event references are held
+back unless `--include-private-deceased` selects a local private review; this option
+still never includes someone without explicit Primary death evidence.
+
+The unit is one person-event pair. A repeated event reference is counted once;
+distinct events stay distinct even when their literal agrees. `literal` is preserved
+byte-for-byte as decoded JSON text. `category` is separate and null until an exact
+literal is mapped in an optional reviewed JSON object, for example
+`{"journalière":"agriculture"}`. There is no automatic translation or classification.
+Duplicate mapping keys and empty categories fail closed.
+
+Counts include frequencies and groups by category, place ID, century and generation.
+Place titles are display labels; IDs distinguish namesakes. A century is assigned
+only for a single unmodified Gregorian event year; unknown/approximate/ranged dates
+remain unknown. Generation means parent-link distance from the optional root, root=0,
+not proven biological ancestry. All observed pedigree paths are retained, so implex
+may place a person in multiple generations; those totals are not additive. Truncation
+is reported. Without a root or reachable path, generation remains unknown.
+
+This is private diagnostic output, not approval to publish or alter records. Redacted
+structural fixtures test parsing/privacy but cannot yield real occupational frequencies.
+
+### Direct-ancestor scope and time windows
+
+Occupation statistics now require `--root ID`; only ancestors reached above that
+root are candidates. The root is not its own ancestor. Conflicting person/family
+tags, cycles, multiple parents for one biological slot and adoption links are
+excluded from the biological slot calculation and reported, not silently chosen.
+Only existing citations whose source still exists support a row.
+`period25` and `period50` are the first year of an event-date bucket, aligned to
+1..25 and 1..50 (1800 belongs to1776..1800 and1751..1800;1801 starts both).
+They are not cohorts from inferred birth dates. Unknown remains null.
+
+### Pedigree completeness
+
+`gwt report pedigree-completeness DUMP --root ID [--max-generation 12]`
+prints theoretical positions (2^generation), occupied positions, unique people and
+repeated positions, with the person IDs, slot numbers and citations that reproduce
+each count. A discovered position requires a named, sourced, explicitly deceased
+person. Unknown-parent placeholders do not count. Neither private people nor
+conflicting hypotheses count by default. Privacy inclusion remains local and
+explicitly-deceased-only. A filtered dump cannot measure completeness of the full
+tree. A missing source is not proof that the person never existed. Paths reflect
+tree links, not independent proof of parentage.
+
+### Evidence fan inventory
+
+`gwt report evidence-fan DUMP --root ID [--evidence JSON]` lists deceased direct
+ancestors with citation IDs and an explicit stage: `no-source`, `index`,
+`one-reading`, `two-readings`, `contradiction`, or `unclassified-source`.
+Sources are never silently promoted to acts. Notes claiming two readings do not
+set a stage. An optional reviewed manifest is a JSON list with exact fields
+`person`, `citation`, `kind` (`index`/`act`), `literal`, `literal_url` (observed HTTPS
+link), `readings` (distinct review record IDs), and `conflict` (boolean).
+Each citation must already belong to that ancestor or their Primary event and
+have an existing source. The clickable literal URL and original literal stay in
+the row. Manifest readings are attestations, not authentication or proof of
+independent review. Contradictions stay visible and are not discoveries. No
+command writes, merges, publishes or authorizes any tree change.
+
+### Review correction v5
+
+Default ancestry traversal withholds private Family and ChildRef edges as well as
+private parent profiles. Private place IDs/titles are omitted unless the local
+private-deceased flag is selected. Private event references do not contribute
+citations. A conflicting parent/family is not selected into occupied slots;
+the evidence inventory retains the named deceased candidate as a contradiction
+with no chosen slot. `has_attached_source` means only an attached citation/source;
+`parentage_verified` is always false, since this report does not verify parentage.
+The ambiguous discovery boolean was removed. Boundary stops at generation12
+emit `generation-limit` and occupations reports truncation instead of claiming
+all paths were observed. The deprecated v3/v4 descriptions of discovery must not
+be used as a completion or ancestry-verification claim.
+
+### Review correction v6
+
+A conflicting or private competing parent blocks the entire role slot, not just
+that candidate. Removing a tagged candidate never chooses the remaining parent.
+Contradiction rows retain the candidate slot/generation only for allowed deceased
+people; excluded-link output never names a possibly living conflict candidate.
+Death evidence itself must have a Primary role, no conflict tag on event/reference,
+and no private event/reference unless private-deceased local review is explicit.
+These are tree-link positions, including Unknown/empty links, NOT verified biological
+ancestry. An adopted link is excluded from these positions. No report establishes
+parentage. No-source roots and filtered fixtures remain incomplete input.
+
+### Review correction v7
+
+Exclude Adopted links before building candidate sets or applying candidate privacy
+and conflict blockers. A separate adoptive family cannot suppress a Birth-linked
+parent. Unknown/empty links remain tree links rather than verified parentage.
