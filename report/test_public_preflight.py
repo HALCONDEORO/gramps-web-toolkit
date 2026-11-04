@@ -128,7 +128,7 @@ class WikiTreeTest(unittest.TestCase):
         self.assertIn('explicit-exclusion',wikitree_contract([row],evidence(row),excluded_ids=[row['id_gramps']])['rows'][0]['errors'])
 
     def test_age_threshold_and_pre1700_and_burial(self):
-        for year,blocked in [('1916',True),('1915',False),('1699',True)]:
+        for year,blocked in [('1917',True),('1916',False),('1915',False),('1699',True)]:
             row=fixture();row['fecha_principal']=year+'-01-02';row['fecha_corte']='2026-01-03'
             errors=wikitree_contract([row],evidence(row))['rows'][0]['errors']
             self.assertEqual(bool(errors),blocked)
