@@ -41,6 +41,19 @@ def category_map(path):
     return data
 
 
+def occupation_row(T, handle, person, eh, event, literal, citations, paths, categories, include_private):
+    """Format one accepted occupation without changing its original literal."""
+    place = T['places'].get(event.get('place'), {})
+    if place.get('private') and not include_private:place = {}
+    return dict(person=person.get('gramps_id', handle), event=event.get('gramps_id', eh),
+                     literal=literal, category=categories.get(literal), citations=citations,
+                     place_id=place.get('gramps_id'), place=place.get('title') or None,
+                     century=century(event),
+                     period25=((event_year(event)-1)//25)*25+1 if event_year(event) else None,
+                     period50=((event_year(event)-1)//50)*50+1 if event_year(event) else None,
+                     generations=sorted(set(paths.get(handle, []))))
+
+
 def occupation_rows(T, handle, person, paths, categories, include_private, excluded):
     """Collect one allowed person's events in original reference order."""
     from gwt_pedigree_reports import existing_citations, conflicted
@@ -71,16 +84,22 @@ def occupation_rows(T, handle, person, paths, categories, include_private, exclu
         if not citations:
             excluded['uncited_occupation'] += 1
             continue
-        place = T['places'].get(event.get('place'), {})
-        if place.get('private') and not include_private:place = {}
-        rows.append(dict(person=person.get('gramps_id', handle), event=event.get('gramps_id', eh),
-                         literal=literal, category=categories.get(literal), citations=citations,
-                         place_id=place.get('gramps_id'), place=place.get('title') or None,
-                         century=century(event),
-                         period25=((event_year(event)-1)//25)*25+1 if event_year(event) else None,
-                         period50=((event_year(event)-1)//50)*50+1 if event_year(event) else None,
-                         generations=sorted(set(paths.get(handle, [])))))
+        rows.append(occupation_row(T, handle, person, eh, event, literal, citations, paths, categories, include_private))
     return rows
+
+
+def occupation_dimensions(rows):
+    """Aggregate original literals by each independent report dimension."""
+    dimensions = {}
+    for dim in ['category', 'place_id', 'century', 'period25', 'period50', 'generations']:
+        counter = collections.Counter()
+        for row in rows:
+            values = row[dim] if dim == 'generations' else [row[dim]]
+            for value in values or [None]:
+                counter[(row['literal'], value)] += 1
+        dimensions[dim] = [dict(literal=k[0], value=k[1], count=v)
+                           for k, v in sorted(counter.items(), key=lambda kv: str(kv[0]))]
+    return dimensions
 
 
 def report(T, root=None, categories=None, include_private=False):
@@ -105,15 +124,7 @@ def report(T, root=None, categories=None, include_private=False):
             continue
         rows.extend(occupation_rows(T, handle, person, paths, categories, include_private, excluded))
     frequencies = collections.Counter(r['literal'] for r in rows)
-    dimensions = {}
-    for dim in ['category', 'place_id', 'century', 'period25', 'period50', 'generations']:
-        counter = collections.Counter()
-        for row in rows:
-            values = row[dim] if dim == 'generations' else [row[dim]]
-            for value in values or [None]:
-                counter[(row['literal'], value)] += 1
-        dimensions[dim] = [dict(literal=k[0], value=k[1], count=v)
-                           for k, v in sorted(counter.items(), key=lambda kv: str(kv[0]))]
+    dimensions = occupation_dimensions(rows)
     return dict(schema_version=1, scope='offline explicitly deceased structured primary occupations only',
                 unit='one person-event pair; not number of distinct people', root=root,
                 generation_paths_truncated=truncated, generations='parent-link distance; root=0; observed paths up to generation12, cutoff reported',
