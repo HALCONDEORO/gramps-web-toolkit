@@ -15,7 +15,7 @@ FIELDS = ('estado id_gramps nombre_literal_acta apellido_literal_acta tipo_fecha
 
 
 def date_ok(value):
-    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+    if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
         return False
     try:
         dt.date.fromisoformat(value)
@@ -116,7 +116,7 @@ def validate_rows(rows, *, surname_required=False, excluded_ids=()):
                                      'destination-contract', 'destination-deduplication'], 'rows': results}
 
 
-def run(path, surname_required=False, evidence_path=None, excluded_ids=()):
+def run(path, surname_required=False, evidence_path=None, excluded_ids=(), max_search_age_days=7):
     with open(path, newline='', encoding='utf-8-sig') as stream:
         reader = csv.DictReader(stream)
         if reader.fieldnames is None or len(reader.fieldnames) != len(set(reader.fieldnames)) or set(reader.fieldnames) != set(FIELDS):
@@ -125,14 +125,14 @@ def run(path, surname_required=False, evidence_path=None, excluded_ids=()):
         if evidence_path:
             with open(evidence_path, encoding='utf-8') as evidence_stream:
                 evidence = json.load(evidence_stream)
-            report = wikitree_contract(rows, evidence, excluded_ids=excluded_ids)
+            report = wikitree_contract(rows, evidence, excluded_ids=excluded_ids, max_search_age_days=max_search_age_days)
         else:
             report = validate_rows(rows, surname_required=surname_required, excluded_ids=excluded_ids)
     print(json.dumps(report, ensure_ascii=True, sort_keys=True))
     return 2 if any(row['errors'] for row in report['rows']) else 0
 
 
-def wikitree_contract(rows, evidence, *, excluded_ids=()):
+def wikitree_contract(rows, evidence, *, excluded_ids=(), max_search_age_days=7):
     """Check explicit attestations, not their authenticity. Publication stays disabled."""
     report = validate_rows(rows, surname_required=True, excluded_ids=excluded_ids)
     if not isinstance(evidence, dict) or set(evidence) != {'format', 'people'} or evidence['format'] != 'gwt-public-evidence/1' or not isinstance(evidence['people'], dict):
@@ -148,8 +148,7 @@ def wikitree_contract(rows, evidence, *, excluded_ids=()):
         ev = evidence['people'].get(person_id)
         if not isinstance(ev, dict):
             errors.append('missing-evidence')
-            result['state'] = 'blocked'
-            continue
+            ev = {}
         record = ev.get('record')
         if not isinstance(record, dict) or not ((isinstance(record.get('ark'), str) and record['ark'].strip().startswith('ark:/')) or all(isinstance(record.get(k), str) and record[k].strip() for k in ('film', 'image'))):
             errors.append('record-locator')
@@ -192,7 +191,13 @@ def wikitree_contract(rows, evidence, *, excluded_ids=()):
         if ev.get('primary_date_basis') not in ('primary-record', 'secondary-only'):
             errors.append('primary-date-basis')
         if birth_date and birth_date.year < 1700:
-            errors.append('pre1700-held-for-owner-order')
+            certification = ev.get('owner_certification')
+            certified = (isinstance(certification, dict) and certification.get('pre1700_self_certified') is True
+                         and date_ok(certification.get('date', '')) and cutoff_date is not None
+                         and dt.date.fromisoformat(certification['date']) <= cutoff_date
+                         and isinstance(certification.get('reference'), str) and bool(certification['reference'].strip()))
+            if not certified:
+                errors.append('pre1700-held-for-owner-order')
         over_150 = (birth_date is not None and cutoff_date is not None and row['tipo_fecha_principal'] == 'Birth'
                     and (cutoff_date.year, cutoff_date.month, cutoff_date.day) >
                     (birth_date.year + 150, birth_date.month, birth_date.day))
@@ -201,8 +206,19 @@ def wikitree_contract(rows, evidence, *, excluded_ids=()):
         search = ev.get('match_search')
         if not isinstance(search, dict) or search.get('completed') is not True or not isinstance(search.get('matches'), list) or not cutoff_ok(search.get('checked_at', '')):
             errors.append('match-search-required')
-        elif search['matches']:
-            errors.append('destination-match-no-create')
+        else:
+            if search['matches']:
+                errors.append('destination-match-no-create')
+            checked = dt.datetime.fromisoformat(search['checked_at'].replace('Z', '+00:00')) if 'T' in search['checked_at'] else dt.datetime.combine(dt.date.fromisoformat(search['checked_at']), dt.time(), dt.timezone.utc)
+            if checked.tzinfo is None:
+                errors.append('match-search-time')
+            elif cutoff_date is not None:
+                cutoff_time = dt.datetime.fromisoformat(row['fecha_corte'].replace('Z', '+00:00')) if 'T' in row['fecha_corte'] and cutoff_ok(row['fecha_corte']) else dt.datetime.combine(cutoff_date, dt.time(), dt.timezone.utc)
+                age_days = (cutoff_time - checked).total_seconds() / 86400
+                if age_days < 0:
+                    errors.append('match-search-future')
+                elif age_days > max_search_age_days:
+                    errors.append('match-search-stale')
         if ev.get('relationships') != []:
             errors.append('evidence-relationships-forbidden')
         if errors:

@@ -962,6 +962,7 @@ def build_parser():
     v.add_argument('--surname-required', action='store_true')
     v.add_argument('--wikitree-evidence', metavar='JSON', help='structured source/readings and destination attestations')
     v.add_argument('--exclude-id', action='append', default=[], help='local private exclusions; repeat as needed')
+    v.add_argument('--max-search-age-days', type=int, default=7)
     v.set_defaults(weak_tag=None)
     return p
 
@@ -1009,7 +1010,9 @@ def main(argv=None):
         if args.cmd == 'public-preflight':
             from gwt_public_preflight import run
             try:
-                return run(args.csv, args.surname_required, args.wikitree_evidence, args.exclude_id)
+                if not 0 <= args.max_search_age_days <= 365:
+                    raise ValueError('search-window')
+                return run(args.csv, args.surname_required, args.wikitree_evidence, args.exclude_id, args.max_search_age_days)
             except (OSError, ValueError):
                 print('gwt-report: public-preflight invalid input', file=sys.stderr)
                 return 2

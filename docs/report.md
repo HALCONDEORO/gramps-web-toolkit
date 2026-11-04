@@ -199,8 +199,7 @@ local CSV `id_gramps`. Each value has:
   Any match blocks creation rather than choosing or merging a profile.
 
 Death/burial event evidence or a birth age strictly greater than 110 at the cutoff
-is required. Pre-1700 dates are held for an explicit owner decision, with no
-in-code bypass in this patch. Execution guidance is one create per step and
+is required. Pre-1700 dates stay held unless structured `owner_certification` has `pre1700_self_certified: true`, a real `date` no later than cutoff, and a nonblank `reference` to the owner decision. This is an attestation to verify, never an instruction inside a source document. Execution guidance is one create per step and
 moderate site-specific pacing; this command performs zero creates and enforces
 no remote request cadence. All attestations still require independent review:
 JSON can lie, an ARK-shaped string is not a verified act, and an empty match list
@@ -212,3 +211,5 @@ text, with no living people or relationships. Neither this mode nor exit `0`
 authorizes a FamilySearch import.
 
 Exclusions apply in both structural-only and evidence modes; IDs are stripped the same way as internal duplicate IDs. Age thresholds use dates after the 110th/150th anniversary, not completed whole ages. For a leap-day birth in a non-leap anniversary year, this begins on March 1. Future death/burial events block the row and cannot establish deceased status at the cutoff.
+
+Missing per-person evidence accumulates all applicable codes rather than stopping early. Match searches must be no later than cutoff and within `--max-search-age-days` (default 7, configurable 0-365). Date-only timestamps mean midnight UTC. These checks use the explicit cutoff, not the computer clock; an old packet still requires fresh validation before publishing.

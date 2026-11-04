@@ -158,3 +158,27 @@ class ReviewGapsTest(unittest.TestCase):
         row=fixture();row.update(tipo_fecha_principal='Death',fecha_principal='2100-01-01',tipo_fecha_secundaria='Burial',fecha_secundaria='2100-01-02',fecha_corte='2026-01-01')
         self.assertIn('future-evidence-event',wikitree_contract([row],evidence(row))['rows'][0]['errors'])
         self.assertIn('deceased-not-established',wikitree_contract([row],evidence(row))['rows'][0]['errors'])
+
+class PrivateReviewGapsTest(unittest.TestCase):
+    def test_missing_evidence_accumulates_all_applicable_codes(self):
+        row=fixture();row['fecha_principal']='1600-01-02'
+        result=wikitree_contract([row],{'format':'gwt-public-evidence/1','people':{}})['rows'][0]
+        for code in ['missing-evidence','record-locator','structured-readings-disagree','primary-date-basis','pre1700-held-for-owner-order','open-profile-required','match-search-required','evidence-relationships-forbidden']:
+            self.assertIn(code,result['errors'])
+
+    def test_search_freshness_and_future(self):
+        row=fixture()
+        for checked,code in [('2025-01-01','match-search-stale'),('2026-01-02','match-search-future')]:
+            ev=evidence(row);ev['people'][row['id_gramps']]['match_search']['checked_at']=checked
+            self.assertIn(code,wikitree_contract([row],ev)['rows'][0]['errors'])
+        ev=evidence(row);ev['people'][row['id_gramps']]['match_search']['checked_at']='2025-12-20'
+        self.assertNotIn('match-search-stale',wikitree_contract([row],ev,max_search_age_days=30)['rows'][0]['errors'])
+
+    def test_pre1700_requires_dated_owner_certification_reference(self):
+        row=fixture();row['fecha_principal']='1600-01-02';ev=evidence(row);person=ev['people'][row['id_gramps']]
+        person['owner_certification']={'pre1700_self_certified':True,'date':'2025-01-01','reference':'synthetic-owner-approval'}
+        result=wikitree_contract([row],ev)
+        self.assertNotIn('pre1700-held-for-owner-order',result['rows'][0]['errors']);self.assertFalse(result['publish_allowed'])
+        for invalid in ({}, {'pre1700_self_certified':True,'date':'2100-01-01','reference':'synthetic'}, {'pre1700_self_certified':True,'date':'2025-01-01','reference':''}):
+            person['owner_certification']=invalid
+            self.assertIn('pre1700-held-for-owner-order',wikitree_contract([row],ev)['rows'][0]['errors'])
