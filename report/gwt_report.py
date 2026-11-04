@@ -957,6 +957,20 @@ def build_parser():
     d.add_argument('--format', choices=('md', 'html'), default='md')
     d.add_argument('--weak-tag', action='append', metavar='TEXT')
     d.add_argument('--include-private', action='store_true', help='also list objects and people marked private')
+    o = sub.add_parser('occupations', help='offline statistics of cited primary occupations of explicit deceased people')
+    o.add_argument('dump')
+    o.add_argument('--root', required=True)
+    o.add_argument('--categories', help='JSON map: exact original literal to separate normalized category')
+    o.add_argument('--include-private-deceased', action='store_true', help='local private review of explicitly deceased only')
+    o.set_defaults(weak_tag=None)
+    for command in ['pedigree-completeness', 'evidence-fan']:
+        a = sub.add_parser(command, help='offline deceased direct ancestor report')
+        a.add_argument('dump')
+        a.add_argument('--root', required=True)
+        a.add_argument('--max-generation', type=int, default=12)
+        a.add_argument('--include-private-deceased', action='store_true')
+        if command == 'evidence-fan':a.add_argument('--evidence', help='reviewed structured evidence manifest JSON')
+        a.set_defaults(weak_tag=None)
     v = sub.add_parser('public-preflight', help='offline structural deceased CSV checks; never upload approval')
     v.add_argument('csv')
     v.add_argument('--surname-required', action='store_true')
@@ -1007,6 +1021,18 @@ def main(argv=None):
     args = p.parse_args(argv)
     weak = tuple(fold(w) for w in args.weak_tag) if args.weak_tag else WEAK_TAGS
     try:
+        if args.cmd in ['pedigree-completeness', 'evidence-fan']:
+            from importlib import import_module
+            run = import_module('gwt_pedigree_reports').run
+            try:return run(args)
+            except (OSError, ValueError) as exc:raise BadInput('invalid report input') from exc
+        if args.cmd == 'occupations':
+            from importlib import import_module
+            run = import_module('gwt_occupations').run
+            try:
+                return run(args)
+            except (OSError, ValueError) as exc:
+                raise BadInput('invalid occupations input') from exc
         if args.cmd == 'public-preflight':
             from gwt_public_preflight import run
             try:

@@ -107,4 +107,6 @@ dev-mode-dirs = ["apply", "check", "fetch", "core", "ledger", "gate", "fscache",
 "read/gwt_boe.py" = "gwt_boe.py"
 "read/gwt_insee.py" = "gwt_insee.py"
 "report/gwt_report.py" = "gwt_report.py"
+"report/gwt_occupations.py" = "gwt_occupations.py"
+"report/gwt_pedigree_reports.py" = "gwt_pedigree_reports.py"
 "report/gwt_public_preflight.py" = "gwt_public_preflight.py"
