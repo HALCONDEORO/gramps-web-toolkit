@@ -210,3 +210,5 @@ FamilySearch GEDCOM preparation is not implemented here. A separate contract mus
 cap batches at about 100 profiles, standardize dates/places and include sources as
 text, with no living people or relationships. Neither this mode nor exit `0`
 authorizes a FamilySearch import.
+
+Exclusions apply in both structural-only and evidence modes; IDs are stripped the same way as internal duplicate IDs. Age thresholds use dates after the 110th/150th anniversary, not completed whole ages. For a leap-day birth in a non-leap anniversary year, this begins on March 1. Future death/burial events block the row and cannot establish deceased status at the cutoff.

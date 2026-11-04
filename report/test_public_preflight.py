@@ -141,3 +141,20 @@ class WikiTreeTest(unittest.TestCase):
         row=fixture()
         for ev in (None,{}, {'format':'bad','people':{}}, {'format':'gwt-public-evidence/1','people':[]}):
             self.assertIn('evidence-schema',wikitree_contract([row],ev)['rows'][0]['errors'])
+
+class ReviewGapsTest(unittest.TestCase):
+    def test_exclusions_apply_without_evidence_and_trim_ids(self):
+        row=fixture();row['id_gramps']=' SYNTH-1 '
+        report=validate_rows([row], excluded_ids=['SYNTH-1'])
+        self.assertIn('explicit-exclusion',report['rows'][0]['errors'])
+        self.assertIn('explicit-exclusion',wikitree_contract([row],evidence(row),excluded_ids=['SYNTH-1'])['rows'][0]['errors'])
+
+    def test_open_after_150th_anniversary_not_whole_151(self):
+        row=fixture();row['fecha_principal']='1875-01-02';row['fecha_corte']='2025-01-03'
+        ev=evidence(row);ev['people'][row['id_gramps']]['privacy']='Private'
+        self.assertIn('open-profile-required',wikitree_contract([row],ev)['rows'][0]['errors'])
+
+    def test_future_death_or_burial_does_not_prove_deceased(self):
+        row=fixture();row.update(tipo_fecha_principal='Death',fecha_principal='2100-01-01',tipo_fecha_secundaria='Burial',fecha_secundaria='2100-01-02',fecha_corte='2026-01-01')
+        self.assertIn('future-evidence-event',wikitree_contract([row],evidence(row))['rows'][0]['errors'])
+        self.assertIn('deceased-not-established',wikitree_contract([row],evidence(row))['rows'][0]['errors'])

@@ -49,13 +49,14 @@ def cutoff_ok(value):
         return False
 
 
-def validate_rows(rows, *, surname_required=False):
+def validate_rows(rows, *, surname_required=False, excluded_ids=()):
     """Report row numbers and fixed reason codes only, never echo private values.
 
     Text claiming two readings/deceased status is not authenticated evidence.
     Even a structurally valid row remains pending-review and cannot be published.
     """
     results = []
+    exclusions = {value.strip() for value in excluded_ids}
     ids, identities = collections.defaultdict(list), collections.defaultdict(list)
     for number, row in enumerate(rows, 2):
         errors = []
@@ -94,6 +95,8 @@ def validate_rows(rows, *, surname_required=False):
                 errors.append('date-contract' + suffix)
         if not cutoff_ok(row['fecha_corte']):
             errors.append('cutoff-date')
+        if row['id_gramps'].strip() in exclusions:
+            errors.append('explicit-exclusion')
         ids[row['id_gramps'].strip()].append(len(results))
         # Exact literal identity only. No surname inference, fuzzy merge or relation inference.
         identity = tuple(row[k].strip() for k in ('nombre_literal_acta', 'apellido_literal_acta',
@@ -124,14 +127,14 @@ def run(path, surname_required=False, evidence_path=None, excluded_ids=()):
                 evidence = json.load(evidence_stream)
             report = wikitree_contract(rows, evidence, excluded_ids=excluded_ids)
         else:
-            report = validate_rows(rows, surname_required=surname_required)
+            report = validate_rows(rows, surname_required=surname_required, excluded_ids=excluded_ids)
     print(json.dumps(report, ensure_ascii=True, sort_keys=True))
     return 2 if any(row['errors'] for row in report['rows']) else 0
 
 
 def wikitree_contract(rows, evidence, *, excluded_ids=()):
     """Check explicit attestations, not their authenticity. Publication stays disabled."""
-    report = validate_rows(rows, surname_required=True)
+    report = validate_rows(rows, surname_required=True, excluded_ids=excluded_ids)
     if not isinstance(evidence, dict) or set(evidence) != {'format', 'people'} or evidence['format'] != 'gwt-public-evidence/1' or not isinstance(evidence['people'], dict):
         for result in report['rows']:
             result['errors'].append('evidence-schema')
@@ -142,8 +145,6 @@ def wikitree_contract(rows, evidence, *, excluded_ids=()):
             continue
         errors = result['errors']
         person_id = row['id_gramps']
-        if person_id in excluded_ids:
-            errors.append('explicit-exclusion')
         ev = evidence['people'].get(person_id)
         if not isinstance(ev, dict):
             errors.append('missing-evidence')
@@ -171,8 +172,20 @@ def wikitree_contract(rows, evidence, *, excluded_ids=()):
         age = None
         if birth_date and cutoff_date and row['tipo_fecha_principal'] == 'Birth':
             age = cutoff_date.year - birth_date.year - ((cutoff_date.month, cutoff_date.day) < (birth_date.month, birth_date.day))
-        death_event = row['tipo_fecha_principal'] == 'Death' or row['tipo_fecha_secundaria'] == 'Burial'
-        if not death_event and not (age is not None and age > 110):
+        secondary = row['fecha_secundaria']
+        secondary_date = dt.date.fromisoformat(secondary) if date_ok(secondary) else None
+        proof_dates = []
+        if row['tipo_fecha_principal'] == 'Death' and birth_date:
+            proof_dates.append(birth_date)
+        if row['tipo_fecha_secundaria'] == 'Burial' and secondary_date:
+            proof_dates.append(secondary_date)
+        if cutoff_date and any(value > cutoff_date for value in proof_dates):
+            errors.append('future-evidence-event')
+        death_event = cutoff_date is not None and any(value <= cutoff_date for value in proof_dates)
+        over_110 = (birth_date is not None and cutoff_date is not None and row['tipo_fecha_principal'] == 'Birth'
+                    and (cutoff_date.year, cutoff_date.month, cutoff_date.day) >
+                    (birth_date.year + 110, birth_date.month, birth_date.day))
+        if not death_event and not over_110:
             errors.append('deceased-not-established')
         if ev.get('primary_date_basis') == 'secondary-only' and row['indicador_fecha'] != 'antes de':
             errors.append('secondary-event-requires-before')
@@ -180,7 +193,10 @@ def wikitree_contract(rows, evidence, *, excluded_ids=()):
             errors.append('primary-date-basis')
         if birth_date and birth_date.year < 1700:
             errors.append('pre1700-held-for-owner-order')
-        if age is not None and age > 150 and ev.get('privacy') != 'Open':
+        over_150 = (birth_date is not None and cutoff_date is not None and row['tipo_fecha_principal'] == 'Birth'
+                    and (cutoff_date.year, cutoff_date.month, cutoff_date.day) >
+                    (birth_date.year + 150, birth_date.month, birth_date.day))
+        if over_150 and ev.get('privacy') != 'Open':
             errors.append('open-profile-required')
         search = ev.get('match_search')
         if not isinstance(search, dict) or search.get('completed') is not True or not isinstance(search.get('matches'), list) or not cutoff_ok(search.get('checked_at', '')):
