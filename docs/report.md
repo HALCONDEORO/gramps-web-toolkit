@@ -165,9 +165,9 @@ infer relationships, merge people or deduplicate a destination. `--surname-requi
 blocks a blank surname when that destination requires one. Without it, a blank surname
 requires `VACIO_NO_INFERIR_APELLIDO`. Relationships must be `NINGUNA`.
 
-Missing source/citation fields, unsupported status/deceased-basis labels, missing
+Source URLs must parse as HTTPS with a nonempty hostname and no embedded credentials; this does not authenticate the host or fetch it. Missing source/citation fields, unsupported status/deceased-basis labels, missing
 claimed two-reading agreement, invalid calendar dates/indicators, schema differences,
-control characters and repeated internal IDs or literal identities block rows.
+Unicode Cc control characters (including DEL and C1) and repeated internal IDs or literal identities block rows.
 Duplicates block every involved row rather than silently choosing one. The output
 contains only row numbers and fixed reason codes, not names, identifiers, notes or
 source URLs. No example or test uses a real family record.

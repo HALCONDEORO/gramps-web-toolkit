@@ -59,6 +59,16 @@ class PreflightTest(unittest.TestCase):
         row['fecha_corte']='2026-01-01T10:00:00'
         self.assertIn('cutoff-date', validate_rows([row])['rows'][0]['errors'])
 
+    def test_unicode_control_ranges_and_missing_hostname_block(self):
+        for char in ('\x7f', '\x85', '\x9f', '\x00', '\n'):
+            with self.subTest(char=ord(char)):
+                row=fixture();row['nota_evidencia']='synthetic'+char+'text'
+                self.assertIn('control-character',validate_rows([row])['rows'][0]['errors'])
+        for url in ('https://?', 'https://#fragment', 'https:///path', 'https://', 'https://user@', 'https://[bad'):
+            with self.subTest(url=url):
+                row=fixture();row['url_fuente']=url
+                self.assertIn('source-url',validate_rows([row])['rows'][0]['errors'])
+
     def test_empty_blocks(self):
         self.assertEqual(validate_rows([])['rows'][0]['state'], 'blocked')
 

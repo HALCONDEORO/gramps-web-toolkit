@@ -4,6 +4,8 @@ import csv
 import datetime as dt
 import json
 import re
+import unicodedata
+from urllib.parse import urlsplit
 
 FIELDS = ('estado id_gramps nombre_literal_acta apellido_literal_acta tipo_fecha_principal '
           'fecha_principal indicador_fecha tipo_fecha_secundaria fecha_secundaria '
@@ -18,6 +20,19 @@ def date_ok(value):
     try:
         dt.date.fromisoformat(value)
         return True
+    except ValueError:
+        return False
+
+
+def source_url_ok(value):
+    if any(c.isspace() or unicodedata.category(c) == 'Cc' for c in value):
+        return False
+    try:
+        parsed = urlsplit(value)
+        host = parsed.hostname
+        return (parsed.scheme == 'https' and bool(host) and
+                parsed.username is None and parsed.password is None and
+                not any(c in host for c in ('?', '#', '/', '\\')))
     except ValueError:
         return False
 
@@ -45,7 +60,7 @@ def validate_rows(rows, *, surname_required=False):
         if not isinstance(row, dict) or set(row) != set(FIELDS) or any(not isinstance(v, str) for v in row.values()):
             results.append({'row': number, 'errors': ['schema'], 'state': 'blocked'})
             continue
-        if any(any(ord(c) < 32 for c in v) for v in row.values()):
+        if any(any(unicodedata.category(c) == 'Cc' for c in v) for v in row.values()):
             errors.append('control-character')
         if row['estado'] != 'ELEGIBLE_NUCLEO;VALIDAR_ESQUEMA_DESTINO':
             errors.append('status-not-deceased-candidate')
@@ -53,7 +68,7 @@ def validate_rows(rows, *, surname_required=False):
                     'cita_gramps', 'nota_evidencia', 'discrepancias_no_exportadas']:
             if not row[key].strip():
                 errors.append('missing-' + key)
-        if not re.fullmatch(r'https://[^\s/]+(?:/[^\s]*)?', row['url_fuente']):
+        if not source_url_ok(row['url_fuente']):
             errors.append('source-url')
         surname = row['apellido_literal_acta']
         if not surname.strip():
