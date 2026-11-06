@@ -98,3 +98,5 @@ gwt_genae_act_link.py | if c.startswith(('/', '~')) or | if c.startswith(('~',))
 gwt_genae_act_link.py | if not isinstance(crop, str) or not crop.strip(): | if not isinstance(crop, str): | an empty crop is missing provenance
 gwt_genae_act_link.py | return os.path.exists(a) and os.path.exists(b) and os.path.samefile(a, b) | return False | a hard link to the input is refused, so the input is never overwritten
 gwt_genae_act_link.py | fields[k] = a or b | fields[k] = b or a | evidence never overwrites the candidate's own value
+gwt_read.py |     if a.locality and not a.locality.isdigit(): |     if False: | a genae locality name is resolved to its id before searching: an unknown name stops the search, never a silent whole-region search
+gwt_read.py |     if a.locality is not None and not a.locality.strip(): |     if False: | an explicitly blank --locality stops with exit 64 before any request; only an omitted flag searches regionally
