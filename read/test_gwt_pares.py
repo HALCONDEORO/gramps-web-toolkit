@@ -15,6 +15,15 @@ FORM = b'<html><body><form id="formBusqueda" name="formBusqueda" action="find" m
 ERROR_PAGE = (b'<html><body><div id="error_mensaje"><div class="error">Ha ocurrido un error en la aplicaci\xc3\xb3n. '
               b'Por favor, vuelva a intentarlo de nuevo.</div></div></body></html>')
 EMPTY_FRAME = b'<html><body><iframe src="/x" style="width:100%"></iframe></body></html>'
+SEARCH_URL = gwt_pares.search_url('Ana', ['Zorvalo'], '')
+CONTROL_URL = gwt_pares.search_url('Cristóbal', ['Colón'], '')   # the source's declared canary (LEGACY)
+
+
+def control_page(rows):
+    """A results page with `rows` invented descriptions: the canary's answer when the site is fine."""
+    items = b''.join(b'<p class="titulo"><a href="/ParesBusquedas20/catalogo/description/8000%03d">'
+                     b'Expediente de prueba %d</a></td>' % (i, i) for i in range(rows))
+    return b'<html><body><div id="texto_resultados">' + items + b'</div></body></html>'
 
 
 class Pares(Base):
@@ -127,11 +136,59 @@ class Stops(Pares):
         self.assert_stop([(200, FORM), (200, b'<html><body><div id="_Incapsula_Resource">x</div></body></html>')],
                          gwt_reader.EXIT_WALL, 'hits', 2)
 
-    def test_empty_frame_is_a_stop(self):
-        self.assert_stop([(200, FORM), (200, EMPTY_FRAME)], gwt_reader.EXIT_WALL, 'hits', 2)
+    def test_empty_frame_the_control_answers_is_unreadable_and_the_gate_hears_nothing(self):
+        gate = FakeGate()
+        answers = [(200, FORM), (200, EMPTY_FRAME), (200, control_page(15))]
+        net = FakeNet(gate, *answers * 2)
+        code, lines, text = self.search(net, gate)
+        self.assertEqual(code, gwt_reader.EXIT_UNREADABLE, text)
+        self.assertEqual(gate.hits, [], 'an empty page the control answers is not a block')
+        self.assertEqual(self.out_files(), [], 'an unreadable page wrote files')
+        self.assertNotIn('candidates', lines)
+        self.assertIn('unreadable', lines['results'])
+        self.assertEqual([r.full_url for r in net.requests], [gwt_pares.FORM_URL, SEARCH_URL, CONTROL_URL])
+        self.assertEqual(self.search(net, gate)[0], gwt_reader.EXIT_UNREADABLE)
+        self.assertEqual(len(net.requests), 6, 'an unreadable answer was served from the cache')
+
+    def test_empty_frame_is_a_stop_when_the_control_is_empty_too(self):
+        gate = FakeGate()
+        answers = [(200, FORM), (200, EMPTY_FRAME), (200, EMPTY_FRAME)]
+        net = FakeNet(gate, *answers * 2)
+        code, lines, text = self.search(net, gate)
+        self.assertEqual(code, gwt_reader.EXIT_WALL, text)
+        self.assertNotIn('candidates', lines)
+        self.assertEqual(self.out_files(), [], 'a STOP wrote files')
+        self.assertEqual(len(gate.hits), 1, 'the gate did not hear about it')
+        self.assertEqual([r.full_url for r in net.requests], [gwt_pares.FORM_URL, SEARCH_URL, CONTROL_URL])
+        self.search(net, gate)
+        self.assertEqual(len(net.requests), 6, 'a STOP answer was served from the cache')
+
+    def test_empty_frame_with_a_short_control_is_still_a_wall(self):
+        gate = FakeGate()
+        net = FakeNet(gate, (200, FORM), (200, EMPTY_FRAME), (200, control_page(3)))
+        code, _, text = self.search(net, gate)
+        self.assertEqual(code, gwt_reader.EXIT_WALL, text)
+        self.assertEqual(len(gate.hits), 1, 'a canary under its minimum cannot clear the empty page')
+        self.assertEqual(self.out_files(), [])
+
+    def test_empty_frame_with_a_captcha_on_the_control_is_the_controls_wall(self):
+        gate = FakeGate()
+        net = FakeNet(gate, (200, FORM), (200, EMPTY_FRAME), (200, CAPTCHA))
+        code, _, text = self.search(net, gate)
+        self.assertEqual(code, gwt_reader.EXIT_WALL, text)
+        self.assertEqual(len(gate.hits), 1, 'the control met the wall first and reported it')
+        self.assertEqual(self.out_files(), [])
 
     def test_site_error_page_is_a_stop(self):
-        self.assert_stop([(200, FORM), (200, ERROR_PAGE)], gwt_reader.EXIT_WALL, 'hits', 2)
+        gate = FakeGate()
+        answers = [(200, FORM), (200, ERROR_PAGE), (200, ERROR_PAGE)]
+        net = FakeNet(gate, *answers * 2)
+        code, _, text = self.search(net, gate)
+        self.assertEqual(code, gwt_reader.EXIT_WALL, text)
+        self.assertEqual(self.out_files(), [])
+        self.assertEqual(len(gate.hits), 1)
+        self.search(net, gate)
+        self.assertEqual(len(net.requests), 6, 'a STOP answer was served from the cache')
 
     def test_403_blocks_the_gate_for_a_day(self):
         gate = FakeGate()

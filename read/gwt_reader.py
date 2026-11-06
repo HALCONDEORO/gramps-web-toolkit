@@ -25,6 +25,7 @@ import datetime, hashlib, json, os, re, struct, unicodedata
 
 EXIT_OK, EXIT_ERROR, EXIT_EMPTY, EXIT_WALL, EXIT_DEAD, EXIT_PAUSED = 0, 1, 2, 3, 4, 6
 EXIT_RESTRICTED = 5      # the site refuses this one record to every account of this access level: a result, not a block
+EXIT_UNREADABLE = 7    # an empty page the source's own canary answers: that query's own problem, not a block
 
 # ---------------------------------------------------------------- small helpers
 
@@ -258,6 +259,14 @@ class Restricted(Stop):
         self.status, self.body = status, body
 
 
+class Unreadable(Stop):
+    """An empty or unreadable page the source's own canary answers: the query's own problem, never the
+    site's. A result the lane logs as unreadable (exit 7); the gate hears nothing."""
+
+    def __init__(self, msg):
+        super().__init__(msg, EXIT_UNREADABLE, verdict='unreadable')
+
+
 class Reader:
     """GET through gwt-fscache and gwt-gate. fetcher(method, url, headers, data) -> (status, headers, body)
     is gwt-fscache's fetcher signature; the token belongs inside it, never in `headers`, which the cache sees."""
@@ -268,11 +277,14 @@ class Reader:
         self.cache, self.gate, self.lane, self.fetcher = cache, gate, lane, fetcher
         self.log = log or (lambda m: None)
 
-    def get(self, url, headers=None, expect=None, refresh=False, page=None, on_403=None):
+    def get(self, url, headers=None, expect=None, refresh=False, page=None, on_403=None, on_empty=None):
         """(status, headers, body, from_cache) for a 2xx answer the site really gave; raises Stop otherwise.
         `expect` checks a JSON answer, `page` an HTML one (see classify_answer). `on_403(body)` is asked about a
         403 before the gate blocks: 'restricted' only logs it as a denial (gate.denied: no pause, no block) and raises
-        Restricted; anything else is a block, as without it."""
+        Restricted; anything else is a block, as without it. `on_empty()` is asked about an empty or unreadable page
+        before the gate hears of it: true only when the source's own canary just answered (the site is fine; the query
+        is the problem), and the get raises Unreadable with no gate hit. False or absent, the page is the wall it
+        always was; a canary that cannot answer raises its own Stop from inside on_empty, with its own gate signal."""
         state = {}
 
         def gated(method, u, h, data):
@@ -290,6 +302,10 @@ class Reader:
             raise Restricted(f'restricted: HTTP 403 at {url} is about this record\'s access, not a block; no gate hit',
                              state['status'], state['body'])
         if verdict != 'ok':
+            if verdict == 'empty' and on_empty is not None and on_empty():
+                raise Unreadable(f"empty or unreadable page, but the source's control answered: this query's own "
+                                 f"problem, not a block; nothing saved, no gate hit (HTTP {state['status']} "
+                                 f"at {url[:120]})")
             code, why, tell = STOP_FOR[verdict]
             what = f"HTTP {state['status']} {url[:120]}"
             if tell == 'block':

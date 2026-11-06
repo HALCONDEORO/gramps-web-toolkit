@@ -100,3 +100,5 @@ gwt_genae_act_link.py | return os.path.exists(a) and os.path.exists(b) and os.pa
 gwt_genae_act_link.py | fields[k] = a or b | fields[k] = b or a | evidence never overwrites the candidate's own value
 gwt_read.py |     if a.locality and not a.locality.isdigit(): |     if False: | a genae locality name is resolved to its id before searching: an unknown name stops the search, never a silent whole-region search
 gwt_read.py |     if a.locality is not None and not a.locality.strip(): |     if False: | an explicitly blank --locality stops with exit 64 before any request; only an omitted flag searches regionally
+gwt_reader.py |             if verdict == 'empty' and on_empty is not None and on_empty(): |             if False: | an empty pares page its own control answers is unreadable (exit 7, no gate hit), never a wall
+gwt_read.py |         return len(gwt_pares.search_candidates(body.decode('utf-8', 'replace'))) >= ctl['min_count'] |         return True | a control that reads fewer rows than its minimum cannot clear an empty page: the wall stands
