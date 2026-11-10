@@ -75,6 +75,7 @@ The toolkit works for genealogy in any country. `gwt-spanish-poller` and some `g
 - [Military records](military.md): where conscription, decoration and war-death records are, and how to write a `matricule` card for `gwt-acts`.
 - [gwt-acts](acts.md): checks act cards before anything is written and says whether the person is already in the tree. Offline.
 - [Finding church and civil registers](finding-registers.md): public sources for Spanish parish and French civil registers, and how to record what you find.
+- [France: indexed registers](france-registers-indexed.md): which French parish and civil registers are online and which indexes cover them, with the spellings to search them under.
 - [gwt-rank](rank.md): orders record-search results by how well they fit a person, and never hides a row.
 - [gwt-fetch](fetch.md): archive images and text without a browser: IIIF, Europeana, and Spanish sources.
 - [gwt-surname-clusters](surname-clusters.md): offline surname search suggestions with literal spellings, provenance and explicit ambiguity, requiring human review.
