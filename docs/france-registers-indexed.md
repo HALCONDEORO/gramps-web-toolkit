@@ -14,7 +14,7 @@ Indexes over these images (checked 10 November 2026):
 - **Geneanet**, [État civil de l'Indre-et-Loire](https://www.geneanet.org/fonds/catalogue/collection/961-Etat-civil-de-l-indre-et-loire/): the collection page says the registers cover 1506 to 1912. The [launch post](https://www.geneanet.org/blog/post/2026/03/letat-civil-de-lindre-et-loire-est-en-ligne) (16 March 2026) says the person-name index runs 1529 to 1951 with 3,136,031 births, 727,007 marriages and 2,185,855 deaths (over 24 million people), and that the images can be linked to a tree.
 - **Filae**, [registres paroissiaux d'Indre-et-Loire](http://www.filae.com/ressources/nouveau-registres-paroissiaux-indre-et-loire/): parish registers 1700 to 1792, more than 2 million acts and 2.3 million individuals, one transcription per act with a direct link to the act (page updated 13 July 2026).
 - **Centre Généalogique de Touraine**, [Base Touraine](https://www.tourainegenealogie.org/page/3948427-base-touraine): the association's own dépouillements by commune; access is for members.
-- **FamilySearch**: the [Indre-et-Loire wiki page](https://edge.fscdn.org/en/wiki/Indre-et-Loire%2C_France_Genealogy) lists civil registration 1542-1900 among the department's record types. Check each collection's own page for its real coverage before relying on it.
+- **FamilySearch**: the [Indre-et-Loire wiki page](https://edge.fscdn.org/en/wiki/Indre-et-Loire%2C_France_Genealogy) appears to list civil registration 1542-1900 among the department's record types, but this line is unverified: the page could not be fetched to check it (blocked to the fetcher), and only a search-result excerpt supports it. Check each collection's own page for its real coverage before relying on it.
 
 Coverage is never complete: a commune or a decade can be missing from the images, from one index, or from both. An empty search means that index holds no match, never that no act exists. For a book with no index, use [gwt-books](books.md); record each archive's viewer, captcha and index behaviour with [gwt-access](access.md).
 
@@ -41,7 +41,7 @@ French indexes match on the spelling that was indexed, so a search plan needs th
 
 - `Bonnet`: the common form everywhere; strong in Deux-Sèvres and, at least historically, in Haute-Loire.
 - `Bonet`: the Catalan form, mostly Pyrénées-Orientales.
-- `Bonnette`: the matronyme (Côte-d'Or in the dictionary), also seen in Touraine: a witness is named "françois Bonnette oncle" at a marriage of 19 May 1725 ([ark:/37621/j9k0qnfdl8cb](https://archives.touraine.fr/ark:/37621/j9k0qnfdl8cb), view 5; first reading).
+- `Bonnette`: the matronyme (Puy-de-Dôme in the dictionary), also seen in Touraine: a witness is named "françois Bonnette oncle" at a marriage of 19 May 1725 ([ark:/37621/j9k0qnfdl8cb](https://archives.touraine.fr/ark:/37621/j9k0qnfdl8cb), view 5; first reading).
 - Diminutives listed by the dictionary: `Bonneton` and `Bonnetton` (Isère, the Lyon area, Massif Central), `Bonnetain`, `Bonnetin` (71, 69, 42), `Bonnetat` and `Bonnettat` (36, 37, 89, so Indre-et-Loire among them), `Bonnetaud` and `Bonneteaud` (87, 23), `Bonnetot` (03, 42), `Bonnettaz` (73). These are related names, not automatic spellings of one Bonnet line: search them, never merge on them.
 
 ## What an index line is worth
