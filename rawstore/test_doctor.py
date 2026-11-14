@@ -117,7 +117,7 @@ class Findings(Base, unittest.TestCase):
         c = by_check(self.doctor(max_binary_gb=TINY))['binaries'][0]
         self.assertEqual(c['level'], 'warn')
         self.assertIn('1 tracked binaries', c['message'])
-        self.assertIn('gwt-rawstore migrate raw --remove', c['fix'])
+        self.assertIn('gwt-rawstore migrate raw --evict', c['fix'])
         self.assertFalse(by_check(self.doctor(max_binary_gb=0.0000021))['binaries'][0]['level'] == 'warn')
 
     def test_big_scratch_folder(self):
@@ -129,9 +129,10 @@ class Findings(Base, unittest.TestCase):
 
     def test_cache_inside_the_repo(self):
         self.assertEqual(by_check(self.doctor())['cache'][0]['level'], 'ok')
-        write(os.path.join(self.repo, 'tools', '.cache', 'x'))
+        write(os.path.join(self.repo, 'tools', '.cache', 'x'), b'c' * 2000)
+        write(os.path.join(self.repo, 'fscache', 'x'), b'f' * 2000)
         rep = self.doctor(environ={'GWT_FSCACHE_DIR': os.path.join(self.repo, 'fscache'),
-                                   'GWT_RAWSTORE_CACHE': '~/.cache/gwt-rawstore'})
+                                   'GWT_RAWSTORE_CACHE': '~/.cache/gwt-rawstore'}, max_tmp_gb=TINY)
         msgs = [c['message'] for c in by_check(rep)['cache'] if c['level'] == 'warn']
         self.assertEqual(len(msgs), 2, msgs)
         self.assertTrue(any('$GWT_FSCACHE_DIR' in m for m in msgs))
@@ -199,9 +200,9 @@ class PartialClone(unittest.TestCase):
         rep = D.doctor(self.repo, environ={}, platform='linux')
         self.assertTrue(rep['partial_clone'])
         c = by_check(rep)['lazy-fetch'][0]
-        self.assertEqual(c['level'], 'warn')
+        self.assertEqual(c['level'], 'info')  # a configured partial clone is not evidence of ongoing lazy fetch
         self.assertIn('blob:none', c['message'])
-        self.assertIn('export GIT_NO_LAZY_FETCH=1', c['fix'])
+        self.assertEqual(c['fix'], '')  # info is not a finding requiring a fix
         self.assertEqual(by_check(D.doctor(self.repo, environ={'GIT_NO_LAZY_FETCH': 'true'}, platform='linux'))
                          ['lazy-fetch'][0]['level'], 'ok')
 

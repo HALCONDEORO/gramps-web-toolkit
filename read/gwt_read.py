@@ -37,7 +37,7 @@ work; also a canary that read less than its minimum: the run is void), 4 signed 
 expired (get a fresh token; never retry in a loop), 5 restricted (a FamilySearch record refused to this access
 level, not a block; the gate is not told), 6 the account's gate is paused (nothing was requested), 7 unreadable
 (pares: an empty page the source's control answered: this query's own problem, not a block; nothing saved, the
-gate is not told), 64 usage (no token).
+gate only logs it), 64 usage (no token).
 """
 import argparse, contextlib, io, json, os, re, shutil, sys, tempfile, urllib.error, urllib.parse, urllib.request
 
@@ -328,19 +328,29 @@ def cmd_record(a, R):
         return gwt_reader.EXIT_RESTRICTED
 
 
-def _pares_control_probe(R, h):
+def _pares_control_probe(R, url, h):
     """The on_empty check for a pares search: the source's declared canary, read live through the gate at
     its normal pace. True only when the canary answers with at least its minimum: the site is fine, so the empty
-    page is that query's own problem. A canary that reads short keeps the wall; one that cannot answer raises its
-    own Stop from inside the check, with its own gate signal."""
+    page is that query's own problem. A canary that reads short, cannot be reached (a 5xx, a dropped connection)
+    or meets a paused gate keeps the wall; one that meets a wall itself raises that Stop, with its own gate signal.
+    None when `url` is the canary: a canary never proves itself."""
     ctl = next(s['controls'][0] for s in LEGACY if s['id'] == 'pares')
     args = argparse.ArgumentParser()
     _pares_search_args(args)
     ns = args.parse_args(list(ctl['argv']))
-    url = gwt_pares.search_url(ns.given, ns.surname, ns.words)
+    probe = gwt_pares.search_url(ns.given, ns.surname, ns.words)
+    if url == probe:
+        return None
 
     def on_empty():
-        _st, _rh, body, _cached = R.get(url, h, refresh=True, page=gwt_pares.is_results)
+        try:
+            _st, _rh, body, _cached = R.get(probe, h, refresh=True, page=gwt_pares.is_results)
+        except gwt_reader.Stop as e:
+            if e.verdict in ('http', 'unexpected'):
+                return False    # no proof the site is fine: the empty page keeps its wall
+            raise
+        except Paused as _paused:   # another lane paused the gate: no proof either
+            return False
         return len(gwt_pares.search_candidates(body.decode('utf-8', 'replace'))) >= ctl['min_count']
     return on_empty
 
@@ -358,11 +368,11 @@ def cmd_pares_search(a, R):
     key = gwt_reader.search_key(url, ['pares', a.given] + list(a.surname) + [a.words])
     try:
         return _save_page(a, R, url, h, gwt_pares.is_results, key, gwt_pares.search_candidates, gwt_pares.total,
-                          on_empty=_pares_control_probe(R, h))
+                          on_empty=_pares_control_probe(R, url, h))
     except gwt_reader.Unreadable as e:
         err(str(e))
         out("results\tunreadable: the page came back empty, but the source's control answered; this query, "
-            "not the site (nothing saved, no gate hit)")
+            "not the site (nothing saved, no gate hit; log it as unproven)")
         return gwt_reader.EXIT_UNREADABLE
 
 
@@ -384,15 +394,20 @@ def cmd_genae_search(a, R):
         err("--locality is blank: give the site's numeric locality id or a listed name, or leave the flag out for a regional search")
         return EXIT_USAGE
     h = {'accept': gwt_genae.ACCEPT, 'accept-language': gwt_genae.LANGUAGE, 'hx-request': 'true'}
-    if a.locality and not a.locality.isdigit():
-        _st, _rh, mbody, _cached = R.get(gwt_genae.LOCALITIES_URL, h, refresh=a.refresh,
-                                         page=gwt_genae.is_locality_list)
+    if a.locality:   # an id too: the site ignores an l it does not know, and an id belongs to one province
+        # the form lists the localities and rarely changes: the cache's own age, never --refresh
+        _st, _rh, mbody, _cached = R.get(gwt_genae.LOCALITIES_URL, {'accept': gwt_genae.ACCEPT,
+                                         'accept-language': gwt_genae.LANGUAGE}, page=gwt_genae.is_locality_list)
         try:
-            a.locality = gwt_genae.resolve_locality(a.locality, a.province,
-                                                    gwt_genae.locality_map(mbody.decode('utf-8', 'replace')))
+            a.locality, label = gwt_genae.resolve_locality(a.locality, a.province,
+                                                           gwt_genae.locality_map(mbody.decode('utf-8', 'replace')))
+        except gwt_genae.LocalityFormError as exc:
+            err(str(exc))
+            return EXIT_ERROR
         except gwt_genae.LocalityError as exc:
             err(str(exc))
             return EXIT_USAGE
+        out('locality\t%s\t%s' % (a.locality, label))
     sur = (list(a.surname) + ['', ''])[:2]
     query = gwt_genae.params(a.given, sur[0], sur[1], a.province, a.locality, a.year_from, a.year_to)
     cands, pages, seen = [], {}, set()
@@ -407,15 +422,14 @@ def cmd_genae_search(a, R):
                 seen.add(c['id'])
                 cands.append(c)
     key = gwt_reader.search_key(gwt_genae.block_url('bautismos', query), ['genae', a.given] + list(a.surname))
+    cached = all(p['from_cache'] for p in pages.values())
     env = gwt_reader.envelope(gwt_genae.block_url('bautismos', query), None,
-                              text=' '.join(gwt_genae.text(p['html']) for p in pages.values()), blocks=pages)
+                              text=' '.join(gwt_genae.text(p['html']) for p in pages.values()), blocks=pages,
+                              from_cache=cached)
     base = gwt_reader.write_search(a.out, key, env, cands)
     gwt_reader.print_paths(gwt_genae.SOURCE, base, out)
-    counts = []
-    for block in gwt_genae.BLOCKS:
-        suffix = '+ (cut: narrow the search)' if pages[block]['cut'] else ''
-        counts.append(f"{block} {pages[block]['rows']}{suffix}")
-    out(f"results\t{', '.join(counts)}")
+    out('results\t%s%s' % (', '.join('%s %d%s' % (b, pages[b]['rows'], '+ (cut: narrow the search)' if pages[b]['cut'] else '')
+                                     for b in gwt_genae.BLOCKS), ' (cache)' if cached else ''))
     return EXIT_OK if cands else EXIT_EMPTY
 
 
@@ -424,12 +438,14 @@ def _boe_phrase(name):
 
 
 def _boe_read(a, R, phrase, pages, born=None):
-    """The candidates of one phrase over up to `pages` pages of results, and how many rows the site found."""
+    """The candidates of one phrase over up to `pages` pages of results, how many rows the site found, and whether
+    every page read came from the cache rather than the site."""
     h = {'accept': gwt_boe.ACCEPT, 'accept-language': gwt_boe.LANGUAGE}
     url = gwt_boe.search_url(phrase, a.year_from, a.year_to)
-    cands, found, first = [], 0, url
+    cands, found, first, cached_all = [], 0, url, True
     for n in range(pages):
-        _status, _rh, body, _cached = R.get(url, h, refresh=a.refresh, page=gwt_boe.is_results)
+        status, rh, body, cached = R.get(url, h, refresh=a.refresh, page=gwt_boe.is_results)
+        cached_all = cached_all and cached
         page = body.decode('utf-8', 'replace')
         if n == 0:
             found = gwt_boe.total(page)
@@ -437,7 +453,7 @@ def _boe_read(a, R, phrase, pages, born=None):
         url = gwt_boe.next_url(page)
         if not url or len(cands) >= found:
             break
-    return first, cands, found, page
+    return first, cands, found, page, cached_all
 
 
 def _boe_pdf_context(a, R, cands, phrase):
@@ -482,17 +498,17 @@ def cmd_boe_search(a, R):
     if len(phrase.split()) < 2:
         err('give --name with at least a given name and a surname')
         return EXIT_USAGE
-    first, cands, found, page = _boe_read(a, R, phrase, max(1, min(a.pages, 5)), a.born)
+    first, cands, found, page, cached = _boe_read(a, R, phrase, max(1, min(a.pages, 5)), a.born)
     _boe_pdf_context(a, R, cands, phrase)
     _boe_verdicts(cands)
     words = ['boe', phrase, str(a.pages), str(a.pdf_context), str(a.born), str(a.parents)] + sorted(a.near)
     # the readable part is cut at 60 characters, so the options go into the hash too: a long name rerun with other
     # --born, --parents or --near still gets its own file
     key = gwt_reader.search_key('\n'.join([first] + words), words)
-    env = gwt_reader.envelope(first, None, text=gwt_boe.text(page), total=found)
+    env = gwt_reader.envelope(first, None, text=gwt_boe.text(page), total=found, from_cache=cached)
     base = gwt_reader.write_search(a.out, key, env, cands)
     gwt_reader.print_paths(gwt_boe.SOURCE, base, out)
-    out(f'results\t{len(cands)} of {int(found)}')
+    out('results\t%d of %d%s' % (len(cands), found, ' (cache)' if cached else ''))
     for v in ('consistent', 'open', 'excluded'):
         out(f"{v}\t{int(sum((1 for c in cands if c['verdict'] == v)))}")
     return EXIT_OK if cands else EXIT_EMPTY

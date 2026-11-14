@@ -342,3 +342,21 @@ def run_image_base(args, client) -> int:
     if store.manifest.exists():
         print(f"gwt-fetch: manifest rows in {store.manifest}", file=sys.stderr)
     return 1 if failed else 0
+
+
+# ---------------------------------------------------------------- Image API base, native width
+
+
+
+PAGE = re.compile(r"\{page(?::(0\d+))?\}")
+
+
+
+
+
+
+NATIVE_URL = re.compile(r"/full/\d+,/0/default\.jpg$")
+
+
+
+

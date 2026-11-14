@@ -50,12 +50,75 @@ def _client(conf: dict, **kw) -> Client:
                   tree=conf.get("GWT_TREE"), token=conf.get("GWT_TOKEN") or None, **kw)
 
 
-def _plan_on_snapshot(ops: list[dict], snap: dict, client: Client, *, tag: str | None = None) -> list[str]:
+def backup_login_problem(conf: dict) -> str | None:
+    """What is wrong with the separate backup login (GWT_BACKUP_*), or None. No keys means the writer makes it."""
+    if conf.get("GWT_BACKUP_TOKEN"):
+        return ("GWT_BACKUP_TOKEN: a token of scope sync cannot create backups on Gramps Web; give "
+                "GWT_BACKUP_USERNAME and GWT_BACKUP_PASSWORD of an owner or admin of the tree")
+    missing = [k for k in ("GWT_BACKUP_USERNAME", "GWT_BACKUP_PASSWORD") if not conf.get(k)]
+    if len(missing) == 1:
+        return f"missing setting: {missing[0]} (the backup login needs a username and a password)"
+    return None
+
+
+class _NoRedirectSession:
+    """Keep the owner login off redirect destinations, including during authentication."""
+
+    def __init__(self, session):
+        self.session = session
+
+    def request(self, method, url, **kw):
+        kw["allow_redirects"] = False
+        response = self.session.request(method, url, **kw)
+        if 300 <= response.status_code < 400:
+            raise ApiError("the backup login refused an HTTP redirect", response.status_code)
+        return response
+
+    def close(self):
+        self.session.close()
+
+
+class _BackupClient(Client):
+    """The backup-only client of a separate owner/admin login: gwt-apply sends it nothing but backup calls. The
+    server would allow that login everything; this client is what limits it."""
+
+    def __init__(self, *args, **kw):
+        super().__init__(*args, **kw)
+        self.session = _NoRedirectSession(self.session)
+
+    def _request(self, method: str, path: str, **kw):
+        allowed = (path == "/backups/" and method in ("GET", "POST")) or (
+            method == "GET" and re.fullmatch(r"/tasks/[A-Za-z0-9-]+", path) is not None)
+        if not allowed:
+            raise ApiError("the backup login can only create/list backups and read backup tasks")
+        return super()._request(method, path, **kw)
+
+
+def _separate_server_backup(conf: dict, writer: Client, args, lock) -> str | None:
+    """The server backup made by the GWT_BACKUP_* login, on the writer's URL and tree. The writer keeps the lock
+    and every tree write; the backup login is closed even when the backup fails."""
+    backup = _BackupClient(conf["GWT_URL"], conf["GWT_BACKUP_USERNAME"], conf["GWT_BACKUP_PASSWORD"],
+                           tree=writer.tree, dry_run=False)
+    # Every backup call goes into the writer's run log, marked; never a credential or a token.
+    backup.log = lambda **entry: writer.log(backup_login=True, **entry)
+    try:
+        _retried("backup login", backup.login, writer, args, lock)
+        if backup.tree != writer.tree:
+            return "the backup login landed in another tree"
+        return _server_backup(backup, args, lock)
+    except ApiError as exc:
+        return f"the backup login failed: {exc}"
+    finally:
+        backup.session.close()
+
+
+def _plan_on_snapshot(ops: list[dict], snap: dict, client: Client, *, tag: str | None = None,
+                      landed: frozenset = frozenset()) -> list[str]:
     """Plan the whole list on the snapshot, offline; then what stops the plan or changed since the snapshot."""
     planner = Client(client.base[: -len("/api")], "", "", dry_run=True)
     planner.use_snapshot(snap, offline=True)
     problems = preflight(ops, planner)
-    plan = Applier(planner, retries=1, retry_wait=0, tag=tag).run(ops)
+    plan = Applier(planner, retries=1, retry_wait=0, tag=tag, landed=landed).run(ops)
     problems += [f"[{r.status}] {r.key}: {r.actions[-1]}" for r in plan if r.status in ("conflict", "error")]
     if problems:
         return problems + ["the dry run on the snapshot does not go through"]
@@ -80,9 +143,37 @@ def _log_path(args, run_id: str, tree: str | None, *, prefix: str, writes: bool)
         return str(p.with_name(f"{p.stem}.{run_id}{p.suffix or '.jsonl'}"))
     if not writes:
         return None
+    return str(_log_dir(tree) / f"{prefix}-{run_id}.jsonl")
+
+
+def _log_dir(tree: str | None) -> Path:
     folder = re.sub(r"[^A-Za-z0-9._-]", "_", tree or "")
     folder = "_" if folder in ("", ".", "..") else folder  # never the state dir itself or the one above it
-    return str(state_dir() / "gwt-apply" / folder / f"{prefix}-{run_id}.jsonl")
+    return state_dir() / "gwt-apply" / folder
+
+
+def _landed(args, tree: str | None) -> frozenset:
+    """The op keys an earlier --apply of this same list (same sha256) logged as done, from the logs where this run
+    would keep its own. A removal of theirs that finds nothing has landed: a rerun after a crash skips it, while on a
+    list's first run the same removal is a conflict (a mistyped ID)."""
+    if not args.change_list:
+        return frozenset()
+    sha = _sha256(args.change_list)
+    if args.log:
+        p = Path(args.log)
+        logs = p.parent.glob(f"{p.stem}.*{p.suffix or '.jsonl'}")
+    else:
+        logs = _log_dir(tree).glob("gwt-apply-*.jsonl")
+    keys: set[str] = set()
+    for log in logs:
+        try:
+            lines = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines() if line.strip()]
+        except (OSError, ValueError):
+            continue
+        if not lines or lines[0].get("event") != "start" or lines[0].get("list_sha256") != sha or lines[0].get("dry_run"):
+            continue
+        keys |= {e["key"] for e in lines if e.get("event") == "op" and e.get("status") == "done" and e.get("key")}
+    return frozenset(keys)
 
 
 def _sha256(path: str) -> str:
@@ -240,7 +331,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--pre", metavar="FILE", help="with --revert: a snapshot or gwt-check dump taken before that run")
     ap.add_argument("--tag", help="a Gramps tag put on every object this run creates, e.g. r12 (ops can add their own with \"tag\")")
     ap.add_argument("--private-new", action="store_true",
-                    help="every object this run creates is saved with private=true, so a tree that shows only deceased people to guests never shows a new source, citation, media or note by default")
+                    help="every object this run creates (person, family, event, place, source, citation, media, note) is saved private, "
+                         "so a guest never sees it; objects that already exist keep their own value (see docs/apply.md, Private by default)")
     ap.add_argument("--retries", type=_at_least_one, default=5,
                     help="tries per op, and for the login and reads before the first op (at least 1)")
     ap.add_argument("--retry-wait", type=float, default=30.0, help="seconds after a busy server")
@@ -248,7 +340,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="with --apply: ask the server to store a backup of the tree before the first write, and write "
                     "nothing if it refuses (never restores one)")
     ap.add_argument("--break-lock", action="store_true",
-                    help="take the tree's lock even if another apply's lock has not expired (only if that apply is dead)")
+                    help="take the tree's lock even if another apply's lock has not expired (only once you have checked on "
+                    "its host that it stopped; a PID alone proves nothing)")
     argv = list(sys.argv[1:] if argv is None else argv)
     args = ap.parse_args(argv)
     if args.revert:
@@ -259,6 +352,8 @@ def main(argv: list[str] | None = None) -> int:
         return _revert(args, argv)
     if args.pre:
         ap.error("--pre goes with --revert")
+    if args.apply and args.save_snapshot:
+        ap.error("--apply and --save-snapshot are separate modes: save the snapshot first, then apply")
     if args.server_backup and not args.apply:
         ap.error("--server-backup goes with --apply: a dry run writes nothing, so it needs no backup")
     if args.verify and (args.apply or args.save_snapshot):
@@ -299,13 +394,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.apply and not conf.get("GWT_TREE"):
         print("--apply needs GWT_TREE (the tree id the login must land in)", file=sys.stderr)
         return 2
+    # gwt-run passes the same --config to every step: the GWT_BACKUP_* keys count only with --server-backup
+    problem = args.server_backup and backup_login_problem(conf)
+    if problem:
+        print(problem, file=sys.stderr)
+        return 2
+    backup_conf = conf if args.server_backup and conf.get("GWT_BACKUP_USERNAME") else None
     run_id = f"{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(3)}"
     log = _log_path(args, run_id, conf.get("GWT_TREE"), prefix="gwt-apply",
-                    writes=args.apply and not args.save_snapshot)
+                    writes=args.apply)
     client = _client(conf, dry_run=not args.apply, log_path=log)
     _first_line(run_id, log)
     outcome: dict = {}
-    return _ended(client, lambda: _run(args, argv, client, run_id, ops, snap, old, offline, outcome), outcome)
+    landed = _landed(args, conf.get("GWT_TREE") or (snap or {}).get("tree"))
+    return _ended(client, lambda: _run(args, argv, client, run_id, ops, snap, old, offline, outcome, landed,
+                                                  backup_conf), outcome)
 
 
 def _backup_id_of_task(t: dict):
@@ -323,6 +426,25 @@ def _backup_id_of_task(t: dict):
     return None
 
 
+BACKUP_POLLS = 300  # 2 s apart: a big tree's backup is a whole-tree export, 10 minutes before the run gives up
+BACKUP_REFUSED = {
+    403: "creating one needs an owner or admin login",
+    409: "the server could not make a backup of this tree",
+    422: "the server could not make a backup of this tree (for example a dangling reference)",
+    429: "the server's backup limit for this tree is used up (by default 10 a day)",
+    501: "the server has no backup directory set (BACKUP_DIR)",
+}
+
+
+def _backup_problem(b) -> str | None:
+    """Why a backup the server named does not count: it needs an id and a size, and must not say it is unrestorable."""
+    if not isinstance(b, dict) or not b.get("id"):
+        return "the server named no backup id"
+    if b.get("restorable") is False or not b.get("size"):
+        return f"the backup {b['id']} is not restorable or empty"
+    return None
+
+
 def _server_backup(client: Client, args, lock) -> str | None:
     """Ask the server to store a backup of the tree. None when it did, else why not. It only creates: a restore is
     never called from here. The server deletes its oldest backup beyond the number it keeps per tree. A server with a
@@ -331,12 +453,11 @@ def _server_backup(client: Client, args, lock) -> str | None:
     def get(path):
         return _retried("server backup", lambda: client._request("GET", path), client, args, lock)
 
-    def make():
-        return client._request("POST", "/backups/", write=True)
     try:
-        r = make()  # never repeated: a second POST could store a second backup
+        r = client._request("POST", "/backups/", write=True)  # never repeated: a second POST could store a second backup
     except Retryable as exc:
-        return f"the server backup request failed ({exc}); nothing was written"
+        why = BACKUP_REFUSED.get(exc.status)
+        return f"the server backup request failed ({exc}{'; ' + why if why else ''})"
     if r.status_code == 202:
         try:
             tid = (r.json().get("task") or {}).get("id")
@@ -345,15 +466,18 @@ def _server_backup(client: Client, args, lock) -> str | None:
         if not tid:
             return "the server answered HTTP 202 without a task id, so the backup cannot be confirmed"
         info = None
-        for _ in range(30):
+        for _ in range(BACKUP_POLLS):
             t = get(f"/tasks/{tid}")
+            if 400 <= t.status_code < 500:
+                return f"the server's backup task {tid} cannot be read (HTTP {t.status_code}); it may still store a backup"
             task = t.json() if t.status_code == 200 else {}
             if task.get("state") == "FAILURE" or task.get("status") in ("failed", "lost"):
                 return f"the server's backup task {tid} failed"
             if task.get("state") == "SUCCESS" or task.get("status") == "succeeded":
                 bid = _backup_id_of_task(task)
                 lst = get("/backups/")
-                found = [b for b in (lst.json() if lst.status_code == 200 else []) if b.get("id") == bid]
+                items = lst.json() if lst.status_code == 200 else []
+                found = [b for b in items if isinstance(b, dict) and b.get("id") == bid] if isinstance(items, list) else []
                 if not bid or not found:
                     return f"the backup task {tid} succeeded but its backup is not in the server's list"
                 if found[0].get("restorable") is not True or not found[0].get("size"):
@@ -362,20 +486,26 @@ def _server_backup(client: Client, args, lock) -> str | None:
                 break
             time.sleep(2)
         if info is None:
-            return f"the server's backup task {tid} did not finish in 60 s"
+            return (f"the server's backup task {tid} did not finish in {BACKUP_POLLS * 2 // 60} min; the server may still "
+                    "store the backup and drop its oldest one")
     elif r.status_code != 201:
-        return f"the server did not store a backup (HTTP {r.status_code}; creating one needs an owner or admin login)"
+        why = BACKUP_REFUSED.get(r.status_code) or f"the server said: {r.text[:200]}"
+        return f"the server did not store a backup (HTTP {r.status_code}; {why})"
     else:
         try:
             info = r.json()
         except ValueError:
             info = {}
+        bad = _backup_problem(info)
+        if bad:
+            return f"the server answered HTTP 201 but {bad}"
     client.log(event="server-backup", id=info.get("id"), size=info.get("size"))
     print(f"server backup stored: {info.get('id')}")
     return None
 
 
-def _run(args, argv, client: Client, run_id: str, ops, snap, old, offline: bool, outcome: dict) -> int:
+def _run(args, argv, client: Client, run_id: str, ops, snap, old, offline: bool, outcome: dict,
+         landed: frozenset = frozenset(), backup_conf: dict | None = None) -> int:
     client.run_info = {"run": run_id, "version": version(), "argv": argv, "list": args.change_list,
                        "list_sha256": _sha256(args.change_list) if args.change_list else None,
                        "snapshot": args.snapshot}
@@ -427,7 +557,7 @@ def _run(args, argv, client: Client, run_id: str, ops, snap, old, offline: bool,
                 print(msg, file=sys.stderr)
                 _write_json(args.json, ops, [], "not run: the snapshot check refused the list")
                 return 1
-            refused = _retried("snapshot check", lambda: _plan_on_snapshot(ops, snap, client, tag=args.tag),
+            refused = _retried("snapshot check", lambda: _plan_on_snapshot(ops, snap, client, tag=args.tag, landed=landed),
                                client, args, lock)
             if refused:
                 client.log(event="refused", reason="snapshot-plan", problems=refused)
@@ -443,14 +573,15 @@ def _run(args, argv, client: Client, run_id: str, ops, snap, old, offline: bool,
             _write_json(args.json, ops, [], "not run: the list stopped on likely duplicates")
             return 1
         if args.server_backup:
-            refused = _server_backup(client, args, lock)
+            refused = (_separate_server_backup(backup_conf, client, args, lock)
+                       if backup_conf else _server_backup(client, args, lock))
             if refused:
                 client.log(event="refused", reason="server-backup", problems=[refused])
                 print(f"{refused}; nothing was written", file=sys.stderr)
                 _write_json(args.json, ops, [], "not run: the server backup was refused")
                 return 1
         results = Applier(client, retries=args.retries, retry_wait=args.retry_wait, lock=lock, tag=args.tag,
-                          verify=args.verify, private_new=args.private_new).run(ops)
+                          verify=args.verify, private_new=args.private_new, landed=landed).run(ops)
     except (LockHeld, ApiError) as exc:
         outcome["error"] = str(exc)
         print(exc, file=sys.stderr)

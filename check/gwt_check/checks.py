@@ -625,6 +625,12 @@ def _years_differ(bp: set, bq: set):
     return bp and bq and not ({x[0] for x in bp} & {x[0] for x in bq})
 
 
+def _births_apart(T: dict, p: dict, q: dict) -> bool:
+    a = homonyms._homonym_birth_span(p, T['events'])
+    b = homonyms._homonym_birth_span(q, T['events'])
+    return bool(a and b) and (a.hi < b.lo or b.hi < a.lo)
+
+
 def _same_name_pair(T: dict, out: Findings, n: str, facts: dict, p: dict, q: dict) -> None:
     bp, pp, sp, cp = facts[p["handle"]]
     bq, pq, sq, cq = facts[q["handle"]]
@@ -633,7 +639,7 @@ def _same_name_pair(T: dict, out: Findings, n: str, facts: dict, p: dict, q: dic
         out.add("dup-person-birth", pair, n)
     # a shared relative proves nothing when one is the other's parent; a shared birth date still does
     if (pp & pq or sp & sq or cp & cq) and not _years_differ(bp, bq) \
-            and not _parent_and_child(T, p["handle"], q["handle"]):
+            and not _parent_and_child(T, p["handle"], q["handle"]) and not _births_apart(T, p, q):
         out.add("dup-person-relative", pair, f"{n}, {_kin_why(pp, pq, sp, sq, cp, cq)}")
 
 
@@ -753,7 +759,7 @@ def _fuzzy_why(T: dict, facts: dict, h: str, c: str) -> str | None:
         ph, qh = _parents_by_name(T, h), _parents_by_name(T, c)
         pp = {n for n in pp & pq if ph[n] != qh[n]}
     kin_shared = (pp & pq or sp & sq or cp & cq) and not _parent_and_child(T, h, c)
-    if near or (kin_shared and not (yp and yq)):
+    if near or (kin_shared and not (yp and yq) and not _births_apart(T, T["people"][h], T["people"][c])):
         return "birth within 2 years" if near else _kin_why(pp, pq, sp, sq, cp, cq)
     return None
 

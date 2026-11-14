@@ -51,9 +51,27 @@ gwt-rawstore verify [dirs] [--deep]
 Every row of every `rawstore.tsv` under the given directories: the key carries the sha256, the object exists, the size and the stored sha256 match. `--deep` also downloads and hashes every object. Exit status 1 when any row is bad.
 
 ```sh
-gwt-rawstore migrate <dir> [--remove] [-j 4]
+gwt-rawstore migrate <dir> [--remove | --evict] [--dry-run] [-j 4]
 ```
-For binaries already committed. Uploads every binary git tracks under `dir` and writes the manifests. With `--remove` it also runs `git rm --cached` on them, adds them by exact name to the folder's `.gitignore`, and stages the manifest and `.gitignore`. The files stay on disk and the history is not rewritten; commit when the diff looks right. If any upload fails, nothing is untracked. It refuses to run when tracked files are missing from the working tree (a sparse checkout), since it cannot hash what it cannot read.
+For binaries already committed. Uploads every binary git tracks under `dir` and writes the manifests. With `--remove` it also runs `git rm --cached` on them, adds one pattern per extension (`*.jpg`, `*.pdf`) to `dir/.gitignore`, which covers every subfolder, and stages the manifests and `.gitignore`. The files stay on disk. `--evict` does the same and then deletes the local copies. Every upload is confirmed by a `HEAD` that checks the size and the sha256 before anything is untracked or deleted. The history is not rewritten in either case; commit when the diff looks right. If any upload fails, nothing is untracked.
+
+It refuses to run when tracked files are missing from the working tree (a sparse checkout), since it cannot hash what it cannot read. Run it on a full clone, for example on a server, then pull the commit on the laptop.
+
+`--dry-run` shows what a run with the same flags would do, and does none of it. It hashes each binary and sends one `HEAD` for its key; it never uploads, never writes a `rawstore.tsv` or `.gitignore`, never runs `git rm` or `git add`, and never deletes a file. Each file gets a line, `would put` or `have` (the store already holds the object with that size), and says whether its folder's `rawstore.tsv` already has a row with the same sha256 and size. Then come the totals: files and bytes to upload, files and bytes already stored, and how many folders would get a manifest written. With `--remove` or `--evict` it adds the files and bytes that would be untracked, or untracked and deleted, counted by extension, so compressed data such as `.json.gz` shows up before it leaves git. It refuses a sparse checkout with the same error as the real run, and exits 1, naming each file, when it cannot read a file, a `HEAD` fails, or the store holds the object with the right size but another sha256, which the real run would refuse.
+
+```sh
+gwt-rawstore migrate raw --evict --dry-run
+```
+
+### Images that live in the bucket
+
+To keep a folder of source images (say `raw/`) out of git for good:
+
+1. Download new ones with `gwt-fetch ... --out raw/<folder> --rawstore`: each file goes to the bucket and is deleted locally once confirmed, and `gwt-fetch` reads `rawstore.tsv` so it never downloads it again ([gwt-fetch](fetch.md)).
+2. Move the ones already committed with `gwt-rawstore migrate raw --evict` on a full clone, then commit.
+3. Pull that commit on the laptop. Git deletes the untracked images from its working tree and keeps the `rawstore.tsv` and `manifest.tsv` files, which `gwt-fetch --rawstore` reads to skip what is in the bucket. `gwt-rawstore get <path|sha256>` brings back one image when you need it.
+
+After `--remove` or `--evict`, git ignores every file under `dir` with a migrated extension, including scans saved there later without `--rawstore`: they never show in `git status` and are in no bucket. Store them with `gwt-rawstore put --remove <dir>`; it is safe to repeat, since files already in the bucket come back as `have`. Migrate prints the same reminder.
 
 ```sh
 gwt-rawstore check-staged [--max-kb N]
@@ -81,21 +99,21 @@ The tests run against an in-process S3 stub that, like Garage, refuses a body th
 gwt-rawstore doctor [--repo PATH] [--json] [--max-packs 500] [--max-tmp-gb 1] [--max-binary-gb 1]
 ```
 
-A read-only check of how a research repo uses the disk, for repos that many agents read and commit to. It needs no store configuration. Each finding prints the command that fixes it. Exit status 0 when nothing is wrong, 1 when something is, 2 when it cannot run (no such folder, not a git work tree, no git).
+A read-only check of how a research repo uses the disk, for repos that many agents read and commit to. It needs no store configuration. Each finding says what to do; where that is a command, the `fix:` line is the command alone, paths quoted, ready to paste. Exit status 0 when nothing is wrong, 1 when something is, 2 when it cannot run (no such folder, not a git work tree, no git).
 
 | Check | A finding when | Fix it prints |
 |---|---|---|
-| `packs` | more than `--max-packs` packs | `git repack --geometric=2 -d && git multi-pack-index write`, in the foreground, never while a backup runs; in a partial clone on git older than 2.53, upgrade git first |
-| `multi-pack-index` | more than 50 packs and no multi-pack-index | `git multi-pack-index write` |
-| `lazy-fetch` | a partial clone (a `partialclonefilter`, `extensions.partialclone` or a `.promisor` pack) and `GIT_NO_LAZY_FETCH` is not set | `export GIT_NO_LAZY_FETCH=1` in every agent's environment |
-| `binaries` | the binaries git tracks (by extension, sized from the work tree) add up to more than `--max-binary-gb` | `gwt-rawstore migrate <folder> --remove` for the three biggest folders |
-| `scratch` | `tmp/`, `temp/`, `scratch/` or `.tmp/` at the top of the work tree holds more than `--max-tmp-gb` | move scratch out of the repo |
-| `cache` | a `.cache` folder at the top or one level down, or a `GWT_*_DIR` / `GWT_*_CACHE` variable pointing inside the work tree | keep caches under `~/.cache` |
-| `time-machine` | macOS only: `.git`, a scratch or cache folder, or a big binary folder over `--max-tmp-gb` that `tmutil isexcluded` says is backed up | `tmutil addexclusion <path>` (for `.git`, only once the remote has every commit) |
+| `packs` | more than `--max-packs` packs | `git repack --geometric=2 -d && git multi-pack-index write`; the message says to run it in the foreground, never while a backup runs, and in a partial clone on git older than 2.53 to upgrade git first |
+| `multi-pack-index` | more than 50 packs outside the multi-pack-index (none written, or written before they arrived; the count comes from its header) | `git multi-pack-index write` |
+| `lazy-fetch` | more than 100 promisor packs written in the last 24 hours: something is lazy fetching one object at a time | `export GIT_NO_LAZY_FETCH=1`, in every agent's environment |
+| `binaries` | the binaries git tracks (by extension, sized from the work tree) add up to more than `--max-binary-gb` | `gwt-rawstore migrate <folder> --evict` for the three biggest folders on a full clone, then commit |
+| `scratch` | `tmp/`, `temp/`, `scratch/` or `.tmp/` at the top of the work tree holds more than `--max-tmp-gb` | none to paste: the message says to move scratch out of the repo |
+| `cache` | a `.cache` folder at the top or one level down, or a folder named by `GWT_FSCACHE_DIR`, `GWT_GATE_DIR`, `GWT_MH_LOCK_DIR` or any `GWT_*_CACHE` inside the work tree, holds more than `--max-tmp-gb` (`GWT_LEDGER_DIR` is meant to be committed and is not checked) | none to paste: the message says to keep caches under `~/.cache` |
+| `time-machine` | macOS only: `.git`, a scratch or cache folder, or a big binary folder over `--max-tmp-gb` that `tmutil isexcluded` says is backed up | `tmutil addexclusion <path>`; for `.git`, only once the remote has every commit |
 
-It also prints `gc.auto` and `maintenance.auto` as information. On Linux the Time Machine check is skipped with a note.
+It also prints as information `gc.auto` and `maintenance.auto`, and, in a quiet partial clone, whether `GIT_NO_LAZY_FETCH` is set in the shell running doctor; neither is a finding. A relative cache variable is looked up from the current folder and from the top of the repo. On Linux the Time Machine check is skipped with a note.
 
-It never fetches. It runs only `git version`, `rev-parse`, `count-objects -v`, `config --get`, `ls-files` and `tmutil isexcluded`, never a command that reads an object, and starts every git with `GIT_NO_LAZY_FETCH=1` as well. A binary outside a sparse checkout is skipped, not read from the object store. Why these checks: [hard-won lessons 7, 8 and 56 to 58](hard-won.md#git-and-disk).
+It never fetches. It runs only `git version`, `rev-parse`, `count-objects -v`, `config --get`, `config --get-regexp`, `ls-files` and `tmutil isexcluded`, never a command that reads an object, and starts every git with `GIT_NO_LAZY_FETCH=1` as well. A binary outside a sparse checkout is skipped, not read from the object store. Why these checks: [hard-won lessons 7, 8 and 55 to 57](hard-won.md#git-and-disk).
 
 ```sh
 python3 -m unittest rawstore/test_doctor.py

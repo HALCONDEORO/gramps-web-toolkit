@@ -50,12 +50,13 @@ class Localities(unittest.TestCase):
         self.assertFalse(gwt_genae.is_locality_list(PAGE['bautismos'].decode()))
 
     def test_a_numeric_id_passes_through(self):
-        self.assertEqual(gwt_genae.resolve_locality('701', 'mu', self.MAP), '701')
-        self.assertEqual(gwt_genae.resolve_locality('', 'mu', self.MAP), '')
+        self.assertEqual(gwt_genae.resolve_locality('701', 'mu', self.MAP), ('701', 'Villazul'))
+        with self.assertRaises(gwt_genae.LocalityError):
+            gwt_genae.resolve_locality('', 'mu', self.MAP)
 
     def test_a_name_resolves_ignoring_case_accents_and_spaces(self):
-        self.assertEqual(gwt_genae.resolve_locality('villazul', 'mu', self.MAP), '701')
-        self.assertEqual(gwt_genae.resolve_locality('  Peñafría  (norte) ', 'mu', self.MAP), '702')
+        self.assertEqual(gwt_genae.resolve_locality('villazul', 'mu', self.MAP), ('701', 'Villazul'))
+        self.assertEqual(gwt_genae.resolve_locality('  Peñafría  (norte) ', 'mu', self.MAP), ('702', 'Peñafria (Norte)'))
 
     def test_a_name_of_another_province_is_unknown(self):
         with self.assertRaises(gwt_genae.LocalityError):

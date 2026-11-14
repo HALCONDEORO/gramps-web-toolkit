@@ -7,7 +7,7 @@ Instructions for coding agents working in this repository. `CLAUDE.md` imports t
 Command-line tools for running AI research agents against a Gramps Web family tree. Each folder is one
 tool with its own tests; `docs/` has one page per tool, plus `pipeline.md` (how the pieces fit) and
 `hard-won.md` (the failures behind them). `docs/` is also the site at https://geiserx.github.io/gramps-web-toolkit/: a new
-page goes into the `mkdocs.yml` nav and `docs/index.md`, and `mkdocs build --strict` must pass. The toolkit is for any country; Spain-specific code says so in its name
+page goes into the `zensical.toml` nav and `docs/index.md`, and `python -m zensical build --clean --strict` plus `python -I .github/scripts/site-check.py site` must pass. The toolkit is for any country; Spain-specific code says so in its name
 (`spanish-poller`) or in its docs (the Spanish sources in `gwt-fetch`).
 
 | Folder | Tool | Runtime |
@@ -26,6 +26,9 @@ page goes into the `mkdocs.yml` nav and `docs/index.md`, and `mkdocs build --str
 | `leads/` | `gwt-leads`, tree gaps ranked as queue tasks | Python standard library |
 | `spanish-poller/` | `gwt-spanish-poller`, Spain-only sede and DEHú watcher | Node 18+, Playwright |
 | `ocr-bench/` | OCR, HTR and LLM reading benchmark | Python, one venv per engine |
+| `run/` | `gwt-run`, the write chain for one change list | Python standard library (runs gwt-apply and gwt-check) |
+| `dna/` | `gwt-import-dna`, DNA match lists to a change list | Python standard library (its end-to-end test needs `requests`) |
+| `corpus/` | `gwt-corpus`, search of everything already downloaded | Python standard library (PDFs: `pdftotext`) |
 
 ## Repository rules
 
@@ -45,7 +48,7 @@ page goes into the `mkdocs.yml` nav and `docs/index.md`, and `mkdocs build --str
 cd apply && python3 -m pytest -q
 cd check && python3 -m pytest -q
 cd fetch && python3 -m pytest -q
-cd ledger && python3 -m unittest test_gwt_ledger
+cd ledger && python3 -m unittest test_gwt_ledger test_requests
 cd fscache && python3 -m unittest test_gwt_fscache
 cd gate && python3 -m unittest test_gwt_gate
 cd rank && python3 -m unittest test_gwt_rank
@@ -54,6 +57,9 @@ cd rawstore && python3 -m unittest test_gwt_rawstore
 cd importxl && python3 -m unittest test_gwt_import_excel test_end_to_end
 cd queue && python3 -m unittest test_gwt_queue
 cd leads && python3 -m unittest test_gwt_leads
+cd run && python3 -m pytest -q
+cd dna && python3 -m pytest -q
+cd corpus && python3 -m pytest -q
 cd spanish-poller && node --test
 ```
 

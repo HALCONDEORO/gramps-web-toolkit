@@ -63,6 +63,14 @@ The toolkit works for genealogy in any country. `gwt-spanish-poller` and some `g
 - [gwt-check](check.md): reads the whole tree and reports orphans, dangling links, broken pointers, likely duplicates, dates that contradict each other and what changed.
 - [gwt-import-excel](import-excel.md): turns a research workbook into a change list for review.
 - [gwt-leads](leads.md): reads a tree dump offline and ranks its gaps as queue tasks.
+- [Archives catalogue](archives.md): where records are kept in about 80 countries, for `gwt-leads --archives builtin:CC`.
+- [gwt-report](report.md): how two people are related, in English, Spanish and French, and what is new since the family was last told.
+- [gwt-geocode](geocode.md): coordinates for the places events use, in any country, as a change list for gwt-apply.
+- [gwt-run](run.md): one change list through backup, dry run, apply, verify and check, in one command that goes on where it stopped.
+- [gwt-import-dna](import-dna.md): turns the DNA match lists a testing site lets you download into a change list for Gramps Web's DNA view.
+- [gwt-lint](lint.md): checks a change list against the tree before it is applied: scope, protected and living people, overlap with other lists, weak claims; every rule proves it can fail.
+- [gwt-import-gedcom](import-gedcom.md): a GEDCOM file as a change list for review, with anyone already in the tree held for a decision; audit, split, and export with living people anonymized.
+- [gwt-corpus](corpus.md): search everything already downloaded before going back to a site, and cross a book or gazette with the tree.
 
 - [gwt-report](report.md): how two people are related, in English, Spanish and French, and what is new since the family was last told.
 
@@ -95,6 +103,7 @@ The toolkit works for genealogy in any country. `gwt-spanish-poller` and some `g
 ## Development
 
 - [Development](development.md): tests, building this site, and the rules for a change.
+- [Shared rules and locales](rules.md): one rule for who may be living, name folding and date reading, and a word table per language.
 
 ## License
 

@@ -38,6 +38,13 @@ The toolkit works for genealogy in any country. One module, `spanish-poller`, is
 - `gwt-rawstore`: keeps source images in an S3-compatible bucket and only a small manifest in git
 - `gwt-spanish-poller` (Spain only): watches Spanish civil-registry requests and the DEHú inbox read-only, and flags cases that vanish
 - `ocr-bench`: scores OCR, HTR and LLM readings of the same pages on how many names they recover
+- `gwt-report`: names how two people are related (in English, Spanish and French) with their common ancestors and implex, and lists what is new in the tree since the family was last told, with links
+- `gwt-geocode`: puts coordinates on the places a tree's events use, in any country, as a change list for `gwt-apply`, so the Gramps Web map fills in
+- `gwt-run`: takes one change list through backup, dry run, apply, verify and check in one command, ends a step that hangs, and goes on where it stopped when run again
+- `gwt-import-dna`: turns the DNA match lists a testing site lets you download into a gwt-apply change list for Gramps Web's DNA view
+- `gwt-lint`: checks a change list against the tree before it is applied, with rules that each prove they can still fail
+- `gwt-import-gedcom`: turns a GEDCOM file into a gwt-apply change list for review, holding anyone already in the tree; also audits a GEDCOM, splits one into separate trees, and exports a tree file as a GEDCOM with living people anonymized
+- `gwt-corpus`: one offline full-text index of every page, record and book already downloaded, so an agent searches its own copies before it goes back to a rate-limited site, and sweeps a book or gazette for the tree's names
 
 - `gwt-report`: names how two people are related (in English, Spanish and French) with their common ancestors and implex, and lists what is new in the tree since the family was last told, with links
 
@@ -60,6 +67,8 @@ gwt leads --root I0001 --limit 10 tree.json.gz   # the gaps to research next, Lu
 <!-- quick-start:end -->
 
 `./demo.sh` in `examples/` runs the same commands and checks each exit code. Nothing above writes to a tree: without `--apply`, `gwt apply` only prints the plan. Every tool runs as `gwt <tool>` and keeps its old `gwt-<tool>` command too. `gwt mh` needs the `mh` extra (`pipx install '.[mh]'`) and a Chrome it reaches over CDP. `gwt-spanish-poller` needs Node 18+ and Playwright and is not in the package. PyPI gets the package with the first release. [Getting started](https://geiserx.github.io/gramps-web-toolkit/getting-started/) connects the tools to your own tree.
+
+For an AI agent, `npx skills add GeiserX/gramps-web-toolkit --skill gramps-web-toolkit` installs a skill that teaches it the safe order of steps and the traps; [Getting started](https://geiserx.github.io/gramps-web-toolkit/getting-started/) has the other ways to install it.
 
 ## Documentation
 

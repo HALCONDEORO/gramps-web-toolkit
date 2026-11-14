@@ -31,6 +31,12 @@ TOOLS = {
     "mh": ("gwt_mh_cli", "MyHeritage records through a signed-in browser (extra: mh)"),
     "read": ("gwt_read", "FamilySearch and PARES record search and records, slow and cached"),
     "report": ("gwt_report", "how two people are related, and what is new since the family was told"),
+    "geocode": ("gwt_geocode", "coordinates for the places events use, as a gwt-apply change list"),
+    "run": ("gwt_run", "backup, dry run, apply, verify and check of one list, resumable"),
+    "import-dna": ("gwt_dna", "DNA match lists from a testing site into Gramps Web's DNA view"),
+    "lint": ("gwt_lint.cli", "check a change list against the tree before it is applied, with self-proving rules"),
+    "import-gedcom": ("gwt_gedcom.cli", "turn a GEDCOM file into a gwt-apply change list; audit, split and export one"),
+    "corpus": ("gwt_corpus", "search everything already downloaded before going back to a site"),
 }
 
 

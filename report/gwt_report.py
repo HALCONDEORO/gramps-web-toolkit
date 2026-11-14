@@ -450,6 +450,61 @@ def names(g1, g2, half, sex):
     return {lang: f(g1, g2, half, sex) for lang, f in NAMERS.items()}
 
 
+# Digest UI strings per language. NAMERS covers the kin names; these cover everything else
+# `gwt-report digest` prints. Every language here has every key (a test checks it), so a gap raises.
+DIGEST_I18N = {
+    'en': {
+        'title': 'New in the tree', 'since': ' since %s', 'nothing_new': 'Nothing new.',
+        'side_root': 'root', "side_father": "father's side", "side_mother": "mother's side",
+        'side_both': 'both sides', 'side_descendants': 'descendants',
+        'side_not_kin': 'not blood kin', 'side_other': 'other',
+        'not_attached': 'not attached to a person',
+        'path_line': '(path: %d confirmed, %d probable, %d weak, %d unmarked links)',
+        'new_person': 'new person: %s', 'born': ', born %s', 'new_event': 'new event: ', 'event': 'event',
+        'new_citation': 'new citation: ', 'confidence': 'confidence %s', 'new_media': 'new media: ',
+        'weak_mark': '[weak]',
+        'cut_note': ('kin paths were cut at %d per person for %d of these people: a more distant '
+                     'relationship, or the only one, may be missing'),
+    },
+    'es': {
+        'title': 'Novedades en el árbol', 'since': ' desde el %s', 'nothing_new': 'Nada nuevo.',
+        'side_root': 'raíz', "side_father": 'rama paterna', "side_mother": 'rama materna',
+        'side_both': 'ambas ramas', 'side_descendants': 'descendientes',
+        'side_not_kin': 'sin parentesco de sangre', 'side_other': 'otros',
+        'not_attached': 'no ligado a una persona',
+        'path_line': '(camino: confirmados %d, probables %d, débiles %d, sin marcar %d)',
+        'new_person': 'persona nueva: %s', 'born': ', n. %s', 'new_event': 'evento nuevo: ', 'event': 'evento',
+        'new_citation': 'cita nueva: ', 'confidence': 'confianza %s', 'new_media': 'archivo nuevo: ',
+        'weak_mark': '[débil]',
+        'cut_note': ('los caminos de parentesco se cortaron en %d por persona para %d de estas personas: '
+                     'puede faltar una relación más lejana, o la única'),
+    },
+    'fr': {
+        'title': "Nouveautés de l'arbre", 'since': ' depuis le %s', 'nothing_new': 'Rien de nouveau.',
+        'side_root': 'racine', "side_father": 'côté paternel', "side_mother": 'côté maternel',
+        'side_both': 'des deux côtés', 'side_descendants': 'descendance',
+        'side_not_kin': 'sans lien de parenté', 'side_other': 'autres',
+        'not_attached': 'non rattaché à une personne',
+        'path_line': '(chemin : confirmés %d, probables %d, faibles %d, non marqués %d)',
+        'new_person': 'nouvelle personne : %s', 'born': ', ° %s', 'new_event': 'nouvel événement : ', 'event': 'événement',
+        'new_citation': 'nouvelle citation : ', 'confidence': 'confiance %s', 'new_media': 'nouveau média : ',
+        'weak_mark': '[faible]',
+        'cut_note': ('les chemins de parenté ont été coupés à %d par personne pour %d de ces personnes : '
+                     'un lien plus lointain, ou le seul, peut manquer'),
+    },
+}
+
+
+def s(lang, key):
+    """One digest UI string in `lang`."""
+    return DIGEST_I18N[lang][key]
+
+
+SIDE_KEY = {'root': 'side_root', "father's side": 'side_father', "mother's side": 'side_mother',
+            'both sides': 'side_both', 'descendants': 'side_descendants',
+            'not blood kin': 'side_not_kin', 'other': 'side_other'}
+
+
 def pedigree(T, h, max_gen=MAX_GEN):
     """{person: [Ahnentafel numbers]} over the first father and first mother of each person, and truncated."""
     nums, todo, n_seen = {}, [(h, 1, 0)], 0
@@ -680,11 +735,25 @@ def describe_media(o):
 DESCRIBERS = {'people': describe_person, 'events': describe_event, 'citations': describe_citation}
 
 
-def describe(T, t, o):
-    if t in DESCRIBERS:
-        return DESCRIBERS[t](T, o)
-    return describe_media(o)
-
+def describe(T, t, o, lang='en'):
+    if t == 'people':
+        birth = None
+        refs = o.get('event_ref_list') or []
+        i = o.get('birth_ref_index', -1)
+        if isinstance(i, int) and 0 <= i < len(refs):
+            birth = T['events'].get(refs[i].get('ref'))
+        y = year_of(birth)
+        return s(lang, 'new_person') % label(o) + (s(lang, 'born') % y if y else '')
+    if t == 'events':
+        name = (T['places'].get(o.get('place')) or {}).get('name')
+        place = text_of(name.get('value')) if isinstance(name, dict) else ''
+        bits = [text_of(o.get('type')) or s(lang, 'event'), str(year_of(o) or ''), place, o.get('description') or '']
+        return s(lang, 'new_event') + ', '.join(b for b in bits if b)
+    if t == 'citations':
+        src = text_of((T['sources'].get(o.get('source_handle')) or {}).get('title'))
+        bits = [src, o.get('page') or '', s(lang, 'confidence') % o.get('confidence', '?')]
+        return s(lang, 'new_citation') + ', '.join(b for b in bits if b)
+    return s(lang, 'new_media') + (o.get('desc') or o.get('path') or o.get('gramps_id') or '')
 
 def is_weak(T, t, o, weak_tags):
     return tagged_weak(T, o, weak_tags) or (t == 'citations' and (o.get('confidence') or 0) <= 1)
@@ -731,8 +800,8 @@ def fresh_objects(old, new, include_private):
             yield t, h, o
 
 
-def make_item(new, t, h, o, gid, weak_tags):
-    return {'type': t, 'id': gid, 'text': describe(new, t, o), 'weak': is_weak(new, t, o, weak_tags),
+def make_item(new, t, h, o, gid, weak_tags, lang):
+    return {'type': t, 'id': gid, 'text': describe(new, t, o, lang), 'weak': is_weak(new, t, o, weak_tags),
             'urls': urls_of(new, h) if t == 'citations' else
             [u for c in o.get('citation_list') or [] for u in urls_of(new, c)]}
 
@@ -744,7 +813,7 @@ def attach(by_person, new, people, item, include_private):
         by_person.setdefault(p, []).append(item)
 
 
-def items_by_person(old, new, told, weak_tags, include_private):
+def items_by_person(old, new, told, weak_tags, include_private, lang):
     own = holders(new)
     by_person = {}
     for t, h, o in fresh_objects(old, new, include_private):
@@ -752,7 +821,7 @@ def items_by_person(old, new, told, weak_tags, include_private):
         if gid in told:
             continue
         people = {h} if t == 'people' else own.get(h, set()) or {None}
-        attach(by_person, new, people, make_item(new, t, h, o, gid, weak_tags), include_private)
+        attach(by_person, new, people, make_item(new, t, h, o, gid, weak_tags, lang), include_private)
     return by_person
 
 
@@ -793,9 +862,9 @@ def group_key(new, g):
             (new['people'][p].get('gramps_id') or p) if p else '~')
 
 
-def digest(old, new, root=None, told=frozenset(), weak_tags=WEAK_TAGS, include_private=False):
+def digest(old, new, root=None, told=frozenset(), weak_tags=WEAK_TAGS, include_private=False, lang="en"):
     """Groups of new items: [{side, person, kin, distance, items: [...]}], nearest kin first."""
-    by_person = items_by_person(old, new, told, weak_tags, include_private)
+    by_person = items_by_person(old, new, told, weak_tags, include_private, lang)
     root_paths = ancestor_paths(new, root) if root else None
     groups = [group_of(new, root, root_paths, p, items, weak_tags) for p, items in by_person.items()]
     groups.sort(key=functools.partial(group_key, new))
@@ -831,84 +900,58 @@ def web_url(base, t, gid):
     return f"{base.rstrip('/')}/{WEB_KIND[t]}/{gid}" if base else ''
 
 
-def escape_html(s):
-    return html.escape(s, quote=False)
-
-
-def keep_text(s):
-    return s
-
-
-def link_html(u):
-    return f'<a href="{html.escape(u)}">{escape_html(u)}</a>'
-
-
-Style = collections.namedtuple('Style', 'esc link title side_head person_head note')
-
-
-def style_for(fmt):
-    """How each line is dressed: (open, close) tags around a title, a side, a person and a note. The html style keeps
-    to the inline tags chat apps take (b, u, i, a), no page around them."""
-    if fmt == 'html':
-        title, side_head, person_head = ('<b>', '</b>'), ('\n<b><u>', '</u></b>'), ('\n<b>', '</b>')
-        return Style(escape_html, link_html, title, side_head, person_head, ('\n<i>(', ')</i>'))
-    return Style(keep_text, keep_text, ('# ', ''), ('\n## ', ''), ('\n### ', ''), ('\n(', ')'))
-
-
-def wrap(tags, text):
-    return f'{tags[0]}{text}{tags[1]}'
-
-
-def person_head_text(T, g, base, lang):
-    """(heading text, Gramps Web address) of a group's person."""
-    p = g['person']
-    if not p:
-        return 'not attached to a person', ''
-    head = who(T, p)
-    if g['kin']:
-        head += ', ' + g['kin'][lang]
-    url = web_url(base, 'people', gramps_id(T, p))
-    if g['links'] and (g['links']['probable'] or g['links']['weak']):
-        c, pr, w, u = (g['links'][k] for k in LINK_CLASSES)
-        head += f' (path: {c} confirmed, {pr} probable, {w} weak, {u} unmarked links)'
-    return head, url
-
-
-def item_line(it, base, st):
-    text = it['text'] + (' [weak]' if it['weak'] else '')
-    urls = [u for u in [web_url(base, it['type'], it['id'])] + it['urls'] if u]
-    return '- ' + ' '.join([st.esc(text)] + [st.link(u) for u in urls])
-
-
-def group_lines(T, g, base, lang, st):
-    head, url = person_head_text(T, g, base, lang)
-    link = ' ' + st.link(url) if url else ''
-    yield wrap(st.person_head, st.esc(head)) + link + '\n'
-    for it in g['items']:
-        yield item_line(it, base, st)
-
-
 def render(T, groups, base, lang, fmt, since=''):
     """Markdown, or html: the same lines with only the inline tags chat apps take (b, u, i, a), no page around them,
     so the text pastes into a Telegram HTML message or an email as it is."""
-    st = style_for(fmt)
-    suffix = f' since {since}' if since else ''
-    lines = [wrap(st.title, st.esc('New in the tree' + suffix))]
+    if fmt == 'html':
+        esc = lambda s: html.escape(s, quote=False)
+        link = lambda u: '<a href="%s">%s</a>' % (html.escape(u), esc(u))
+
+        def body(s):  # a web address inside the text is linked where it stands; trailing .,; stays outside the link
+            out, pos = [], 0
+            for m in URL_RE.finditer(s):
+                u = m.group().rstrip('.,;')
+                out.append(esc(s[pos:m.start()]) + link(u))
+                pos = m.start() + len(u)
+            return ''.join(out) + esc(s[pos:])
+        title, side_head, person_head = '<b>%s</b>', '\n<b><u>%s</u></b>', '\n<b>%s</b>%s\n'
+        note_line = '\n<i>(%s)</i>'
+    else:
+        esc = link = body = lambda s: s
+        title, side_head, person_head, note_line = '# %s', '\n## %s', '\n### %s%s\n', '\n(%s)'
+    lines = [title % esc(s(lang, 'title') + (s(lang, 'since') % since if since else ''))]
     if not groups:
-        lines.append('\nNothing new.')
+        lines.append('\n' + s(lang, 'nothing_new'))
     side = None
     for g in groups:
         if g['side'] != side:
             side = g['side']
-            lines.append(wrap(st.side_head, st.esc(side)))
-        lines.extend(group_lines(T, g, base, lang, st))
+            lines.append(side_head % esc(s(lang, SIDE_KEY[side])))
+        p = g['person']
+        if p:
+            head = who(T, p)
+            if g['kin']:
+                head += ', ' + g['kin'][lang]
+            url = web_url(base, 'people', T['people'][p].get('gramps_id') or p)
+            if g['links'] and (g['links']['probable'] or g['links']['weak']):
+                head += ' ' + s(lang, 'path_line') % tuple(g['links'][k] for k in LINK_CLASSES)
+        else:
+            head, url = s(lang, 'not_attached'), ''
+        lines.append(person_head % (esc(head), ' ' + link(url) if url else ''))
+        for it in g['items']:
+            text = it['text'] + (' ' + s(lang, 'weak_mark') if it['weak'] else '')
+            # a web address the item's own text already shows (a citation page holding it) is not repeated; whole
+            # addresses are compared, so .../b/1 is still listed when the text holds .../b/10
+            in_text = {u.rstrip('.,;') for u in URL_RE.findall(text)}
+            shown = []
+            for u in [web_url(base, it['type'], it['id'])] + it['urls']:
+                if u and u not in in_text and u not in shown:
+                    shown.append(u)
+            lines.append('- ' + ' '.join([body(text)] + [link(u) for u in shown]))
     cut = sum(1 for g in groups if g.get('truncated'))
     if cut:
-        lines.append(wrap(st.note, st.esc(
-            f'kin paths were cut at {MAX_PATHS} per person for {cut} of these people: a more distant '
-            'relationship, or the only one, may be missing')))
+        lines.append(note_line % esc(s(lang, 'cut_note') % (MAX_PATHS, cut)))
     return '\n'.join(lines).lstrip('\n') + '\n'
-
 
 def told_head(fh):
     """What the told file needs before the new rows: its header when empty, a newline when the last one is missing."""
@@ -1009,7 +1052,7 @@ def run_digest(parser, args, weak):
     root = person_handle(new, args.root) if args.root else None
     told_path = local_path(args.told) if args.told else None
     told = read_told(told_path, args.audience) if told_path else frozenset()
-    groups = digest(old, new, root, told, weak, args.include_private)
+    groups = digest(old, new, root, told, weak, args.include_private, args.lang)
     sys.stdout.write(render(new, groups, args.base_url, args.lang, args.format, old['_taken']))
     if args.mark:
         mark_shown(args, told_path, groups)
