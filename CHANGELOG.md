@@ -11,6 +11,8 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Fixed
 
+- Selective ports of GeiserX queue #253 (`269674e`) and #262 (`3b971b6`): refuse JSONL float/bool priorities, preserve queue TSV bytes on exit 2, and leave caller stdin open. Existing fork audit, seed privacy, lease/token and blocked/denied behavior is unchanged. Original upstream priority fix credits OpenDeernet; refusal/stdin fix credits Sergio Fernández. Existing GPL-3.0 licence is unchanged. This is not a full upstream synchronization.
+
 - Vital-pointer checks accept primary Gramps fallback event types when no exact primary Birth/Death exists, without changing tree data or treating fallback dates as exact vital dates. Invalid indices, missing targets, wrong roles and wrong-side events remain findings.
 
 ### Added
