@@ -1,0 +1,6 @@
+# Focused guards from upstream queue #253 and #262; keep fork audit mutants intact.
+gwt_queue.py | 'priority': priority_value(priority), 'status': 'open', | 'priority': '' if priority is None else str(int(priority)), 'status': 'open', | priorities must not truncate floats or coerce bools
+gwt_queue.py | if isinstance(priority, bool): | if False: | booleans are not priorities
+gwt_queue.py | if isinstance(priority, float): | if False: | integral-looking floats are still rejected
+gwt_queue.py | if write and code != 2: | if write: | refusal preserves queue bytes and inode
+gwt_queue.py | batch = sys.stdin.readlines()  # stdin belongs to the caller; never close it | batch = sys.stdin.readlines(); sys.stdin.close() | stdin remains open for the caller
