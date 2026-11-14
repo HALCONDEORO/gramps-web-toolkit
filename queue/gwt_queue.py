@@ -128,13 +128,15 @@ def write_rows(path, rows):
 
 def with_queue(path, fn, write=True):
     """Run fn(rows) under an exclusive lock on <queue>.lock (a file that is never replaced, so the lock
-    survives the atomic rename) and save the rows; fn returns (rows, exit_code)."""
+    survives the atomic rename) and save the rows; fn returns (rows, exit_code).
+    A refused command (exit 2) leaves the queue file unchanged or absent. The
+    parent directory and sidecar lock may still be created to coordinate access."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path + '.lock', 'a', encoding='utf-8') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
             rows, code = fn(read_file(path))
-            if write:
+            if write and code != 2:
                 write_rows(path, rows)
             return code
         finally:
@@ -256,13 +258,24 @@ def dedupe_match(rows, row, retry_failed):
     return None
 
 
+def priority_value(priority):
+    """Parse like --priority, refusing JSON floats and booleans rather than coercing them."""
+    if priority is None:
+        return ''
+    if isinstance(priority, bool):
+        raise ValueError('priority must be an integer, not %r' % (priority,))
+    if isinstance(priority, float):
+        raise ValueError('priority must be an integer, not %r' % (priority,))
+    return str(int(priority))
+
+
 def new_row(rows, person, label='', kind='search', source='', query='', priority=None, note='', next_at='',
             dedupe_key=''):
     if kind not in KINDS:
         raise ValueError('kind must be one of %s, not %r' % (', '.join(KINDS), kind))
     return {'id': new_id(rows), 'person_key': key(person), 'person_label': clean(label), 'kind': kind,
             'source': key(source), 'query': normalize(query),
-            'priority': '' if priority is None else str(int(priority)), 'status': 'open',
+            'priority': priority_value(priority), 'status': 'open',
             'lane': '', 'claimed_at': '', 'done_at': '', 'result': '', 'evidence': '', 'tries': '0',
             'next_at': iso_or_empty(next_at), 'note': clean(note), 'token': '', 'lease_until': '',
             'dedupe_key': clean(dedupe_key)}
@@ -460,9 +473,11 @@ def main(argv=None):
         batch = None
         if args.jsonl:
             try:
-                stream = sys.stdin if args.jsonl == '-' else open(args.jsonl, encoding='utf-8')
-                with stream:
-                    batch = stream.readlines()
+                if args.jsonl == '-':
+                    batch = sys.stdin.readlines()  # stdin belongs to the caller; never close it
+                else:
+                    with open(args.jsonl, encoding='utf-8') as stream:
+                        batch = stream.readlines()
             except OSError as e:
                 p.error('cannot read %s: %s' % (args.jsonl, e))
 

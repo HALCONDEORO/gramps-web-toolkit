@@ -29,7 +29,7 @@ One row per task, tab-separated, with a header line:
 
 The queue path comes from `--queue`, else `$GWT_QUEUE`, else `./cola.tsv` in the current directory. Times are UTC; a value with no zone is read as UTC.
 
-Keep the file untracked, and on one host. Every command rewrites it whole under a local `flock`, which does not hold across git clones or across machines.
+Keep the file untracked, and on one host. Successful writing commands replace it whole under a local `flock`, which does not hold across git clones or across machines. A refused command (exit 2) leaves an existing queue file unchanged and does not create a new queue TSV; it may still create the parent directory and sidecar lock.
 
 ## The loop
 
@@ -53,11 +53,11 @@ done
 - `report` is the open-leads list: what is due now, by priority (the first 20; `--limit N` for more), then how much waits and how much failed. Read it at the start of a round; the judge reads it too.
 - `list` prints the rows, filtered with `--status`, `--person` and `--lane`.
 
-Two lanes never receive the same task: every command runs under an exclusive lock on `<queue>.lock`, and the queue file is replaced atomically (temp file, fsync, rename), so a crash leaves the old queue or the new one, never a half-written file. Keep the `.lock` file next to the queue; do not delete it while lanes run. A lane that dies holding a claim loses it when the claim's own lease runs out: the next `claim`, `report` or `stats` reopens the task. The lease is stored on the row, so no caller can revoke a live claim early. The dead attempt keeps its try, so a task that kills every lane that takes it parks as `failed` after `--max-tries`, like one that keeps failing, and shows up in `report` and `stats`.
+Two lanes never receive the same task: writing commands run under an exclusive lock on `<queue>.lock`, and successful queue updates replace the queue file atomically (temp file, fsync, rename), so a crash leaves the old queue or the new one, never a half-written file. Keep the `.lock` file next to the queue; do not delete it while lanes run. A lane that dies holding a claim loses it when the claim's own lease runs out: the next `claim`, `report` or `stats` reopens the task. The lease is stored on the row, so no caller can revoke a live claim early. The dead attempt keeps its try, so a task that kills every lane that takes it parks as `failed` after `--max-tries`, like one that keeps failing, and shows up in `report` and `stats`.
 
 ## Seeding
 
-`add` one task (`--person`, `--label`, `--kind`, `--source`, `--query`, `--priority`, `--note`, `--next-at` for a task not claimable before that instant, `--dedupe-key`), or many with `--jsonl FILE` (`-` for stdin): one JSON object per line with `person` and any of `label`, `kind`, `source`, `query`, `priority`, `note`, `next_at` and `dedupe_key`. A batch runs under one lock and one write, and a bad line stops it before anything is written.
+`add` one task (`--person`, `--label`, `--kind`, `--source`, `--query`, `--priority`, `--note`, `--next-at` for a task not claimable before that instant, `--dedupe-key`), or many with `--jsonl FILE` (`-` for stdin): one JSON object per line with `person` and any of `label`, `kind`, `source`, `query`, `priority`, `note`, `next_at` and `dedupe_key`. A batch runs under one lock and one write, and a bad line stops it before any queue row is written. JSONL priorities reject floats (including `2.0`), booleans and empty strings rather than truncating or coercing them. Integers and integer strings such as `"+5"` are accepted, as with `--priority`. Input read from `--jsonl -` leaves the caller's stdin open.
 
 `--dedupe` skips a task that is already queued, running or done: the same `dedupe_key` when either side has one, else the same person, kind, source and query. A done task counts only when its search ran (`hit`, `none` or `partial`); one closed as `blocked` or `denied` does not stop a re-seed. A `failed` match is skipped too, unless `--retry-failed` is given. On an open match the new label, query, note and priority replace the old ones, so a re-seed carries the latest picture.
 
