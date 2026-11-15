@@ -58,6 +58,7 @@ CHECKS = {
     "dangling-ref": "reference to an object that does not exist",
     "place-not-place": "a place field that holds something other than a place",
     "citation-no-source": "citation without a source",
+    "event-type-description": "stored event type differs from an explicit description heading; review original, no automatic correction",
     "birth-death-pointer": "birth or death pointer wrong, out of range or missing",
     "repeated-ref": "the same reference twice in one list",
     "family-backlink": "person and family disagree about who is in it",
@@ -114,7 +115,7 @@ CHECKS = {
 }
 
 # Checks reported without failing: a finding of these is never new, so it never sets the exit code.
-INFO_CHECKS = {"same-person-event", "same-person-citation", "homonym-birth-gap", "unconnected", "parent-age", "marriage-age", "sibling-spacing", "lifespan", "dup-citation",
+INFO_CHECKS = {"event-type-description", "same-person-event", "same-person-citation", "homonym-birth-gap", "unconnected", "parent-age", "marriage-age", "sibling-spacing", "lifespan", "dup-citation",
                "dup-source-ark", "date-false-precision", "place-vs-description", "note-marker-no-tag", "media-uniform", "media-dup-page"}
 
 # words in a note that a tag of the same stem is meant to mark; matched without accents, whole word
@@ -291,6 +292,53 @@ def hygiene_checks(T: dict, out: Findings, in_scope) -> None:
     source_ark_checks(T, out, in_scope)
     date_precision_checks(T, out, in_scope)
     homonyms.install(T, out, in_scope, person_name, id_order)
+
+
+# Deliberately narrow headings, not a general classifier or a translation engine.
+# Only a leading kind, optionally following one comma-separated place, is evidence here.
+_EVENT_HEADINGS = {
+    "Birth": ("birth", "naissance", "nacimiento"),
+    "Baptism": ("baptism", "bapteme", "bautismo"),
+    "Marriage": ("marriage", "mariage", "matrimonio"),
+    "Burial": ("burial", "sepulture", "entierro", "sepultura"),
+    "Death": ("death", "deces", "defuncion"),
+}
+_HEADING_TYPES = {word: kind for kind, words in _EVENT_HEADINGS.items() for word in words}
+_HEADING_WORD = re.compile(r"\b(?:" + "|".join(_HEADING_TYPES) + r")\b")
+_UNCERTAIN_HEADING = re.compile(r"\b(?:no|not|non|pas|sin|sans|possible|possibly|probable|probably|maybe|perhaps|uncertain|uncertainly|probablemente|posible|posiblemente|hipotetico|hipotetica|douteux|douteuse|incertain|incertaine|peut|hypothese|hipotesis)\b|[?]")
+
+
+def event_description_checks(T, out, in_scope):
+    """One review-only row per event, however many people refer to it. Never infers a fact."""
+    owners = defaultdict(set)
+    scoped = set()
+    for ns in ("people", "families"):
+        for obj in T[ns].values():
+            for ref in obj.get("event_ref_list") or []:
+                handle = ref.get("ref")
+                owners[handle].add(obj.get("gramps_id") or obj["handle"])
+                if in_scope(ns, obj["handle"]):
+                    scoped.add(handle)
+    for handle, event in T["events"].items():
+        if not (in_scope("events", handle) or handle in scoped):
+            continue
+        text = "".join(c for c in unicodedata.normalize("NFKD", event.get("description") or "").casefold()
+                       if not unicodedata.combining(c))
+        if _UNCERTAIN_HEADING.search(text):
+            continue
+        candidates = { _HEADING_TYPES[m.group()] for m in _HEADING_WORD.finditer(text) }
+        if len(candidates) != 1:
+            continue
+        heading = text.split(",", 1)[-1].lstrip()
+        first = re.match(r"([a-z]+)\b", heading)
+        kind = _HEADING_TYPES.get(first.group(1)) if first else None
+        if not kind or event.get("type") not in _EVENT_HEADINGS or kind == event.get("type"):
+            continue
+        out.add("event-type-description", event.get("gramps_id") or handle,
+                f"stored {event['type']}; description heading {kind}; owners: "
+                f"{','.join(sorted(owners[handle])) or '(unreferenced)'}. "
+                "Review the cited original and current object before changing type or vital pointers; "
+                "description is only a clue, nothing changed")
 
 
 def check_vital_pointers(T, out):
@@ -1127,6 +1175,7 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
     from .modifier_notes import check_modifier_notes
     check_modifier_notes(T, out, in_scope)
 
+    event_description_checks(T, out, in_scope)
     check_vital_pointers(T, out)
     family_backlink_checks(T, out)
     couple_checks(T, out, in_scope)

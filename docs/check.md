@@ -485,3 +485,7 @@ alone cannot establish that two underlying objects are duplicates.
 The read-only birth/death pointer check accepts primary Gramps fallback events when no primary exact Birth or Death event exists. Birth fallbacks are Baptism, Christening and Stillbirth; death fallbacks are Burial, Cremation, Cause Of Death, Probate and Stillbirth. These are display fallbacks, not proof of an exact birth/death date. A missing pointer is not required to point at a fallback. A pointer to a missing event, wrong role, unrelated type or invalid index remains a finding. If an exact primary vital event exists, it takes precedence over a fallback. Nothing rewrites events or converts a baptism into a birth.
 
 The fallback types follow Gramps `EventType.is_birth_fallback` and `is_death_fallback`: https://github.com/gramps-project/gramps/blob/master/gramps/gen/lib/eventtype.py .
+
+### Event description headings (review only)
+
+`event-type-description` groups explicit Birth/Baptism/Marriage/Burial/Death headings by event, listing the referring people and families once. A stored Birth with a description beginning `Exampleville, Marriage ...` is a clue to review the cited original before touching type or vital pointers, not a correction proposal. A baptism never establishes a birth date, nor a burial a death date. Negated, uncertain, mixed-kind and incidental wording is left unclassified. This narrow English/French/Spanish heading check does not interpret notes or images, prove an error, or cover every wording. It is informational and does not change the exit status.

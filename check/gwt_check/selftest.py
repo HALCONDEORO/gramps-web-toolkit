@@ -584,7 +584,14 @@ def p_same_person_citation(d):
     person["citation_list"] = ["hC0900", "hC0901"]
 
 
+def p_event_type_description(d):
+    event = copy.deepcopy(_get(d, "events", "E0001"))
+    event.update(handle="hE0950", gramps_id="E0950", description="Exampleville, Marriage Alex Example x Robin Sample.")
+    d["events"].append(event)
+
+
 PLANTS = [
+    (p_event_type_description, "event-type-description", "E0950", False),
     (p_same_person_event, "same-person-event", "I0900 E0900,E0901", False),
     (p_same_person_citation, "same-person-citation", "I0902 I0902 C0900,C0901", False),
     (p_date_modifier_note, "date-modifier-note", "E0001", False),
