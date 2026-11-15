@@ -90,9 +90,15 @@ class Runner:
   self.once.call('owner-login',lambda:self.a.native_owner_login(tree),lambda r:{'ownerLoginConfirmed':r is True}if r is True else (_ for _ in()).throw(Hold('LOGIN_NOT_CONFIRMED')))
   self.once.call('identity-readback',self.a.native_owner_tree_readback,lambda observed:require_clone_identity(self.original,tree,observed))
   self.tree=tree;self.owner_verified=True;return tree
+ def _native_restore_guarded(self,dryrun):
+  # Inside the once-only invocation, after durable INTENT, immediately before
+  # EACH native call. A dryrun is not authority for a later apply or recovery.
+  need(self.owner_verified and self.tree is not None,'OWNER_IDENTITY_NOT_VERIFIED')
+  need(self.a.attest_isolation_and_authority()is True,'LIVE_ATTESTATION_REQUIRED')
+  require_clone_identity(self.original,self.tree,self.a.native_owner_tree_readback())
+  return self.a.native_restore(dryrun)
  def restore(self,recovery=False):
-  need(self.owner_verified and self.tree is not None,'OWNER_IDENTITY_NOT_VERIFIED');need(self.a.attest_isolation_and_authority()is True,'LIVE_ATTESTATION_REQUIRED');require_clone_identity(self.original,self.tree,self.a.native_owner_tree_readback())
+  need(self.owner_verified and self.tree is not None,'OWNER_IDENTITY_NOT_VERIFIED')
   phase='restore-recovery'if recovery else'restore-apply'
-  if not recovery:self.once.call('restore-dryrun',lambda:self.a.native_restore(True),self.a.validate_restore_summary)
-  return self.once.call(phase,lambda:self.a.native_restore(False),self.a.validate_restore_summary)
-
+  if not recovery:self.once.call('restore-dryrun',lambda:self._native_restore_guarded(True),self.a.validate_restore_summary)
+  return self.once.call(phase,lambda:self._native_restore_guarded(False),self.a.validate_restore_summary)
