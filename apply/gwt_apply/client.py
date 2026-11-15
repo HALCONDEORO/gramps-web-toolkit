@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import hashlib
 import json
 import os
 import time
@@ -126,6 +127,7 @@ class Client:
         # lines before that wait in `_pending_log`, so a run that never logs in leaves no file.
         self._log_path = log_path
         self._log = None
+        self._log_durable = False
         self._log_ready = False
         self._pending_log: list[dict] = []
         self.run_info: dict = {}
@@ -143,6 +145,37 @@ class Client:
     def _write(self, entry: dict) -> None:
         self._log.write(json.dumps(entry, ensure_ascii=False) + "\n")
         self._log.flush()
+        os.fsync(self._log.fileno())
+        if not self._log_durable:
+            self._fsync_dir(os.path.dirname(os.path.abspath(self._log_path)))
+            self._log_durable = True
+
+    @staticmethod
+    def _fsync_dir(path: str) -> None:
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    def _ensure_log_parent(self) -> None:
+        # Persist every directory entry in a newly made path, not just the file contents.
+        parent = os.path.dirname(os.path.abspath(self._log_path))
+        chain = []
+        while True:
+            chain.append(parent)
+            above = os.path.dirname(parent)
+            if above == parent:
+                break
+            parent = above
+        for directory in reversed(chain):
+            try:
+                os.mkdir(directory, 0o700)
+            except FileExistsError:
+                if not os.path.isdir(directory):
+                    raise
+        for directory in chain:  # child first, through the existing root anchor
+            self._fsync_dir(directory)
 
     def log(self, **entry):
         if not self._log_path:
@@ -158,8 +191,9 @@ class Client:
         """Once the run is in: open the log with its `start` line, then the lines held back until now."""
         if not self._log_path or self._log is not None or not self._log_ready:
             return
-        os.makedirs(os.path.dirname(os.path.abspath(self._log_path)), exist_ok=True)
-        self._log = open(self._log_path, "x", encoding="utf-8")
+        self._ensure_log_parent()
+        fd = os.open(self._log_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        self._log = os.fdopen(fd, "w", encoding="utf-8")
         self._write(self._stamp({"event": "start", **self.run_info, "tree": self.tree}))
         for entry in self._pending_log:
             self._write(entry)
@@ -283,6 +317,7 @@ class Client:
             if obj is None:
                 return None
             obj = copy.deepcopy(obj)
+            obj["_read"] = json.dumps(obj, sort_keys=True)  # full preimage, including same-second edits
             obj["_snap"] = obj.get("change")  # what `update` compares with the server
             return obj
         return self.get_live(cls, handle)
@@ -430,33 +465,75 @@ class Client:
             members += [r.get("ref") for r in obj.get("child_ref_list") or []]
             self.stale |= {("Person", h) for h in members if h}
 
-    def update(self, obj: dict) -> None:
-        """PUT the whole object back, if it still is what the op read.
+    @staticmethod
+    def _update_state(obj: dict) -> dict:
+        """Canonical semantic object for readback; Gramps class tags are transport metadata."""
+        def clean(value):
+            if isinstance(value, dict):
+                return {k: clean(v) for k, v in value.items() if k != "_class"}
+            if isinstance(value, list):
+                return [clean(v) for v in value]
+            return value
+        return clean({k: v for k, v in obj.items()
+                      if k not in ("change", "_read", "_snap", "extended", "profile", "backlinks")})
 
-        The ETag a GET returns cannot be used as If-Match: PUT compares it with a
-        hash of the stored object, while a GET's ETag hashes the response body (up
-        to Gramps Web API 3.23.x) or the request cache key (3.24.0 on), so If-Match
-        always answers 412. Instead the object is read again right before the PUT.
+    def update(self, obj: dict) -> None:
+        """Recheck, persist preimage, PUT, read back. This is not atomic compare-and-swap.
+
+        The GET ETag is not the stored-object hash that PUT's If-Match expects. API3.25.1
+        validates that header before DbTxn anyway. A concurrent writer can still race this
+        read/PUT: callers must choose an appropriate operational window and reviewed scope.
+        Normal CLI writes always supply a private durable log; direct library callers must
+        supply log_path for persistent preimages. No credentials are added to these records.
         """
         cls = obj["_class"]
         self._touched(cls, obj["handle"])
-        body = {k: v for k, v in obj.items() if k not in ("_read", "_snap", "extended", "profile")}
+        body = {k: v for k, v in obj.items() if k not in ("_read", "_snap", "extended", "profile", "backlinks")}
+        path = f"/{NAMESPACE[cls]}/{obj['handle']}"
         if self.dry_run:
             self.pending[(cls, obj["handle"])] = copy.deepcopy(body)
-            self.log(method="PUT", path=f"/{NAMESPACE[cls]}/{obj['handle']}", body=body, planned=True)
+            self.log(method="PUT", path=path, body=body, planned=True)
             return
-        if "_snap" in obj:
-            live = self.get_live(cls, obj["handle"])
-            if live is None or live.get("change") != obj["_snap"]:
-                raise Stale(f"{cls} {obj.get('gramps_id') or obj['handle']} changed since the snapshot; take a new one")
-        elif "_read" in obj:
-            fresh = self.get_live(cls, obj["handle"])
-            if fresh is None or fresh["_read"] != obj["_read"]:
-                raise Retryable(f"update {cls} {obj['handle']}: changed since read")
+        fresh = self.get_live(cls, obj["handle"])
+        if fresh is None:
+            raise Stale(f"{cls} {obj['handle']} disappeared before update")
+        if "_snap" in obj and fresh.get("change") != obj["_snap"]:
+            raise Stale(f"{cls} {obj.get('gramps_id') or obj['handle']} changed since the snapshot; take a new one")
+        if "_read" in obj and self._update_state(fresh) != self._update_state(json.loads(obj["_read"])):
+            raise Retryable(f"update {cls} {obj['handle']}: changed since read")
+        before = {k: v for k, v in fresh.items() if k != "_read"}
+        self.log(event="update-preimage", path=path, before=before, intended=body,
+                 before_sha256=hashlib.sha256(json.dumps(before, sort_keys=True).encode()).hexdigest())
         self._wrote(cls, body)
-        r = self._request("PUT", f"/{NAMESPACE[cls]}/{obj['handle']}", write=True, json=body)
+        try:
+            r = self._request("PUT", path, write=True, json=body)
+        except Retryable as exc:
+            # Reconcile once before the caller can retry an operation. Never resend here.
+            try:
+                now = self.get_live(cls, obj["handle"])
+            except ApiError as read_exc:
+                self.log(event="update-reconciliation", path=path, state="unknown-unreadable")
+                raise ApiError("update result unknown and readback unavailable; inspect before retry") from read_exc
+            if now is not None and self._update_state(now) == self._update_state(body):
+                self.log(event="update-reconciliation", path=path, state="landed", after=now)
+                # Retain the established op-level answer_lost reporting and idempotence path.
+                raise exc
+            if now is not None and self._update_state(now) == self._update_state(before):
+                self.log(event="update-reconciliation", path=path, state="unchanged", after=now)
+                raise exc
+            self.log(event="update-reconciliation", path=path, state="diverged", after=now)
+            raise ApiError("update result differs from both preimage and intended object; no automatic retry") from exc
         if r.status_code != 200:
             raise ApiError(f"update {cls}: HTTP {r.status_code} {r.text[:300]}", r.status_code)
+        try:
+            after = self.get_live(cls, obj["handle"])
+        except ApiError as exc:
+            self.log(event="update-readback", path=path, state="unknown-unreadable")
+            raise ApiError("PUT succeeded but readback unavailable; inspect before retry") from exc
+        if after is None or self._update_state(after) != self._update_state(body):
+            self.log(event="update-readback", path=path, state="mismatch", after=after)
+            raise ApiError("PUT succeeded but readback differs from intended object; no automatic retry")
+        self.log(event="update-readback", path=path, state="verified", after=after)
         self.written[(cls, obj["handle"])] = copy.deepcopy(body)
 
     def delete(self, cls: str, handle: str, record: dict | None = None) -> None:

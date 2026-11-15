@@ -1178,7 +1178,7 @@ def test_apply_on_a_current_snapshot_reads_almost_nothing(fake, scan, tmp_path, 
     # single reads: the stamp check before each PUT, and objects this run wrote, which the snapshot does not have
     # (Anna changed when her new family was written, so the update of her name reads her and checks her again)
     assert [c for c in gets if c[1] in ("/api/places/plc1", "/api/sources/src1")] == []
-    assert gets.count(("GET", "/api/people/anna")) == 2
+    assert gets.count(("GET", "/api/people/anna")) == 3  # pre-PUT recheck plus post-PUT verification
     john = fake.store["people"][stable_handle("p-john")]
     assert john["birth_ref_index"] == 0 and len(john["citation_list"]) == 1
 
@@ -3058,7 +3058,7 @@ def test_an_op_that_gives_up_says_the_server_may_hold_each_lost_write(fake):
 
 
 @pytest.mark.parametrize("second, status, last", [
-    (None, "conflict", "conflict: Note N0001 no longer reads as expected"),
+    (None, "error", "error: update result differs from both preimage and intended object; no automatic retry"),
     (("GET", "/api/notes/", _crash), "error", "error: RuntimeError: the client broke"),
     (("PUT", "/api/notes/", lambda f: Resp(400, "bad request")), "error", "error: "),
 ])
