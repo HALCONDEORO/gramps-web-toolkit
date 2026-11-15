@@ -1116,19 +1116,19 @@ class Applier:
                     self.c.log(event="retry", attempt=attempt, error=str(exc))
                     time.sleep(self.retry_wait)
                 except Conflict as exc:
-                    lost += [f"answer lost on try {attempt}: {w}" for w in self.c.unknown_write]
+                    lost.extend(f"answer lost on try {attempt}: {write_path}" for write_path in self.c.unknown_write)
                     res.status = "conflict"
                     self.actions += [f"{line}; the server may hold that write" for line in lost]
                     self.actions.append(f"conflict: {exc}")
                     break
                 except ApiError as exc:
-                    lost += [f"answer lost on try {attempt}: {w}" for w in self.c.unknown_write]
+                    lost.extend(f"answer lost on try {attempt}: {write_path}" for write_path in self.c.unknown_write)
                     res.status = "error"
                     self.actions += [f"{line}; the server may hold that write" for line in lost]
                     self.actions.append(f"error: {exc}")
                     break
                 except Exception as exc:  # a bug or an input validate() let through: stop here, never a traceback
-                    lost += [f"answer lost on try {attempt}: {w}" for w in self.c.unknown_write]
+                    lost.extend(f"answer lost on try {attempt}: {write_path}" for write_path in self.c.unknown_write)
                     res.status = "error"
                     self.actions += [f"{line}; the server may hold that write" for line in lost]
                     self.actions.append(f"error: {type(exc).__name__}: {exc}")
