@@ -72,6 +72,7 @@ nav = [
       { "Hard-won lessons" = "hard-won.md" },
       { gwt-gate = "gate.md" },
       { gwt-fscache = "fscache.md" },
+      { "Isolated restore: native bootstrap route and custody core" = "isolated-restore-bootstrap.md" },
     ] },
   { "Fork research tools" = [
       { "queue-audit" = "queue-audit.md" },
