@@ -56,7 +56,9 @@ Import-only, standard library only, no network or subprocess:
   Exceptions surface as a fixed UNKNOWN with no message or chained trace.
 - **Runner** drives the bootstrap order above through an adapter it does not
   implement: a live isolation/authority attestation is required before
-  bootstrap and before each restore call, and restore is impossible until
+  bootstrap and immediately before each native restore invocation (dry run,
+  apply and recovery — after its durable INTENT marker; a successful dry run
+  never carries the check forward to apply), and restore is impossible until
   the same runner completed the owner identity readback. A dry run precedes the one actual restore.
 - **Oracles**: the graph oracle compares exact normalized
   namespace → handle → object maps (counts and SHA-256 digests only, no person
