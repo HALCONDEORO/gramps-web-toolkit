@@ -518,9 +518,9 @@ TOUR_RESULTS = """
 def visualizer(total, error="Invalid request: group index or ArkName or start/end boundaries values are not valid"):
     def answer(url, params):
         s, e = int(params["start"]), int(params["end"])
-        if e > total or s > total:
+        if e >= total or s >= total:
             return Resp(json.dumps(error), "application/json", status=400)
-        return Resp(json.dumps({str(n): {"url": f"{touraine.BASE}/ark:/37621/abc123def/{UUID_A % n}"}
+        return Resp(json.dumps({str(n): {"url": f"{touraine.BASE}/ark:/37621/abc123def/{UUID_A % (n + 1)}"}
                                 for n in range(s, e + 1)}), "application/json")
     return answer
 
@@ -818,3 +818,18 @@ def test_touraine_search_list_mode_keeps_its_own_defaults_and_a_zero_limit(capsy
     assert capsys.readouterr().out.splitlines() == ["ark\ttitle\tdate\tcote"]
     assert touraine.run(_tour_args(table=False), c) == 0
     assert len(capsys.readouterr().out.splitlines()) == 4
+
+
+@pytest.mark.parametrize("old_row", [True, False])
+def test_touraine_old_shifted_or_unrecorded_file_refuses_without_relabelling(tmp_path, old_row):
+    target = tmp_path / "abc123def_p0002.jpg"
+    target.write_bytes(b"old verified image")
+    if old_row:
+        from gwt_fetch.store import Store
+        Store(tmp_path).record(target, "page 2", f"{touraine.BASE}/images/{UUID_A % 3}.jpg",
+                               f"{touraine.BASE}/ark:/37621/abc123def")
+    before = {p.name:p.read_bytes() for p in tmp_path.iterdir()}
+    c = FakeClient({touraine.BASE + "/visualizer/api": visualizer(3)})
+    assert touraine.run(_targs(tmp_path, pages="1-2"), c) == 1
+    assert not _images(c)
+    assert {p.name:p.read_bytes() for p in tmp_path.iterdir()} == before

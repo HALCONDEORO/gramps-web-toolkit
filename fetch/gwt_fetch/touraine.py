@@ -131,7 +131,7 @@ def search(client, query: str, start: int = 0, per_page: int = 80) -> list[dict]
 
 
 def _batch(client, ark: str, start: int, end: int):
-    """Pages start..end as {number: url}, or None when the range runs past the end of the register."""
+    """Inclusive zero-based API indices as {index: url}, or None past the register end."""
     url = f"{BASE}/visualizer/api"
     r = _get(client, url, params={"naan": NAAN, "arkName": ark, "start": start, "end": end, "group": 0})
     text = r.text.strip()
@@ -150,15 +150,27 @@ def _batch(client, ark: str, start: int, end: int):
         data = json.loads(text)
     except ValueError:
         raise Blocked(f"not JSON from {url}") from None
-    if not isinstance(data, dict):
+    # PHP encodes contiguous keys starting at zero as a list, other ranges as objects.
+    if isinstance(data, list):
+        items = list(enumerate(data, start))
+    elif isinstance(data, dict) and all(isinstance(k, str) and k.isascii() and k.isdigit() for k in data):
+        items = [(int(k), v) for k, v in data.items()]
+    else:
         raise Blocked(f"unexpected JSON from {url}")
-    return {int(k): v["url"] for k, v in data.items() if k.isdigit() and isinstance(v, dict) and "url" in v}
+    pages = {}
+    for index, row in items:
+        if index in pages or not isinstance(row, dict) or not isinstance(row.get("url"), str):
+            raise Blocked(f"unexpected page row from {url}")
+        pages[index] = row["url"]
+    if sorted(pages) != list(range(start, end + 1)):
+        raise Blocked(f"incomplete or shifted page range from {url}")
+    return pages
 
 
 def list_pages(client, ark: str) -> dict[int, str]:
-    """Every page of a register, found by batches of 100; the last batch is found by bisection."""
+    """1-based image ordinals mapped from zero-based API indices, not manuscript folio labels."""
     pages: dict[int, str] = {}
-    start = 1
+    start = 0
     while True:
         got = _batch(client, ark, start, start + BATCH - 1)
         if got is None:
@@ -170,7 +182,7 @@ def list_pages(client, ark: str) -> dict[int, str]:
                 else:
                     lo = mid
             got = _batch(client, ark, start, lo) if lo >= start else {}
-        pages.update(got)
+        pages.update({index + 1: url for index, url in got.items()})
         if len(got) < BATCH:
             return pages
         start += BATCH
@@ -284,6 +296,17 @@ def _run_pages(args, client) -> int:
 def _download(args, client, pages, chosen) -> int:
     store = Store(args.out)
     manifest_url = f"{BASE}/ark:/{NAAN}/{args.ark}"
+    # Old releases labelled API index 1 as page 1. Never silently reuse or relabel those files.
+    # Check the whole selection before the first image request or manifest append.
+    for n in chosen:
+        stem = f"{args.ark}_p{n:04d}"
+        existing = store.find(stem)
+        if existing:
+            row = store.rows.get(existing.name)
+            expected = f"{BASE}/images/{uuid_of(pages[n])}.jpg"
+            if not row or row.get("image_url") != expected or row.get("manifest_url") != manifest_url:
+                raise Blocked(f"page {n}: existing file has missing or different image provenance; "
+                              "keep the old folder unchanged and use a new output folder")
     for n in chosen:
         image_url = f"{BASE}/images/{uuid_of(pages[n])}.jpg"
         stem = f"{args.ark}_p{n:04d}"
