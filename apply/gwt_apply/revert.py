@@ -30,7 +30,7 @@ import json
 import time
 from datetime import datetime, timezone
 
-from .client import NAMESPACE, Client, Retryable
+from .client import NAMESPACE, Client, Retryable, ApiError
 from .lock import LOCK_HANDLE
 
 IGNORE = {"change", "extended", "profile", "backlinks", "_read", "_snap", "_class", "gramps_id"}
@@ -179,6 +179,11 @@ def plan(entries: list[dict], pre: dict, live, links=None) -> list[dict]:
     backlinks ({class: [handles]}, None if the server does not say): a delete is planned only once nothing
     but objects this revert restores or deletes points at it."""
     created = _created(entries)
+    preserve = {}
+    for entry in entries:
+        mark = entry.get("preserve_parent_link")
+        if isinstance(mark, dict) and set(mark) == {"child", "family"}:
+            preserve[(mark["child"], mark["family"])] = mark
     puts: dict[tuple[str, str], list[dict]] = {}
     blind: set[tuple[str, str]] = set()  # PUTs whose answer was lost and whose log line has no body
     kept: dict[tuple[str, str], dict] = {}  # the copy of a deleted object its log line holds
@@ -290,6 +295,27 @@ def plan(entries: list[dict], pre: dict, live, links=None) -> list[dict]:
             s["action"], s["why"] = "skip", "an object that changed since the run still points at it; not deleted"
     if links is not None:
         _gate_deletes(steps, links)
+    for child, family in preserve:
+        before = pre.get(("Person", child))
+        now = live("Person", child)
+        family_step = next((s for s in steps if s["cls"] == "Family" and s["handle"] == family
+                            and s["action"] == "restore"), None)
+        if family_step is None:
+            family_now = live("Family", family)
+            if (before is not None and family_now is not None
+                    and ("Family", family) in pre and _same(family_now, pre[("Family", family)])
+                    and (now is None or not _same(now, before))):
+                steps.append({"action": "manual", "cls": "Person", "handle": child,
+                              "why": "Family already reversed but Person differs from preimage; "
+                                     "possible partial compensation, inspect before completing"})
+            continue
+        if (before is None or family not in (before.get("parent_family_list") or [])
+                or now is None or not _same(now, before)):
+            # Do not undo the Family then discover the pre-existing Person side cannot be preserved.
+            family_step.update(action="manual", why="cannot verify pre-existing Person side for safe reversal")
+            continue
+        steps.append({"action": "preserve-parent-link", "cls": "Person", "handle": child,
+                      "family": family, "why": "preserve the older person-side link after Family reversal"})
     return steps + manual
 
 
@@ -352,7 +378,16 @@ def execute(client: Client, steps: list[dict], pre: dict, *, lock=None, retries:
         if (now.get("_read") != s["read"]) if s.get("read") is not None else not _any_same(now, s["written"]):
             s["action"], s["why"], s["changed"] = "skip", "changed since the plan; not overwritten", True
             return
-        client.update(dict(s["body"]))
+        for child_step in steps:
+            if (s["cls"] == "Family" and child_step.get("action") == "preserve-parent-link"
+                    and child_step["family"] == s["handle"]):
+                child_now = client.get_live("Person", child_step["handle"])
+                if child_now is None or not _same(child_now, pre[("Person", child_step["handle"])]):
+                    s.update(action="manual", why="Person changed before family reversal; not overwritten")
+                    return
+        body = dict(s["body"])
+        body["_read"] = now.get("_read")
+        client.update(body)
 
     def recreate(s):
         if client.get_live(s["cls"], s["handle"]) is None:  # else made by this step's own earlier try
@@ -362,6 +397,39 @@ def execute(client: Client, steps: list[dict], pre: dict, *, lock=None, retries:
         if s["action"] in ("restore", "recreate"):
             refresh()
             _busy(lambda: (restore if s["action"] == "restore" else recreate)(s), retries, retry_wait)
+
+    # This compensation can require a second PUT: reversal is recoverable, not atomic.
+    for s in steps:
+        if s["action"] != "preserve-parent-link":
+            continue
+        refresh()
+        key = ("Person", s["handle"])
+        before = pre[key]
+        family_now = client.get_live("Family", s["family"])
+        if family_now is None or not _same(family_now, pre[("Family", s["family"])]):
+            s.update(action="manual", why="Family reversal not verified; no compensating Person write")
+            continue
+        now = client.get_live(*key)
+        if now is not None and _same(now, before):
+            continue
+        expected = dict(before)
+        expected["parent_family_list"] = [h for h in before.get("parent_family_list") or [] if h != s["family"]]
+        if now is None or not _same(now, expected):
+            s.update(action="manual", why="Person changed while reversing family; older link not restored automatically")
+            continue
+        body = dict(now)
+        body.setdefault("_class", "Person")
+        body["parent_family_list"] = list(before["parent_family_list"])
+        client.log(event="repair-reversal-compensation", family=s["family"], child=s["handle"],
+                   state="pending", expected=expected, intended=body)
+        try:
+            client.update(body)
+        except ApiError as exc:
+            client.log(event="repair-reversal-compensation", family=s["family"], child=s["handle"],
+                       state="partial-or-unknown", error=type(exc).__name__)
+            raise ApiError("Family reversal may have completed but Person compensation is partial or unknown; "
+                           "read both objects before any retry") from exc
+        client.log(event="repair-reversal-compensation", family=s["family"], child=s["handle"], state="sent")
 
     pending = [s for s in steps if s["action"] == "delete"]
     blocked: dict[int, set] = {}
@@ -391,7 +459,7 @@ def execute(client: Client, steps: list[dict], pre: dict, *, lock=None, retries:
 
     problems = []
     for s in steps:
-        if s["action"] in ("restore", "recreate"):
+        if s["action"] in ("restore", "recreate", "preserve-parent-link"):
             now = client.get_live(s["cls"], s["handle"])
             if now is None or not _same(now, pre.get((s["cls"], s["handle"])) or s["body"]):
                 problems.append(f"{s['cls']} {s['handle']} does not read back as before the run")

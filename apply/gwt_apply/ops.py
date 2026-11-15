@@ -49,6 +49,7 @@ SPECS: dict[str, tuple[set[str], set[str]]] = {
     "add_event": ({"type"}, {"person", "family", "role", "date", "place", "description", "gramps_id"}),
     "add_family": (set(), {"father", "mother", "children", "type", "gramps_id", "allow_new_couple", "new_couple_reason",
                            "new_couple_of"}),
+    "repair_child_backlink": ({"family", "child", "citation", "frel", "mrel"}, set()),
     "link_child": ({"family", "child"}, {"frel", "mrel", "probable", "probable_reason"}),
     "unlink_child": ({"family", "child", "reason"}, {"drop_link_sources", "expect"}),
     "add_place": ({"name", "type"}, {"enclosed_by", "lat", "long", "gramps_id"}),
@@ -1617,6 +1618,41 @@ class Applier:
         self.reasons.append(f"missing: Person {held['label']} {op['relation']} association with {op['target']}")
         self.wrote = True
         self._holding = handle
+
+    def repair_child_backlink(self, op):
+        """Repair only a missing family-side child ref with an existing citation, in one Family PUT.
+
+        This is not permission to infer parentage: the person must already list this parent family,
+        and both relationship kinds must be explicit in the reviewed operation.
+        """
+        family = self.obj("Family", op["family"])
+        person = self.obj("Person", op["child"])
+        citation = self.resolve("Citation", op["citation"])
+        fam, child = family["handle"], person["handle"]
+        if fam not in (person.get("parent_family_list") or []):
+            raise Conflict("repair_child_backlink requires the person's existing parent-family link")
+        refs = family.get("child_ref_list") or []
+        existing = [r for r in refs if r.get("ref") == child]
+        if existing:
+            if (len(existing) == 1 and existing[0].get("frel") == op["frel"]
+                    and existing[0].get("mrel") == op["mrel"]
+                    and citation in (existing[0].get("citation_list") or [])):
+                self.skip_noop("skip: family-side link and its citation already present")
+                return
+            raise Conflict("family-side child ref already exists with different relations or citation; review it")
+        family.setdefault("_class", "Family")
+        before = copy.deepcopy(family)
+        family["child_ref_list"] = [*refs, {"_class": "ChildRef", "ref": child,
+            "frel": op["frel"], "mrel": op["mrel"], "citation_list": [citation],
+            "note_list": [], "private": False}]
+        # The API may remove the person's older reciprocal link when reverting this Family PUT.
+        # Record the side effect obligation, not a synthetic Person PUT that never happened.
+        old_context = self.c.context
+        self.c.context = {**old_context, "preserve_parent_link": {"child": child, "family": fam}}
+        try:
+            self.save(before, family)
+        finally:
+            self.c.context = old_context
 
     def link_child(self, op):
         family = self.resolve("Family", op["family"])
