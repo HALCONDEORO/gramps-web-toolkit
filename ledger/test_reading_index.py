@@ -197,7 +197,7 @@ class ReadingIndexTest(unittest.TestCase):
 import gwt_ledger as L
 for i in range(12):
     if int(sys.argv[2]) % 2:
-        L.main(['--ledger', sys.argv[1], 'add', '--person', 'fake', '--source', 'fake', '--query', str(i), '--result', 'none'])
+        L.main(['--ledger', sys.argv[1], 'add', '--person', 'fake', '--source', 'fake', '--query', sys.argv[2]+' '+str(i), '--result', 'none', '--agent', 'writer'+sys.argv[2]])
     else:
         L.main(['--ledger', sys.argv[1], 'mark', '--ark', 'ark:/fake/register-A', '--image-from', str(i+1), '--image-to', str(i+1), '--reader', 'Reader'+sys.argv[2], '--result', 'negative', '--ref', 'fake'])
 '''

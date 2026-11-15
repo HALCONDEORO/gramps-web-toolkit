@@ -136,7 +136,6 @@ def _control(name):
         return subprocess.run(PYTEST + ["-x"], cwd=_copy_repo(tmp) / name, capture_output=True, text=True,
                               env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
 
-
 def run_mutants(pkgs):
     total = killed = 0
     problems = []

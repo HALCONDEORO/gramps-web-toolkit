@@ -365,7 +365,7 @@ class DigestTest(unittest.TestCase):
     def test_html_uses_only_inline_tags_chat_apps_take(self):
         out = self.digest('--root', 'I1', '--format', 'html', '--base-url', 'https://g.example.org', '--lang', 'es')
         self.assertIn('<b>Lena Gale (I12), prima hermana</b> <a href="https://g.example.org/person/I12">', out)
-        self.assertIn("<b><u>father's side</u></b>", out)
+        self.assertIn("<b><u>rama paterna</u></b>", out)
         self.assertLessEqual(set(re.findall(r'</?([a-z0-9]+)', out)), {'b', 'u', 'i', 'a'})
         old, new = R.load(OLD), R.load(NEW)
         new['people']['hI12']['primary_name']['first_name'] = 'Lena <x> & Co'

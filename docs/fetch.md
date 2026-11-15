@@ -9,6 +9,7 @@ Python 3.11 or newer with `requests` for downloads. The offline `coverage` and `
 ```
 gwt-fetch iiif URL [--pages 1-5,9] [--labels REGEX] [--native] [--out DIR] [--list]
 gwt-fetch iiif --image-base URL/info.json [--pages 1-20] [--out DIR] [--list]
+gwt-fetch crop IMG [...] (--box x,y,w,h [--from-size WxH] | --grid 2x3 [--overlap 10%] | --half left|right) [--max 1600] [--out DIR]
 gwt-fetch digibib URL [--pages ...] [--out DIR] [--list]
 gwt-fetch touraine search QUERY [--start N] [--limit N]
 gwt-fetch touraine catalogue "<place>" [--per-page 20|40|80] [--max-pages N]
@@ -22,13 +23,15 @@ gwt-fetch europeana QUERY [--provider any|NAME] [--data-provider NAME] [--countr
 gwt-fetch notarial-plan CATALOGUE.json --locality PLACE --from YEAR --to YEAR
 gwt-fetch geo PLACE [...] [--types Municipio,poblacion] [--province NAME] [--limit N]
 gwt-fetch --delay 2 ...   # seconds between requests to one host, default 1
+gwt-fetch iiif URL --out DIR --rawstore   # also digibib and gazeta fetch: images go to the bucket
 ```
 
 ## What every download does
 
 - **One row per file** in `DIR/manifest.tsv`: `file`, `label` (the canvas label or document title), `image_url` (the exact URL that served the bytes), `manifest_url` (the manifest or document page), `sha256`, `fetched_at` (UTC).
 - **It never overwrites.** Files are written as `*.part` and renamed when complete, so a finished file on disk is always whole.
-- **Re-running is resuming.** The same command skips finished files. A finished file without a row (the run died between rename and append) gets its row on the next run.
+- **Re-running is resuming.** The same command skips finished files. A finished file without a row (the run died between rename and append) gets its row on the next run. A file listed in the folder's `rawstore.tsv` counts as finished even when it is no longer on disk, so images moved to the bucket are not downloaded again.
+- **`--rawstore` keeps images out of the working tree.** After the run, every binary file `gwt-fetch` wrote in `--out` (images, PDF) is uploaded with [gwt-rawstore](rawstore.md) and deleted locally once a `HEAD` confirms the object, its size and its sha256. Text files stay. A file the bucket does not confirm stays on disk, has no `rawstore.tsv` row, and the run exits 1; the next `--rawstore` run tries it again. The bucket settings are gwt-rawstore's, and a missing one stops the run before anything is downloaded.
 - **Polite by default.** One request per second per host, retries on 429 and 5xx with backoff, honours `Retry-After`. The user agent is `Mozilla/5.0 (compatible; gwt-fetch/0.1; +https://github.com/GeiserX/gramps-web-toolkit)`; Antenati refuses agents that don't start with `Mozilla/5.0`.
 - **Exit status.** 0 when everything selected was fetched, 1 when some item failed (each failure is printed with the URLs tried and the HTTP status), 2 on a network or parse error.
 
@@ -98,6 +101,7 @@ gwt-fetch touraine pages ARK --list                # page number, page URL, page
 gwt-fetch touraine pages ARK --pages 40-44 --out /tmp/reg
 ```
 
+- `pages` uses 1-based image ordinals: image 1 is API index 0. The API uses inclusive zero-based ranges and may return a list for the first range or an object keyed by index for later ranges. These ordinals are not manuscript folio labels or proof of historical `vNNN` citations. Compare the exact image UUID before citing. Older downloads made before this correction omitted the first image and had shifted `pNNNN` filenames; do not reuse those filenames as view evidence or silently relabel old manifests.
 - `search --table` asks for the site's table mode sorted by cote (`mode=table`, `sort=referencecode_asc`), 20, 40 or 80 rows a page (`--per-page`, `--page` from 1; the stderr line names the next page). The ark and the cote stand in the same row, so the registers of one place are listed in cote order without opening each record. The site's own `-` for an empty cell becomes an empty cell; any other cell starting with `=`, `+`, `-` or `@` gets a leading quote. `--start` and `--limit` belong to the list mode and are refused with `--table`, as are `--page` and `--per-page` without it, whatever their value, even the default one (exit 2, before any request). A result count above 10 000 is shown as such by the site, so narrow the query.
 - `catalogue "<place>"` follows the same table search from page 1, with 20 rows requested per page by default. It sends the place as a query value unchanged, including a leading `=`. Output is TSV sorted by numeric year, cote and ARK: `year`, `cote`, `ark`, `date`, `place`, `kind`, `medias`, `title`, `conflict`, `query`, `record_url`, `source_url`, `source_page`, `source_row`. Each register has a row for each year of its inclusive range; unknown dates have one `year=unknown` row. Source page and row are 1-based; the source URL includes the query and pagination parameters. No records are deduplicated by cote: different ARKs with the same cote keep both records and flag both as conflicts. Different metadata for one ARK also flags a conflict. All TSV cells have whitespace flattened and leading spreadsheet formula characters quoted.
 - Catalogue completeness is currently **UNKNOWN**: this repository has no captured positive terminal-page contract for Touraine. Certification would require the expected complete site layout/structure together with a site-owned terminal/no-results marker established by captured source fixtures. Neither an empty (or header-only) `results-table`, nor absence of a `next` relation or known challenge wording proves completion. No live-site marker has been guessed. The parser stops at an empty table, retains earlier rows and provenance, and gives the missing contract as its incomplete reason. **All catalogue gap claims are withheld**, with exit 1, `pagination=incomplete`, `completeness=UNKNOWN`, `coverage=incomplete`, and no `uncovered=` output.
@@ -168,6 +172,28 @@ For 1800–1806, `chain` orders CAT-A (1800–1802), CAT-B (1802–1803), CAT-C 
 `catalogue_coverage` is `1800-1803,1805-1806`; `catalogue_gaps` is `1804`. Both reuse the existing inclusive-range helpers. `overlaps` identifies 1802 with CAT-A and CAT-B; adjacent overlap segments combine only when their catalogue IDs agree. `unknown_coverage` lists CAT-U, whose tentative dates never fill 1804. Gaps are years without exact coverage in the supplied metadata, not evidence that records were lost or never existed. With no matching entries, the entire period is a catalogue gap.
 
 Every chain entry has `status: "candidate"`, its clipped `search_period` (or `null`), the original `metadata`, supplied references and a `next_step`. Ordering is chronological, then office and ID, with unknown dates last; it is a search itinerary, not a claim that one office succeeded another. Consult the supplied references and record literal evidence yourself. Catalogue coverage never establishes that a contract was found, or supports marriage or parentage. There is no person matching, inferred relationship or queue/tree write. Exit 0 means a valid plan, including gaps or no candidates; input errors exit 2.
+
+## `crop`: cut a saved page into pieces
+
+A register page is often too big to read in one look, and a double page holds two. `crop` cuts a saved image and writes each piece as a JPEG beside it:
+
+- `--box x,y,w,h` cuts one box, in the image's pixels. With `--from-size WxH` the box was measured on a preview of that size and is scaled to the real image. A box that reaches past the edge is refused.
+- `--grid 2x3` cuts 2 columns by 3 rows. `--overlap 10%` makes each tile reach 10% of its size into its neighbours, so a line on a tile edge is whole in one of them.
+- `--half left|right` cuts the left or right half of a double page.
+- `--max 1600` shrinks each piece so its longest side is at most 1600 px. Leave it out to keep native pixels.
+
+`--from-size` without `--box`, and `--overlap` without `--grid`, are refused rather than ignored.
+
+```
+$ gwt-fetch crop /tmp/reg/0012_f12.jpg --grid 2x3 --overlap 10%
+/tmp/reg/0012_f12_grid2x3-r1c1.jpg
+...
+```
+
+Pieces are named `<original>_box-x-y-w-h.jpg`, `<original>_grid2x3-r1c2.jpg` or `<original>_left.jpg`. Each gets a row in the same folder's `manifest.tsv`, with the same columns as a download: `label` is `crop x,y,w,h of <original> sha256:<original's sha256>`, `image_url` is the original's URL from its own row (or its file name) with `#xywh=x,y,w,h` in the original's pixels, and `manifest_url` is the original's. Cropping a piece again keeps one `#xywh=` on the original: the new box is moved and scaled (after `--max`) into the original's pixels. Like a download, a piece is never overwritten, and re-running skips finished ones. If that folder's `manifest.tsv` was written by another tool (other columns), `crop` refuses to add to it; `--out DIR` writes the pieces and their rows to another folder, and `image_url` then names the original by its path from there.
+
+`crop` needs Pillow: `pipx install 'gramps-web-toolkit[crop]'`, or `pip install Pillow` beside a clone. Without it, `crop` prints how to install it and exits 2.
+
 ## `digibib`: DIGIBIB viewers without IIIF
 
 DIGIBÍS's DIGIBIB runs BVPH, the Biblioteca Virtual de Defensa, Galiciana and many regional digital libraries. None of these installs serve IIIF. The viewer URL is `.../catalogo_imagenes/grupo.do?path=N`. Each page view (`&presentacion=pagina&posicion=K`) names one image as `imagen_id.do?idImagen=M`, and that URL with `&formato=jpg` returns the full JPEG. `gwt-fetch digibib` walks those page views. When the object is a single file, `grupo.do` serves the file itself (often a PDF); it is saved as `0001_document.pdf`.

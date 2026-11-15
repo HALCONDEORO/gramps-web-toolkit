@@ -4,7 +4,7 @@ gwt_ledger.py | choices=READING_RESULTS | choices=READING_RESULTS + ('maybe',) |
 gwt_ledger.py | if row.get('ark') != ark: | if False: | coverage is scoped to the exact source identifier
 gwt_ledger.py | events[end + 1][row['reader']] -= 1 | events[end][row['reader']] -= 1 | range endpoints are inclusive
 gwt_ledger.py | readers = sum(count > 0 for count in active.values()) | readers = sum(active.values()) | repeat marks from one reader are not independent double readings
-gwt_ledger.py | rows = read_rows(path) | rows = [] | consecutive search and reading marks preserve older rows
+gwt_ledger.py | rows.extend(incoming) | rows = list(incoming) | consecutive search and reading marks preserve older rows
 gwt_ledger.py | unknown_tail=total is None | unknown_tail=False | no total means the tail remains unknown
 gwt_ledger.py | if total is not None and total < upper: | if False: | a total cannot silently truncate recorded coverage
 gwt_ledger.py | fcntl.flock(lock, fcntl.LOCK_EX) | pass | both writers lock before reading and hold the lock through rename
@@ -16,11 +16,91 @@ gwt_ledger.py | os.fchmod(fd, stat.S_IMODE(original.st_mode)) | pass | replaceme
 gwt_ledger.py | os.fchown(fd, original.st_uid, original.st_gid) | pass | replacement keeps the original ownership
 gwt_ledger.py | os.removexattr(fd, name) | pass | inherited ACLs or attributes absent from the original are removed
 gwt_ledger.py | os.setxattr(fd, name, value) | pass | original ACLs and extended attributes are copied to the replacement
-gwt_ledger.py | if columns not in (COLUMNS[:-1], COLUMNS, COLUMNS + READING_COLUMNS): | if False: | unknown header columns such as extra=KEEP are refused before any write
+gwt_ledger.py | if names not in allowed: | if False: | unknown header columns such as extra=KEEP are refused before any write
 gwt_ledger.py | if len(parts) not in widths: | if False: | rows with unexpected extra cells are refused rather than truncated
 gwt_ledger.py | if (file_version(original) != file_version(current) or | if (False or | an external edit between read and rename is refused
-gwt_ledger.py | if any(r.get(c) for r in rows for c in READING_COLUMNS) else COLUMNS | if any(r.get('ark') for r in rows) else COLUMNS | reading cells without an ark are not dropped on rewrite
+gwt_ledger.py | any(r.get(c) for r in rows for c in READING_COLUMNS) | any(r.get("ark") for r in rows) | reading cells without an ark are not dropped on rewrite
 
 gwt_ledger.py | if info.st_uid != os.geteuid(): | if False: | foreign UID ledger writes must be refused
 gwt_ledger.py | if resolved not in seen: | if True: | overlapping main and lane paths must not duplicate recorded rows
 gwt_ledger.py | resolved = os.path.realpath(path) | resolved = os.path.abspath(path) | directory aliases must not duplicate the shared ledger during discovery
+# Mutations the ledger tests must catch. One row each: file | exact text | replacement | why
+# `python3 .github/scripts/run_tests.py --mutants --only ledger` applies each row to a scratch copy
+# and fails when the tests still pass. The text must occur exactly once in the file.
+gwt_ledger.py | if s in self.alias: | if False: | an alias (fs) resolves to its canonical id (familysearch-index)
+gwt_ledger.py | canon = registry.canon if registry else key | canon = key | check finds a row logged under an alias of the source asked for
+gwt_ledger.py | if self.alias.get(a, sid) != sid: | if False: | a registry refuses an alias that already names another source
+gwt_ledger.py | near = [] if new_source else self.near(slug) | near = [] | a source close to a known name (familysea) exits 2 unless --new-source
+gwt_ledger.py | if near: | if True: | a source far from every known name is kept as its slug, with no registry file
+gwt_ledger.py | if s.endswith('-*'): | if False: | coverage takes the shipped registry as its sources file (a -* row is no column)
+gwt_ledger.py | and not (sid in self.sources and not row['kind']) |  | a user row extending a shipped id may leave kind empty
+gwt_ledger.py | encoding='utf-8-sig') as f:  # -sig | encoding='utf-8') as f:  # -sig | a registry file with a byte order mark reads
+gwt_ledger.py | if result == 'none' and not control: | if False: | a none without --control-ok is stored as unproven
+gwt_ledger.py | if bad or not oks: | if False: | a --control-ok file must be a passing control run (no void, no SHORT)
+gwt_ledger.py | SEARCHED = ('hit', 'none', 'partial', 'out-of-coverage') | SEARCHED = ('hit', 'none', 'partial', 'out-of-coverage', 'unproven') | an unproven row never counts as a search that ran
+gwt_ledger.py | a.add_argument('--result', required=True, choices=RESULTS) | a.add_argument('--result', required=True) | add refuses a result outside the enum (found, negative)
+gwt_ledger.py | result = word if word in RESULTS else SYNONYMS.get(word) | result = word if word in RESULTS else SYNONYMS.get(word, word) | import-tsv refuses a result that is neither a result nor a synonym
+gwt_ledger.py | return bool((src['to'] and int(src['to']) < lo) or (src['from'] and int(src['from']) > hi)) | return False | coverage marks n/a a source whose years cannot hold the person's life
+gwt_ledger.py | if r['status'] not in CLOSED and r['next_date'] and r['next_date'] <= on | if r['next_date'] and r['next_date'] <= on | a closed or refused request is never due
+gwt_ledger.py | t = totals[(r[col] or '-', r['currency'].upper() or '-')] | t = totals[(r[col] or '-', '-')] | costs never add two currencies together
+gwt_ledger.py | .replace(';', '\\;').replace(',', '\\,') | .replace(';', ';').replace(',', ',') | .ics text escapes ; and , (RFC 5545 3.3.11)
+gwt_ledger.py | if '/' in ref or os.sep in ref or re.search(r'\.(txt|tsv|log|out|json)$', ref, re.I): | if False: | a --control-ok path with a typo is refused, never stored as a run id
+gwt_ledger.py | if key(ref) in NOT_PROOF or not normalize(ref): | if False: | --control-ok no (or -) is not a control run
+gwt_ledger.py | checked[control] = control_problem(control) | checked[control] = None | import-tsv checks each row's control like add
+gwt_ledger.py | control = clean(v.get('control')) or clean(args.control_ok) | control = clean(v.get('control')) | import-tsv --control-ok vouches for the rows with no control
+gwt_ledger.py | if same(row) in seen: | if False: | importing the same file twice adds nothing
+gwt_ledger.py | out = {gid} | owned.get(gid, set()) if gid else set() | out = {gid} if gid else set() | coverage counts a person key that starts with <gramps-id>- for that person
+gwt_ledger.py | if name and names[name] == 1: | if name: | coverage never gives one namesake the other's rows
+gwt_ledger.py | if unmatched: | if False: | coverage says how many ledger keys match nobody, so an empty matrix is not read as not searched
+gwt_ledger.py | ids = [l.split('\t', 1)[0] for l in lines[1 if lines and lines[0].startswith('id\t') else 0:]] | ids = [l.split('\t', 1)[0] for l in lines] | request update refuses the header word id
+gwt_ledger.py | return format(d, 'f')  # 1e3 is stored as 1000 | return str(d)  # 1e3 is stored as 1000 | a cost of 1e3 is stored as 1000
+gwt_ledger.py | if bad or not oks: | if bad: | a --control-ok file with no ok control line (empty, or a search's output) is no proof
+gwt_ledger.py | bad = [l for l in lines if l.startswith('void\t') or | bad = [l for l in lines if False or | a --control-ok file with a void line is no proof, whatever its ok lines say
+gwt_ledger.py | return bool((src['to'] and int(src['to']) < lo) or (src['from'] and int(src['from']) > hi)) | return bool((src['from'] and int(src['from']) > hi)) | coverage marks n/a a source whose records end before the person was born
+gwt_ledger.py | if any(r['result'] == 'hit' for r in rows): | if False: | coverage shows an older hit over a newer none
+gwt_ledger.py | for n in range(len(parts), 0, -1)) | for n in range(1, len(parts) + 1)) | a key of a suffixed id (i0042-b-...) goes to I0042-b, never to I0042
+gwt_ledger.py | rows = live(everything)  # | rows = everything  # | a voided row no longer counts for check
+gwt_ledger.py | not r.get('ark') and r['result'] != VOID and r['id'] not in gone | not r.get('ark') and r['id'] not in gone | a void row itself is no search: stats and due leave it out
+gwt_ledger.py | seen[r['line']] += 1 | seen[r['line']] = 1 | a new row identical to a voided one counts again
+gwt_ledger.py | find(rows, args.person, source, args.query, exact=True, registry=reg) | find(rows, args.person, source, args.query, registry=reg) | void retracts the identical normalized query only, never a close one
+gwt_ledger.py | for _, r in find(everything, args.person | for _, r in find(rows, args.person | list still shows the void rows and what they retracted
+gwt_ledger.py | 'voided' if r['id'] in gone else '' | '' | list marks a voided row, and not its identical re-add
+gwt_ledger.py | seen = {same(r) for r in live([r for path | seen = {same(r) for r in ([r for path | import-tsv imports a row identical to a voided one, so a re-search counts again
+gwt_ledger.py | if lost:  # | if False:  # | an edited voided line warns on stderr that its row counts again
+gwt_ledger.py | '; already voided by %s' % ' '.join(r['id'] for _, r in done) if done else '' | '' | a second void says the search is already voided, so a retry reads apart from a typo
+gwt_ledger.py | label = args.label or targets[0]['person_label'] | label = args.label | a void row with no --label takes the label of the first row it retracts
+gwt_ledger.py | VOIDS.match(r['evidence']) if r['result'] == VOID else None | VOIDS.match(r['evidence']) | only a void row retracts: a hit whose evidence reads like a void retracts nothing
+gwt_ledger.py | ' '.join(r['id'] for r in targets), args.reason | ' '.join(r['id'] for r in targets[:1]), args.reason | a void retracts every lane's row of the search, not just the first
+gwt_ledger.py | for name in ('query', 'person', 'reason'): | for name in ('query', 'person'): | a void reason with nothing in it is refused
+gwt_ledger.py | found = unless() if unless else None | found = None | add skips a row the ledger already holds (same person, source, query, date and result)
+gwt_ledger.py | if not m or m.group(1) != book: | if not m: | scan check never counts a range of another book
+gwt_ledger.py | if reg.canon(r['source']) != source: | if False: | scan check never counts a range read at another source
+gwt_ledger.py | if person and key(r['person_key']) not in (person, ''): | if False: | scan check --person never counts a range read for another person
+gwt_ledger.py | not in (person, ''): | != person: | a range read with no person counts for every person
+gwt_ledger.py | for n in sorted(skip) + [last + 1]: | for n in [last + 1]: | images left out with --skip stay gaps
+gwt_ledger.py | cursor = max(cursor, hi + 1) | cursor = hi + 1 | a range inside a longer one reopens no gap
+gwt_ledger.py | done = [span for r, span in rows if r['result'] in SEARCHED and | done = [span for r, span in rows if True and | a blocked or unproven range fills no gap
+gwt_ledger.py | if key(r['person_key']) == key(args.person)]  # find | if True]  # find | void --person '' retracts only the rows with no person
+gwt_ledger.py | if args.skip and (min(args.skip) < args.start or max(args.skip) > args.end): | if False: | scan add refuses a --skip image outside the range
+gwt_ledger.py | span for r, span in rows if r['result'] in SEARCHED and (not next_day(r) or next_day(r) > args.date) | span for r, span in rows if r['result'] in SEARCHED and True | scan check: a row due again (next_date reached) fills no gap
+gwt_ledger.py | return scan_command(args, reg, err, stray, lane_path, | return scan_command(args, reg, err, lambda path: None, lane_path, | scan add with no ledger named never creates ./buscado.tsv
+gwt_ledger.py | if args.cmd == 'void' and name == 'person' and value == '': | if name == 'person' and value == '': | only void takes an empty --person; add, check, list and scan refuse it
+gwt_ledger.py | if result not in RESULTS: | if False: | a reader takes a hand-written found as a hit, as import-tsv would store it
+gwt_ledger.py | result = word if word in RESULTS else SYNONYMS.get(word, result) | result = word if word in RESULTS else result | a reader maps a hand-written synonym (found, negative) to its result
+gwt_ledger.py | result = word if word in RESULTS else SYNONYMS.get(word, result) | result = SYNONYMS.get(word, result) | a reader takes a hand-written Hit or Out of coverage as that result
+gwt_ledger.py | if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value): | if False: | a next_date in another shape (20250101) is never due
+gwt_ledger.py | datetime.date.fromisoformat(value)  # 2026-02-30 | pass  # 2026-02-30 | a next_date that is no day (2026-02-30) is never due
+gwt_ledger.py | bad = [r for r in rows if r['result'] not in RESULTS] | bad = [] | readers warn about a result word outside the vocabulary
+gwt_ledger.py | bad = [r for r in rows if r['next_date'] and not next_day(r)] | bad = [] | readers warn about a next_date that is not YYYY-MM-DD
+gwt_ledger.py | odd_rows(rows)  # one note per command | pass  # one note per command | check, due, list, stats warn about hand-written rows they cannot use
+gwt_ledger.py | odd_rows(every) | pass | scan check warns about hand-written rows it cannot use
+gwt_ledger.py | if next_day(newest) and next_day(newest) <= today: | if newest['next_date'] and newest['next_date'] <= today: | coverage never marks due a row whose next_date is no date
+gwt_ledger.py | done = [span for r, span in rows if r['result'] in SEARCHED and (not next_day(r) or next_day(r) > args.date)] | done = [span for r, span in rows if r['result'] in SEARCHED and (not r['next_date'] or r['next_date'] > args.date)] | scan check never reopens images whose row has a next_date that is no date
+gwt_ledger.py | done = [r for _, r in scored if r['result'] in SEARCHED and (not next_day(r) or next_day(r) > date)] | done = [r for _, r in scored if r['result'] in SEARCHED and (not r['next_date'] or r['next_date'] > date)] | check never takes a row whose next_date is no date as due
+gwt_ledger.py | if next_day(r) and (not args.on or next_day(r) <= args.on): | if r['next_date'] and (not args.on or r['next_date'] <= args.on): | due --ics leaves out a next_date that is not YYYY-MM-DD
+gwt_ledger.py | due = [(1.0, r) for r in rows if next_day(r) and next_day(r) <= on] | due = [(1.0, r) for r in rows if r['next_date'] and r['next_date'] <= on] | due never lists a row whose next_date is no date
+gwt_ledger.py | if not text.isascii(): | if False: | normalize still strips accents and folds every non-ASCII text after the ASCII fast path
+gwt_ledger.py | if any(len(w) < 5 or any(c.isdigit() for c in w) for w in rest): | if False: | a short or numbered word of a new query needs its exact twin in the logged one
+gwt_ledger.py | pool.remove(hit) | pass | one logged word never covers two words of the new query
+gwt_ledger.py | len(w) < 5 or any(c.isdigit() for c in w) for w in rest | len(w) < 5 for w in rest | a new word with a digit needs its exact twin, never a one-edit neighbour
+gwt_ledger.py | pool = sorted(x for x in free if len(x) >= 5 and not any(c.isdigit() for c in x)) | pool = sorted(x for x in free if len(x) >= 5) | a logged word with a digit never covers a new word by one edit

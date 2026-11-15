@@ -63,14 +63,14 @@ class StorageTest(unittest.TestCase):
 
     def test_reading_cells_without_ark_are_not_dropped(self):
         self.path.write_text('\t'.join(L.COLUMNS + L.READING_COLUMNS) + '\n' +
-                             '\t'.join(['fake', '', '', '', '', 'none', '', '', ''] + ['', '3', '4', 'r', 'KEEP']) + '\n')
+                             '\t'.join(['fake', '', '', '', '', 'none', '', '', '', ''] + ['', '3', '4', 'r', 'KEEP']) + '\n')
         self.add()
         self.assertIn('KEEP', self.path.read_text())
         self.assertEqual(self.path.read_text().splitlines()[0].split('\t'), list(L.COLUMNS + L.READING_COLUMNS))
 
     def test_malformed_schema_and_extra_cells_refused(self):
         for content in ('person_key\tquery\nFAKE\tKEEP\n',
-                        '\t'.join(L.COLUMNS) + '\n' + '\t'.join(['fake'] * 10) + '\n'):
+                        '\t'.join(L.COLUMNS) + '\n' + '\t'.join(['fake'] * 11) + '\n'):
             with self.subTest(content=content):
                 self.path.write_text(content)
                 self.assert_refused()
