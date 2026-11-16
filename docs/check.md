@@ -374,7 +374,7 @@ Nothing in the report goes into the tree without a document, through [`gwt-apply
 
 ### Rule: every scale test also runs on the real tree
 
-`python -m gwt_check.scale --people 20000 --real real-dump.json.gz` runs `check`, `repos`, `fill-places`, `links`, `cites` and `republican` on an invented tree and on the dump you give it, and prints seconds, peak memory, exit code and the last summary line of each, side by side. The real dump is only read; its path is not stored and nothing from it is written, so the output is counts and times. Use a dump taken with `gwt-check dump`, never the live tree. A change that is fast and correct on the invented tree and wrong or slow on the real one is not done. Exit code 1 is findings; 2 or more is a crash and fails the run.
+`python -m gwt_check.scale --people 20000 --real real-dump.json.gz` runs `check`, `repos`, `fill-places`, `links`, `cites` and `republican` on an invented tree and on the dump you give it, and prints seconds, peak memory, exit code and the last summary line of each, side by side. The real dump is only read; its path is not stored and nothing from it is written, so the output is counts and times. Use a dump taken with `gwt-check dump`, never the live tree. A change that is fast and correct on the invented tree and wrong or slow on the real one is not done. Child exit code 1 is findings; only 0 and 1 are accepted. Any other child exit code fails the scale run, including a negative return code when a signal terminates a command on POSIX. The remaining commands still run so their results are reported.
 
 ## What a guest still sees (`public`)
 
