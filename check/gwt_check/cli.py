@@ -439,7 +439,10 @@ def _command_repos(args):
         print_repository_report(rep, unlinked=args.unlinked, limit=args.limit)
     return 0
 
+from .components import command as _command_components
+
 COMMAND_HANDLERS = {
+    'component-review': _command_components,
     'server': _command_server,
     'timeline': _command_timeline,
     'selftest': _command_selftest,
@@ -514,6 +517,11 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--workers", type=int, default=4, help="requests in flight at once (default 4)")
         p.add_argument("--live", action="store_true",
                        help="the old strict read: stop when the tree changes mid-read instead of reading again what moved")
+
+    p = sub.add_parser("component-review", help="offline component and evidence review; never a deletion plan")
+    p.add_argument("tree", help="full saved JSON dump, no live requests")
+    p.add_argument("--root", required=True, help="exact Gramps person ID; no largest-component fallback")
+    p.add_argument("--holds", help="reviewer hold manifest bound to the tree fingerprint")
 
     p = sub.add_parser("dump", help="save the live tree to a JSON file (.gz to compress)")
     p.add_argument("out")
