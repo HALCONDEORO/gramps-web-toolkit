@@ -489,3 +489,51 @@ The fallback types follow Gramps `EventType.is_birth_fallback` and `is_death_fal
 ### Event description headings (review only)
 
 `event-type-description` groups explicit Birth/Baptism/Marriage/Burial/Death headings by event, listing the referring people and families once. A stored Birth with a description beginning `Exampleville, Marriage ...` is a clue to review the cited original before touching type or vital pointers, not a correction proposal. A baptism never establishes a birth date, nor a burial a death date. Negated, uncertain, mixed-kind and incidental wording is left unclassified. This narrow English/French/Spanish heading check does not interpret notes or images, prove an error, or cover every wording. It is informational and does not change the exit status.
+
+## Offline component review before cleanup
+
+```sh
+gwt-check component-review tree.json --root I1 > component-review.json
+gwt-check component-review tree.json --root I1 --holds holds.json > held-review.json
+```
+
+This advisory command reads a full saved JSON dump only. It makes no network requests and
+changes no tree objects. It exits 0 for a report, even when links need review, or 2 on bad
+input. A `.gramps` file is refused because the toolkit's XML reader omits evidence and
+associations. Output is private tree data: keep it outside public repositories and CI logs.
+
+It includes singletons and joins family members using references from either the person or
+the family. References present on only one side and dangling references are listed. The
+root must be one unique Gramps person ID: there is no largest-component fallback. Structural
+connection includes spouses and siblings but is not a verdict that a relationship is proven.
+
+Associations, exact existing person IDs mentioned in notes, and notes, citations or media
+shared across components are separate review leads. They do not add family edges or establish
+identity. The report does not quote note text or treat it as instructions. Family notes and
+references attached to subobjects, unnamed relatives, plain-name mentions, omitted private
+material and documents themselves still need review. Sharing only a source, place or repository
+is excluded from case-specific evidence: a common register or town proves no kinship.
+
+`safe_to_delete` is always empty. `unlinked_not_assessed` never means unrelated or disposable.
+There are no operations, survivor choices, automatic merges or deletion approvals in the output.
+The existing `unconnected` check is unchanged; it reports family components, not a complete
+person classification.
+
+To preserve reviewed doubts across a component, supply a reviewer-created manifest:
+
+```json
+{
+  "format": "gwt-component-holds/1",
+  "tree_sha256": "COPY_THE_TREE_SHA256_FROM_THE_FIRST_REPORT",
+  "holds": [{"person": "I3", "evidence_refs": ["N1: unresolved identity comparison"]}]
+}
+```
+
+The fingerprint covers canonical object contents, including private flags, not just counts or
+modification times. A changed dump, missing/ambiguous person, empty reference, or wrong manifest
+format is refused. The report expands each hold to the entire conservative family component;
+a hold does not make the component connected to the root. The evidence references are reviewer
+assertions, not authenticated or fetched proof. Creating a manifest grants no permission to
+share, edit or delete anything. With no manifest, no existing reviews are assumed to be preserved.
+Save and reconcile the manifest separately from tree data, and inspect the original references
+before any separately authorized action.
