@@ -87,14 +87,19 @@ def test_hold_cannot_choose_ambiguous_duplicate_id():
 
 def test_full_object_content_fingerprint_not_only_counts_and_timestamps():
     d = data()
-    t = Tree(d)
-    h = manifest(t)
-    d['people'][0]['private'] = True
-    with pytest.raises(BadInput, match='does not match'): review(Tree(d), 'I1', h)
-    d['people'].reverse()
-    assert fingerprint(Tree(d)) == fingerprint(t)  # t shares those same object dictionaries
-    d['people'][0]['note_list'] = ['new']
-    assert h['tree_sha256'] != fingerprint(Tree(d))
+    original = Tree(copy.deepcopy(d))
+    h = manifest(original)
+    reordered = copy.deepcopy(d)
+    reordered['people'].reverse()
+    assert fingerprint(Tree(reordered)) == fingerprint(original)
+    changed = copy.deepcopy(d)
+    changed['people'][0]['private'] = True
+    with pytest.raises(BadInput, match='does not match'):
+        review(Tree(changed), 'I1', h)
+    changed = copy.deepcopy(d)
+    changed['people'][0]['note_list'] = ['new']
+    assert h['tree_sha256'] != fingerprint(Tree(changed))
+    assert fingerprint(original) == h['tree_sha256']
 
 
 def test_associations_and_shared_evidence_are_not_family_edges_or_authority():
