@@ -102,12 +102,16 @@ def review(tree: Tree, root: str, holds: dict | None = None) -> dict:
                                      'cross_component': component_of[ph] != component_of[target]})
             else:
                 dangling.append({'owner_type': 'association', 'owner': label(ph), 'target': target})
-    # Follow only person -> event -> citation -> note/media/citation evidence.
+    # Include evidence attached to each person's directly adjacent families (from either
+    # reference direction), plus person/family events. Do not walk relatives recursively.
+    # Family evidence is associated with its members for review, not owned exclusively by
+    # them and not evidence that any recorded family link is proven.
     # Shared sources, places and repositories are deliberately excluded: same book/town
     # is not a case-specific bridge. No transitive traversal through shared evidence.
     evidence_owners = defaultdict(set)
     for ph, p in P.items():
-        queue, seen = [('people', ph)], set()
+        queue = [('people', ph)] + sorted(graph[('people', ph)])
+        seen = set()
         while queue:
             typ, handle = queue.pop()
             if (typ, handle) in seen:
@@ -126,7 +130,7 @@ def review(tree: Tree, root: str, holds: dict | None = None) -> dict:
                 target = ref.get('ref')
                 if target in tree.objs['media']:
                     evidence_owners[('media', target)].add(ph)
-            if typ == 'people':
+            if typ in ('people', 'families'):
                 for ref in obj.get('event_ref_list', []):
                     queue.append(('events', ref.get('ref')))
     # Exact existing person IDs in note text are review leads, never instructions.

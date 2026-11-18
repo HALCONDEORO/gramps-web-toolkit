@@ -5,3 +5,5 @@ gwt_check/components.py | protected.add(component_of[by_id[pid][0]]) | pass | re
 gwt_check/components.py | 'safe_to_delete': [] | 'safe_to_delete': ['unsafe'] | advisory output contains no safe deletion verdict
 gwt_check/components.py | if len({component_of[o] for o in owners}) > 1: | if False: | shared case evidence across components is surfaced
 gwt_check/components.py | if matches: | if False: | explicit person ID mentions in notes remain review leads
+gwt_check/components.py | queue = [('people', ph)] + sorted(graph[('people', ph)]) | queue = [('people', ph)] | family-attached case evidence is not omitted during cleanup review
+gwt_check/components.py | if typ in ('people', 'families'): | if typ == 'people': | family event citations remain visible without changing kinship

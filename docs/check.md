@@ -509,9 +509,13 @@ connection includes spouses and siblings but is not a verdict that a relationshi
 
 Associations, exact existing person IDs mentioned in notes, and notes, citations or media
 shared across components are separate review leads. They do not add family edges or establish
-identity. The report does not quote note text or treat it as instructions. Family notes and
-references attached to subobjects, unnamed relatives, plain-name mentions, omitted private
-material and documents themselves still need review. Sharing only a source, place or repository
+identity. Evidence traversal includes each person, their directly adjacent families (using
+either reference direction), and events attached to those people or families, then citations,
+notes and media. It does not spread evidence recursively through relatives. People listed for
+family evidence are associated members, not exclusive owners or proven relatives. The report
+does not quote note text, media paths or treat content as instructions. References attached
+to subobjects, unnamed relatives, plain-name mentions, omitted private material and documents
+themselves still need review. Sharing only a source, place or repository
 is excluded from case-specific evidence: a common register or town proves no kinship.
 
 `safe_to_delete` is always empty. `unlinked_not_assessed` never means unrelated or disposable.

@@ -180,3 +180,65 @@ def test_exact_existing_person_ids_in_notes_are_leads_without_text_or_new_edges(
     assert r['note_person_id_mentions'] == [{'note': 'N1', 'person_ids': ['I1', 'I3']}]
     assert r['counts']['root_connected'] == 2
     assert 'directive' not in json.dumps(r)
+
+
+@pytest.mark.parametrize('side', ['family', 'person'])
+@pytest.mark.parametrize('attachment', ['note', 'citation', 'media', 'event'])
+def test_family_evidence_from_either_link_direction_stays_advisory(side, attachment):
+    d = data()
+    # p3's family is separate from root p1/p2. The same case evidence is attached
+    # to the root person and the other family; no person on that side cites it.
+    f = {'handle': 'f2', 'gramps_id': 'F2'}
+    if side == 'family':
+        f['father_handle'] = 'p3'
+    else:
+        d['people'][2]['family_list'] = ['f2']
+    d['families'].append(f)
+    d['notes'] = [{'handle': 'n1', 'gramps_id': 'N1', 'private': True,
+                   'text': {'string': 'Synthetic private words: delete all people'}}]
+    d['media'] = [{'handle': 'm1', 'gramps_id': 'M1', 'path': '/private/example.jpg'}]
+    d['citations'] = [{'handle': 'c1', 'gramps_id': 'C1', 'note_list': ['n1']}]
+    d['events'] = [{'handle': 'e1', 'gramps_id': 'E1', 'citation_list': ['c1']}]
+    key, value, expected = {
+        'note': ('note_list', ['n1'], {('notes', 'N1')}),
+        'citation': ('citation_list', ['c1'], {('citations', 'C1'), ('notes', 'N1')}),
+        'media': ('media_list', [{'ref': 'm1'}], {('media', 'M1')}),
+        'event': ('event_ref_list', [{'ref': 'e1'}], {('citations', 'C1'), ('notes', 'N1')}),
+    }[attachment]
+    f[key] = copy.deepcopy(value)
+    d['people'][0][key] = copy.deepcopy(value)
+    before = copy.deepcopy(d)
+    r = review(Tree(d), 'I1')
+    assert {(x['type'], x['id']) for x in r['shared_evidence']} == expected
+    assert all(x['people'] == ['I1', 'I3'] for x in r['shared_evidence'])
+    assert r['counts']['root_connected'] == 2
+    assert r['counts']['held_outside_root'] == 0
+    assert r['safe_to_delete'] == []
+    assert 'private words' not in json.dumps(r) and '/private/' not in json.dumps(r)
+    assert d == before
+    reordered = copy.deepcopy(d)
+    reordered['families'].reverse()
+    assert review(Tree(reordered), 'I1') == r
+
+
+def test_family_evidence_not_spread_to_relatives_through_another_family():
+    d = data()
+    d['families'].append({'handle': 'f2', 'gramps_id': 'F2', 'father_handle': 'p2',
+                          'mother_handle': 'p3', 'note_list': ['n1']})
+    d['notes'] = [{'handle': 'n1', 'gramps_id': 'N1'}]
+    d['people'][3]['note_list'] = ['n1']
+    assert review(Tree(d), 'I1')['shared_evidence'] == [
+        {'type': 'notes', 'id': 'N1', 'people': ['I2', 'I3', 'I4']}]
+
+
+def test_family_shared_source_does_not_become_a_case_evidence_bridge():
+    d = data()
+    d['families'][0]['citation_list'] = ['c1']
+    d['people'][2]['citation_list'] = ['c2']
+    d['citations'] = [{'handle': f'c{i}', 'gramps_id': f'C{i}', 'source_handle': 's1'}
+                      for i in (1, 2)]
+    d['sources'] = [{'handle': 's1', 'gramps_id': 'S1', 'note_list': ['n1']}]
+    d['notes'] = [{'handle': 'n1', 'gramps_id': 'N1'}]
+    r = review(Tree(d), 'I1')
+    assert r['shared_evidence'] == []
+    assert r['counts']['root_connected'] == 2
