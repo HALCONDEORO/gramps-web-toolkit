@@ -24,6 +24,7 @@ classifiers = [
 
 [project.optional-dependencies]
 mh = ["playwright>=1.40"]
+crop = ["Pillow>=10"]
 
 [project.urls]
 Homepage = "https://github.com/GeiserX/gramps-web-toolkit"
@@ -53,32 +54,59 @@ gwt-import-excel = "gwt_import_excel:main"
 gwt-rawstore = "gwt_rawstore:main"
 gwt-mh = "gwt_core.cli:mh"
 gwt-read = "gwt_read:main"
+gwt-report = "gwt_report:main"
+gwt-queue-audit = "gwt_queue_audit:main"
+gwt-install-doctor = "gwt_install_doctor:main"
+gwt-retry-after = "gwt_retry_after:main"
+
+gwt-act-packet = "gwt_act_packet:main"
+gwt-pagination-audit = "gwt_pagination_audit:main"
+gwt-genae-act-link = "gwt_genae_act_link:main"
+gwt-transcription-review = "gwt_transcription_review:main"
+gwt-geocode = "gwt_geocode:main"
+gwt-run = "gwt_run:main"
+gwt-import-dna = "gwt_dna:main"
+gwt-lint = "gwt_lint.cli:main"
+gwt-import-gedcom = "gwt_gedcom.cli:main"
+gwt-corpus = "gwt_corpus:main"
 
 # The version comes from the git tag: `v0.2.0` builds 0.2.0; a commit after it builds 0.2.1.devN+g<sha>.
 [tool.hatch.version]
 source = "vcs"
 
 [tool.hatch.build.targets.wheel]
-packages = ["apply/gwt_apply", "check/gwt_check", "fetch/gwt_fetch", "core/gwt_core"]
+packages = ["apply/gwt_apply", "check/gwt_check", "fetch/gwt_fetch", "core/gwt_core", "gedcom/gwt_gedcom"]
 # `pip install -e .` puts these folders on sys.path instead of copying files
 dev-mode-dirs = ["apply", "check", "fetch", "core", "ledger", "gate", "fscache", "queue", "leads", "rank",
-                 "access", "cross", "batch", "importxl", "rawstore", "myheritage", "read", "books", "dates", "acts"]
+                 "access", "cross", "batch", "importxl", "rawstore", "myheritage", "read", "books", "dates", "acts", "report", "doctor", "geocode", "gedcom", "dna", "lint", "corpus", "run"]
 
 [tool.hatch.build.targets.wheel.force-include]
+"queue/gwt_queue_audit.py" = "gwt_queue_audit.py"
+"doctor/gwt_install_doctor.py" = "gwt_install_doctor.py"
+"gate/gwt_retry_after.py" = "gwt_retry_after.py"
+"acts/gwt_act_packet.py" = "gwt_act_packet.py"
+"read/gwt_pagination_audit.py" = "gwt_pagination_audit.py"
+"read/gwt_genae_act_link.py" = "gwt_genae_act_link.py"
+"acts/gwt_transcription_review.py" = "gwt_transcription_review.py"
 "ledger/gwt_ledger.py" = "gwt_ledger.py"
 "books/gwt_books.py" = "gwt_books.py"
 "dates/gwt_dates.py" = "gwt_dates.py"
 "acts/gwt_acts.py" = "gwt_acts.py"
+"ledger/sources.tsv" = "gwt_ledger_sources.tsv"
 "gate/gwt_gate.py" = "gwt_gate.py"
+"gate/profiles.tsv" = "gwt_gate_profiles.tsv"
 "fscache/gwt_fscache.py" = "gwt_fscache.py"
 "queue/gwt_queue.py" = "gwt_queue.py"
 "leads/gwt_leads.py" = "gwt_leads.py"
+"leads/archives" = "gwt_leads_archives"
 "rank/gwt_rank.py" = "gwt_rank.py"
 "batch/gwt_batch.py" = "gwt_batch.py"
 "access/gwt_access.py" = "gwt_access.py"
 "cross/gwt_cross.py" = "gwt_cross.py"
 "importxl/gwt_import_excel.py" = "gwt_import_excel.py"
 "rawstore/gwt_rawstore.py" = "gwt_rawstore.py"
+"rawstore/gwt_rawstore_doctor.py" = "gwt_rawstore_doctor.py"
+"rawstore/gwt_rawstore_kinds.py" = "gwt_rawstore_kinds.py"
 "myheritage/gwt_mh.py" = "gwt_mh.py"
 "myheritage/gwt_mh_browser.py" = "gwt_mh_browser.py"
 "myheritage/gwt-mh" = "gwt_mh_cli.py"
@@ -87,3 +115,30 @@ dev-mode-dirs = ["apply", "check", "fetch", "core", "ledger", "gate", "fscache",
 "read/gwt_pares.py" = "gwt_pares.py"
 "read/gwt_genae.py" = "gwt_genae.py"
 "read/gwt_boe.py" = "gwt_boe.py"
+"read/gwt_insee.py" = "gwt_insee.py"
+"report/gwt_report.py" = "gwt_report.py"
+"report/gwt_occupations.py" = "gwt_occupations.py"
+"report/gwt_pedigree_reports.py" = "gwt_pedigree_reports.py"
+"report/gwt_public_preflight.py" = "gwt_public_preflight.py"
+"read/gwt_openarch.py" = "gwt_openarch.py"
+"read/gwt_wikitree.py" = "gwt_wikitree.py"
+"read/gwt_archiveorg.py" = "gwt_archiveorg.py"
+"read/gwt_matchid.py" = "gwt_matchid.py"
+"read/gwt_riksarkivet.py" = "gwt_riksarkivet.py"
+"read/gwt_tna.py" = "gwt_tna.py"
+"read/gwt_census1950.py" = "gwt_census1950.py"
+"read/gwt_digitalnz.py" = "gwt_digitalnz.py"
+"read/gwt_dokuklik.py" = "gwt_dokuklik.py"
+"read/gwt_hiski.py" = "gwt_hiski.py"
+"read/gwt_digitalarkivet.py" = "gwt_digitalarkivet.py"
+"read/gwt_geneteka.py" = "gwt_geneteka.py"
+"read/gwt_freeukgen.py" = "gwt_freeukgen.py"
+"read/gwt_bvph.py" = "gwt_bvph.py"
+"read/gwt_delpher.py" = "gwt_delpher.py"
+"read/gwt_trove.py" = "gwt_trove.py"
+"read/gwt_kramerius.py" = "gwt_kramerius.py"
+"geocode/gwt_geocode.py" = "gwt_geocode.py"
+"run/gwt_run.py" = "gwt_run.py"
+"dna/gwt_dna.py" = "gwt_dna.py"
+"lint/gwt_lint" = "gwt_lint"
+"corpus/gwt_corpus.py" = "gwt_corpus.py"

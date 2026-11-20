@@ -75,12 +75,15 @@ It trusts the stamps for everything else. A change that reaches the database wit
 | `--limit N` | Findings printed per check (default 30); the JSON has all of them |
 | `--pagesize`, `--workers` | Objects per request (default 1000) and requests in flight (default 4) |
 | `--live` | The old strict read of the live tree, which stops when the tree changes during it |
+| `--download` | Live tree only: also read each image's 256 px thumbnail for `media-tiny`, `media-uniform` and `media-dup-page` ([below](#media)). Needs Pillow; without it those three are skipped with a note. `gwt-check dump --download` saves the measures in the dump, so a later offline check of it reports them too |
 
 **Scope.** `homonym-birth-gap` counts a pair only when at least one person is in scope. The structural and dated checks always run on the whole tree. The scoped duplicate checks (`dup-couple-names`, `dup-person-birth`, `dup-person-relative`, `dup-person-fuzzy`, `dup-vital-event`, `dup-citation`, `dup-source-ark`, `dup-media`) report a group only when at least one member is in scope, so a run is not blamed for duplicates that were already there. `place-vs-description` reports only events in scope. Without `--since` or `--tag`, everything is in scope.
 
 **Reasons.** Rows of a known file may carry a `reason`, and the report prints it (`known N0099: kept on purpose`). `gwt-check mark-known REPORT.json --check NAME --key KEY [--key KEY ...] --reason "..." --out known.json` adds findings of a report to a known file with the reason; it refuses a key the report does not have and a blank reason, and adding one twice changes nothing.
 
 **Parent and child.** When one of a same-name pair is a parent of the other in the tree, a shared relative no longer makes them a duplicate (`dup-person-relative`, and the shared-relative branch of `dup-person-fuzzy`): a father and a son with one name share relatives by name across three generations. A shared birth date still does: `dup-person-birth` and "birth within 2 years" report the pair, because a person entered twice and then linked as their own child is a real duplicate.
+
+**Births that cannot overlap.** A shared relative also proves nothing when the two birth dates cannot be one: `dup-person-relative` and the shared-relative branch of `dup-person-fuzzy` leave the pair out. Every Primary Birth event of a person is read as an interval of days, with the same slack the dated checks use (two years either side for `about` and estimated, one for calculated, an open end for `before` and `after`), and the pair is left out only when the two intervals are disjoint. So `before 1750` against 1800 is two people, and `about 1797` against 1800 is still a hint. A baptism alone never sets two people apart (adults were baptized too), and neither does a missing birth or one the date reader cannot read (another calendar, free text): those pairs keep the old rules. `dup-person-birth` does not use this: a birth or baptism in the same year still reports the pair, whatever the other dates say.
 
 **Known findings.** Every finding has a `check` and a `key` built from Gramps IDs, for example `repeated-ref` / `F0012 citation_list C0034`. The key stays the same from run to run while the problem does. Pass the first run's report as `--known` and the exit code then reflects only new problems.
 
@@ -233,7 +236,7 @@ gwt-check repos dump.json.gz --json                   # repositories with their 
 | `dup-couple-names` | Two families whose couples are different people with the same two names |
 | `homonym-birth-gap` | For information only. Two people with the same normalized name whose possible Primary Birth dates are more than ten years apart; not a safe merge candidate |
 | `dup-person-birth` | Two people with the same name and a birth or baptism in the same year (day and month must not contradict) |
-| `dup-person-relative` | Two people with the same name and a parent, spouse or child of the same name, unless their birth years differ |
+| `dup-person-relative` | Two people with the same name and a parent, spouse or child of the same name, unless their birth years differ or their birth dates cannot overlap (below) |
 | `dup-person-fuzzy` | Two people whose names differ only by an extra given name or surname (every word of the shorter given name is in the longer one, and the same for the surnames), born within 2 years of each other, or with a spouse or child of the same name, or a parent of the same name who is a different person. Siblings share their parents, so the same parent does not count. A pair is left out when each side is the birth child of a family with both a father and a mother, and the two fathers have different names and the two mothers have different names: those are namesakes, two people. Only the first family a person is a birth child of counts, and adoptive, step or foster parents never do. If a parent is missing in that family on either side, or one parent's name matches, the pair is still reported. The pairs left out are counted in the report (below) |
 | `dup-vital-event` | One person (role `Primary`) or family (role `Family`) with two Birth, Death, Baptism, Burial or Marriage events |
 | `living-media-sensitive` | Media of a person with no death or burial event of their own (role `Primary`) who was born within 100 years (a person over 100 with no death is presumed dead) (or has no dated birth), whose path, description or attributes hold an ID number or an ID or address word. Media already private (the person, the media or the reference) is skipped. It reads metadata only, never the image or its notes, and never prints the match. The patterns are Spanish-first: a DNI or NIE counts only with the right check letter, and the words are passport, home-address and ID-card terms in Spanish, English and French, plus `c/` before a street name. Another country adds its ID number to `ID_NUMBERS` and its words to `ID_WORDS` in `check/gwt_check/checks.py`. Accept a false positive with `--known` |
@@ -262,6 +265,11 @@ gwt-check repos dump.json.gz --json                   # repositories with their 
 | `sibling-spacing` | For information only. Two children of one mother born less than 240 days apart and more than a day apart (twins). Birth events with an exact day only: a baptism can be late |
 | `note-marker-no-tag` | For information only. A note whose text says «hipótesis» or «homónimo» (any accent, whole word) but carries no tag whose name holds that word. Only where the tree has such a tag: a tree that does not use the convention is not blamed. A mention with «descartada», «refutada», «superada», «sustituida» or «desmentida» within three words after or before it is skipped, unless «no», «ni», «sin» or «nada» comes between them |
 | `lifespan` | For information only. A life of more than 105 years, from birth or baptism to death or burial |
+| `media-non-viewable` | A media object Gramps Web shows only as a grey icon: MIME `text/*`, `message/*` (a saved mail), JSON, XHTML, or a tar, gzip or zip archive. Without a stored MIME the file name decides. For text or mail: put its text in a Transcript note (`gwt-apply add_transcription`), then detach it. For JSON or an archive: unpack or convert it to an image or PDF, or detach it |
+| `media-file-missing` | A media object whose file the server does not have (`GET /api/media/?filemissing=1`). Live tree, or a dump gwt-check saved |
+| `media-tiny` | With `--download`. An image whose longer side is under 200 px |
+| `media-uniform` | For information only, with `--download`. An image of which 98% or more of the pixels are within 12 grey levels of one tone: a blank page, a grey placeholder, a failed scan |
+| `media-dup-page` | For information only, with `--download`. Two media objects with different files on one citation whose thumbnails are 20 bits or fewer apart out of 256 (a difference hash): maybe the same page uploaded twice, for example after a re-scan or a crop. Two different pages of one printed register or form can also come this close, so compare them before detaching one. The same file twice is `dup-media`. Keyed by the citation and both media IDs |
 
 Names are compared lowercased, without accents, with b/v and i/y folded and the particle "de" dropped. `dup-person-fuzzy` also drops "del", "la", "las", "los" and "y", and matches "Pedro Lasa" with "Pedro José Lasa Ibarra". For a pair to count, at least one side must be in scope, or belong to a family that is. That covers an old person the run gave a new spouse or new parents. A different spelling of the same word ("Lasa" against "Lassa") is still not matched. A run that allowed namesakes still needs its homonyms read one by one.
 
@@ -274,6 +282,22 @@ Only Primary Birth events count, including the birth type names recognized by th
 All Primary Birth alternatives widen the possible interval; none is selected just because it makes a gap. If any such date is unknown or unreadable by the shared helper (including unsupported calendars, dual years and unparsed text), this check stays quiet. Those cases need manual review; this check does not change how older duplicate hints handle uncertain dates.
 
 The report also gives, without failing: events without a place (in the whole tree and in scope), the `dup-person-fuzzy` pairs left out because their fathers and mothers differ by name (a count in the text report, the pair keys under `info` in `--json`, so a namesake entered with the wrong parents can still be read), sources without a repository (in a tree that has repositories: a source is linked only when its repository is certain, so some stay unlinked), the objects changed and new since `--since`, the last changed object (it should be the last item applied), and the Ahnentafel counts.
+
+## Media
+
+`media-non-viewable` needs only the tree. The others need what the server says about each file, which an offline dump from another tool does not carry:
+
+```sh
+gwt-check check                      # adds media-file-missing: one extra request for the whole tree
+gwt-check check --download           # adds media-tiny, media-uniform and media-dup-page: one thumbnail per image
+gwt-check dump tree.json --download  # saves all of it; gwt-check check tree.json reports the same findings offline
+```
+
+Only `check` and `dump` ask the server about files. A dump keeps the answers beside the objects, under `media_status`, so the objects stay as the server sent them and `gwt-apply --snapshot` or `--revert --pre` can write them back. If the list of missing files fails (a media store that errors or times out), the check goes on and prints `media files not checked: N`.
+
+Gramps Web keeps a list answer in its cache until the tree changes, and a file deleted from the media folder changes nothing in the tree, so `gwt-check` words each request for missing files differently and the server never answers it from the cache. A dump without it, such as a gwt-apply snapshot, reports `media files not checked: N` and skips those kinds; take a new gwt-check dump to check them. `--download` asks for every image's and PDF's 256 px thumbnail (`GET /api/media/<handle>/thumbnail/256`), never the full file, with `--workers` requests in flight, and prints how many it measured. A thumbnail the server will not give (any 4xx but 401 and 429, such as 404 gone, 422 a file it cannot open, or 501 a PDF without poppler) or Pillow cannot read is left out and counted in the report as `media thumbnails not read: N`, never the end of the run. Gramps Web sends AVIF thumbnails, which need Pillow 11.3 or newer. Add Pillow to the tool's own Python: `pipx inject gramps-web-toolkit pillow` after a pipx install, or `pip install pillow` in the same environment as gwt-check; nothing else in gwt-check needs it.
+
+Each finding says what to do: replace the file, detach it from what cites it, or for a text file move its text into a Transcript note. `media-uniform` and `media-dup-page` are for information only, since a blank back page or two takes of one page can be on purpose. `media-tiny` fails the run, since a small image is most often a failed upload; accept a deliberate crop, such as a signature cut from a register, with `mark-known`.
 
 ## Dated checks
 
@@ -350,7 +374,7 @@ Nothing in the report goes into the tree without a document, through [`gwt-apply
 
 ### Rule: every scale test also runs on the real tree
 
-`python -m gwt_check.scale --people 20000 --real real-dump.json.gz` runs `check`, `repos`, `fill-places`, `links`, `cites` and `republican` on an invented tree and on the dump you give it, and prints seconds, peak memory, exit code and the last summary line of each, side by side. The real dump is only read; its path is not stored and nothing from it is written, so the output is counts and times. Use a dump taken with `gwt-check dump`, never the live tree. A change that is fast and correct on the invented tree and wrong or slow on the real one is not done. Exit code 1 is findings; 2 or more is a crash and fails the run.
+`python -m gwt_check.scale --people 20000 --real real-dump.json.gz` runs `check`, `repos`, `fill-places`, `links`, `cites` and `republican` on an invented tree and on the dump you give it, and prints seconds, peak memory, exit code and the last summary line of each, side by side. The real dump is only read; its path is not stored and nothing from it is written, so the output is counts and times. Use a dump taken with `gwt-check dump`, never the live tree. A change that is fast and correct on the invented tree and wrong or slow on the real one is not done. Child exit code 1 is findings; only 0 and 1 are accepted. Any other child exit code fails the scale run, including a negative return code when a signal terminates a command on POSIX. The remaining commands still run so their results are reported.
 
 ## What a guest still sees (`public`)
 
@@ -455,3 +479,65 @@ media, citation confidence, privacy flags and evidence before deciding. No survi
 is selected and no API write, merge, unlink or delete is performed. Any later cleanup
 needs a verified checkpoint and its own reviewed change list. An anniversary screen
 alone cannot establish that two underlying objects are duplicates.
+
+## Vital pointer fallbacks
+
+The read-only birth/death pointer check accepts primary Gramps fallback events when no primary exact Birth or Death event exists. Birth fallbacks are Baptism, Christening and Stillbirth; death fallbacks are Burial, Cremation, Cause Of Death, Probate and Stillbirth. These are display fallbacks, not proof of an exact birth/death date. A missing pointer is not required to point at a fallback. A pointer to a missing event, wrong role, unrelated type or invalid index remains a finding. If an exact primary vital event exists, it takes precedence over a fallback. Nothing rewrites events or converts a baptism into a birth.
+
+The fallback types follow Gramps `EventType.is_birth_fallback` and `is_death_fallback`: https://github.com/gramps-project/gramps/blob/master/gramps/gen/lib/eventtype.py .
+
+### Event description headings (review only)
+
+`event-type-description` groups explicit Birth/Baptism/Marriage/Burial/Death headings by event, listing the referring people and families once. A stored Birth with a description beginning `Exampleville, Marriage ...` is a clue to review the cited original before touching type or vital pointers, not a correction proposal. A baptism never establishes a birth date, nor a burial a death date. Negated, uncertain, mixed-kind and incidental wording is left unclassified. This narrow English/French/Spanish heading check does not interpret notes or images, prove an error, or cover every wording. It is informational and does not change the exit status.
+
+## Offline component review before cleanup
+
+```sh
+gwt-check component-review tree.json --root I1 > component-review.json
+gwt-check component-review tree.json --root I1 --holds holds.json > held-review.json
+```
+
+This advisory command reads a full saved JSON dump only. It makes no network requests and
+changes no tree objects. It exits 0 for a report, even when links need review, or 2 on bad
+input. A `.gramps` file is refused because the toolkit's XML reader omits evidence and
+associations. Output is private tree data: keep it outside public repositories and CI logs.
+
+It includes singletons and joins family members using references from either the person or
+the family. References present on only one side and dangling references are listed. The
+root must be one unique Gramps person ID: there is no largest-component fallback. Structural
+connection includes spouses and siblings but is not a verdict that a relationship is proven.
+
+Associations, exact existing person IDs mentioned in notes, and notes, citations or media
+shared across components are separate review leads. They do not add family edges or establish
+identity. Evidence traversal includes each person, their directly adjacent families (using
+either reference direction), and events attached to those people or families, then citations,
+notes and media. It does not spread evidence recursively through relatives. People listed for
+family evidence are associated members, not exclusive owners or proven relatives. The report
+does not quote note text, media paths or treat content as instructions. References attached
+to subobjects, unnamed relatives, plain-name mentions, omitted private material and documents
+themselves still need review. Sharing only a source, place or repository
+is excluded from case-specific evidence: a common register or town proves no kinship.
+
+`safe_to_delete` is always empty. `unlinked_not_assessed` never means unrelated or disposable.
+There are no operations, survivor choices, automatic merges or deletion approvals in the output.
+The existing `unconnected` check is unchanged; it reports family components, not a complete
+person classification.
+
+To preserve reviewed doubts across a component, supply a reviewer-created manifest:
+
+```json
+{
+  "format": "gwt-component-holds/1",
+  "tree_sha256": "COPY_THE_TREE_SHA256_FROM_THE_FIRST_REPORT",
+  "holds": [{"person": "I3", "evidence_refs": ["N1: unresolved identity comparison"]}]
+}
+```
+
+The fingerprint covers canonical object contents, including private flags, not just counts or
+modification times. A changed dump, missing/ambiguous person, empty reference, or wrong manifest
+format is refused. The report expands each hold to the entire conservative family component;
+a hold does not make the component connected to the root. The evidence references are reviewer
+assertions, not authenticated or fetched proof. Creating a manifest grants no permission to
+share, edit or delete anything. With no manifest, no existing reviews are assumed to be preserved.
+Save and reconcile the manifest separately from tree data, and inspect the original references
+before any separately authorized action.

@@ -7,14 +7,18 @@
                         --out DIR
   gwt-read boe search --name "Given Surname1 [Surname2]" [--from Y] [--to Y] [--born Y] [--parents "F y M"]
                       [--pdf-context N] [--near W] [--pages N] --out DIR
+  gwt-read insee search --files FILE [FILE ...] --surname S [--surname S2 ...] --out DIR
   gwt-read familysearch search [--given G] [--surname S [--surname S2]] [--by Y] [--dy Y] [--years N]
                                [--place P] [--father "G S"] [--mother "G S"] [--collection ID]
                                [--count N] --out DIR
   gwt-read familysearch record ARK --out DIR          ARK: 1:1:XXXX-XXX or its https://.../ark:/61903/ URL
+  gwt-read SOURCE control                             the source's canary searches, read without the cache
+  gwt-read SOURCE search ... --controls before|after|both
 
 PARES (the Spanish state archives' catalogue), Genae (a volunteer index of parish baptisms, marriages and
 burials) and the BOE and Gaceta de Madrid search are public: no account and no token. Genae rows are an index, never
-the record; a BOE hit is a mention of a name in an official act, never a record of a person.
+the record; a BOE hit is a mention of a name in an official act, never a record of a person. `insee` reads INSEE's
+French deaths files the user downloaded from data.gouv.fr, offline: no request, no gate, no cache.
 
 The FamilySearch session token is the one the signed-in browser already holds (its `fssessionid` cookie), read from
 $GWT_FS_TOKEN or the file named in $GWT_FS_TOKEN_FILE. The tool never asks for a password and never logs in.
@@ -26,13 +30,16 @@ search already run costs nothing.
 Writes <out>/<key>.json (the answer) and <out>/<key>.candidates.json (what gwt-rank reads), and prints
 `source`, `evidence`, `candidates` and `results` lines. It never writes the ledger.
 
-Exit codes: 0 ok, 1 an error answer (nothing saved), 2 no results, 3 rate limit, block, captcha or empty page
+Exit codes: 0 ok, 1 an error answer (nothing saved; insee: a file that cannot be read or holds no line), 2 no results
+(insee: also a line out of INSEE's layout, with nothing written: no candidates file means it was not "none"), 3 rate limit, block, captcha or empty page
 (HTTP 429: every lane on the account pauses; HTTP 403: the account's gate is blocked for 24 h; do other
-work), 4 signed out or the token
-expired (get a fresh token; never retry in a loop), 6 the account's gate is paused (nothing was requested),
-64 usage (no token).
+work; also a canary that read less than its minimum: the run is void), 4 signed out or the token
+expired (get a fresh token; never retry in a loop), 5 restricted (a FamilySearch record refused to this access
+level, not a block; the gate is not told), 6 the account's gate is paused (nothing was requested), 7 unreadable
+(pares: an empty page the source's control answered: this query's own problem, not a block; nothing saved, the
+gate only logs it), 64 usage (no token).
 """
-import argparse, json, os, re, shutil, sys, urllib.error, urllib.parse, urllib.request
+import argparse, contextlib, io, json, os, re, shutil, sys, tempfile, urllib.error, urllib.parse, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 try:                     # installed: the other tools are modules beside this one
@@ -40,6 +47,7 @@ try:                     # installed: the other tools are modules beside this on
     import gwt_pares
     import gwt_genae
     import gwt_boe
+    import gwt_insee
     from gwt_fscache import FSCache, FAMILYSEARCH_RULES, PARES_RULES, GENAE_RULES, BOE_RULES
     from gwt_gate import Gate, Paused
     import gwt_rank
@@ -52,11 +60,12 @@ except ImportError:      # a clone: they live in ../gate, ../fscache, ../rank
     import gwt_pares
     import gwt_genae
     import gwt_boe
+    import gwt_insee
     from gwt_fscache import FSCache, FAMILYSEARCH_RULES, PARES_RULES, GENAE_RULES, BOE_RULES
     from gwt_gate import Gate, Paused
     import gwt_rank
 
-from gwt_reader import EXIT_OK, EXIT_EMPTY, EXIT_PAUSED  # noqa: E402
+from gwt_reader import EXIT_OK, EXIT_ERROR, EXIT_EMPTY, EXIT_PAUSED  # noqa: E402
 
 FS_HOST = 'https://www.familysearch.org'
 SEARCH_PATH = '/service/search/hr/v2/personas'
@@ -86,15 +95,15 @@ def search_url(given='', surnames=(), by=None, dy=None, years=2, place='', fathe
         q.append(('q.surname', sur))
     for key, y in (('birthLikeDate', by), ('deathLikeDate', dy)):
         if y:
-            q += [('q.%s.from' % key, str(int(y) - years)), ('q.%s.to' % key, str(int(y) + years))]
+            q += [(f'q.{key}.from', str(int(y) - years)), (f'q.{key}.to', str(int(y) + years))]
     if place:
         q.append(('q.anyPlace', place))
     for role, name in (('father', father), ('mother', mother)):
         g, s = _split(name)
         if g:
-            q.append(('q.%sGivenName' % role, g))
+            q.append((f'q.{role}GivenName', g))
         if s:
-            q.append(('q.%sSurname' % role, s))
+            q.append((f'q.{role}Surname', s))
     if collection:
         q.append(('f.collectionId', str(collection)))
     q += [('count', str(count)), ('offset', str(offset))]
@@ -108,7 +117,7 @@ def ark_id(arg):
 
 
 def record_url(ark, host=FS_HOST):
-    return '%s/ark:/61903/%s' % (host, ark)
+    return f'{host}/ark:/61903/{ark}'
 
 
 def is_search(doc):
@@ -119,14 +128,84 @@ def is_record(doc):
     return isinstance(doc, dict) and isinstance(doc.get('persons'), list)
 
 
+# Fields that hold a JSON object in their text, and the key in it that holds the event place as typed: some
+# collections keep the typed place only there.
+_PLACE_IN_JSON = {'EXT_DATA': 'EVENT_PLACE_ALT_ORIG', 'EXT_DATA_ORIG': 'EVENT_PLACE_ALT_ORIG',
+                  'FS_UNSUPPORTED': 'EVENT_PLACE_SUP'}
+
+
+def _typed_place(lab, t):
+    """The typed place one field holds, or None."""
+    if not isinstance(t, str) or not t:
+        return None
+    if lab in ('EVENT_PARISH_ORIG', 'CP_MAR_PLACE_ORIG') or (lab.startswith('EVENT_PLACE') and lab.endswith('_ORIG')):
+        return t
+    if lab in _PLACE_IN_JSON and t.lstrip().startswith('{'):
+        try:
+            v = json.loads(t).get(_PLACE_IN_JSON[lab])
+        except (ValueError, AttributeError):
+            return None
+        return v if isinstance(v, str) and v else None
+    return None
+
+
+def place_orig(gedcomx):
+    """The place of the record's event as the index typed it, in the order found: every EVENT_PLACE..._ORIG field
+    (the parish and town as written, which the standard place often drops), EVENT_PARISH_ORIG and CP_MAR_PLACE_ORIG,
+    and the typed place some collections keep inside the JSON text of EXT_DATA, EXT_DATA_ORIG or FS_UNSUPPORTED."""
+    found = []
+
+    def walk(o):
+        if isinstance(o, dict):
+            t = _typed_place(str(o.get('labelId', '')), o.get('text') or o.get('value'))
+            if t and t not in found:
+                found.append(t)
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+    walk(gedcomx)
+    return found
+
+
+def _with_place_orig(rows, doc):
+    """Adds `place_orig` to each candidate whose record has one; rows without it are written as before."""
+    by_id = {e.get('id', ''): place_orig((e.get('content') or {}).get('gedcomx') or {}) for e in doc.get('entries') or []}
+    for c in rows:
+        if by_id.get(c['id']):
+            c['place_orig'] = by_id[c['id']]
+    return rows
+
+
 def search_candidates(doc):
-    """The search JSON as gwt-rank candidate records, through gwt-rank's own GEDCOM X reader."""
-    return gwt_rank.gedcomx_rows(doc)
+    """The search JSON as gwt-rank candidate records, through gwt-rank's own GEDCOM X reader. Each keeps its role,
+    its principal flag and the event place as typed (`place_orig`), which the evidence checks read."""
+    return _with_place_orig(gwt_rank.gedcomx_rows(doc), doc)
 
 
 def record_candidates(doc, ark):
     """One record's GEDCOM X as the candidate records gwt-rank reads: the record's principal person."""
-    return gwt_rank.gedcomx_rows({'entries': [{'id': ark.split(':')[-1], 'content': {'gedcomx': doc}}]})
+    wrapped = {'entries': [{'id': ark.split(':')[-1], 'content': {'gedcomx': doc}}]}
+    return _with_place_orig(gwt_rank.gedcomx_rows(wrapped), wrapped)
+
+
+# A 403 for one record is not always a block: a record the custodian restricts answers 403 to every account of
+# this access level. FamilySearch says so for one artifact in the 403 body ("Access to artifact denied"); when a
+# body names Themis permissions instead, a set without ThemisPrmAnyone means the same. Both are best effort:
+# --control-ark is the check that holds whatever the body says.
+_THEMIS = re.compile(r'ThemisPrm[A-Za-z]+')
+_ARTIFACT_DENIED = 'access to artifact denied'
+
+
+def access_of(body):
+    """'restricted' when a 403 body refuses this one artifact, or names its permissions and none is
+    ThemisPrmAnyone; else None."""
+    text = (body or b'').decode('utf-8', 'replace')
+    if _ARTIFACT_DENIED in text.lower():
+        return 'restricted'
+    perms = set(_THEMIS.findall(text))
+    return 'restricted' if perms and 'ThemisPrmAnyone' not in perms else None
 
 
 # ---------------------------------------------------------------- network
@@ -153,7 +232,7 @@ def urllib_fetcher(token, user_agent, urlopen=urllib.request.urlopen):
                 return r.status, rh, body
         except urllib.error.HTTPError as e:
             return e.code, dict(e.headers or {}), e.read()
-        except (urllib.error.URLError, OSError) as e:
+        except OSError as e:
             return 0, {}, str(e).encode()
     return fetch
 
@@ -181,8 +260,8 @@ def err(msg):
     print('gwt-read: ' + msg, file=sys.stderr, flush=True)
 
 
-def _save(a, R, url, accept, expect, key, to_cands, total_of):
-    status, rh, body, cached = R.get(url, {'accept': accept}, expect=expect, refresh=a.refresh)
+def _save(a, R, url, accept, expect, key, to_cands, total_of, on_403=None):
+    status, rh, body, cached = R.get(url, {'accept': accept}, expect=expect, refresh=a.refresh, on_403=on_403)
     doc = json.loads(body)
     cands = to_cands(doc)
     env = gwt_reader.envelope(url, (rh or {}).get(FINAL_URL_HEADER), json_body=doc, status=status,
@@ -190,7 +269,7 @@ def _save(a, R, url, accept, expect, key, to_cands, total_of):
     base = gwt_reader.write_search(a.out, key, env, cands)
     gwt_reader.print_paths(SOURCE, base, out)
     total = total_of(doc)
-    out('results\t%s total, %d read%s' % ('?' if total is None else total, len(cands), ' (cache)' if cached else ''))
+    out(f"results\t{'?' if total is None else total} total, {len(cands)} read{' (cache)' if cached else ''}")
     return EXIT_OK if cands else EXIT_EMPTY
 
 
@@ -203,14 +282,77 @@ def cmd_search(a, R):
     return _save(a, R, url, ACCEPT_SEARCH, is_search, key, search_candidates, lambda d: d.get('results'))
 
 
+def _fs_on_403(a, R, _ark):
+    """Is this record's 403 its own access? Its permissions first (no request); then, with --control-ark, the
+    control record read again through the gate: only when it answers is the account fine and the record restricted.
+    If the control read fails in any way (refused, a 5xx, the wrong shape, a paused gate), the first 403 stays a
+    block."""
+    def on_403(body):
+        if access_of(body):
+            return 'restricted'
+        control = ark_id(getattr(a, 'control_ark', ''))
+        if control:          # cmd_record has refused a control equal to the record
+            try:
+                R.get(record_url(control), {'accept': ACCEPT_RECORD}, expect=is_record, refresh=True)
+            except gwt_reader.Stop as e:
+                if e.verdict == 'blocked':
+                    raise           # the control's own 403 has blocked the gate already: that is the block
+                return None
+            except Paused:
+                return None
+            return 'restricted'
+        return None
+    return on_403
+
+
 def cmd_record(a, R):
     ark = ark_id(a.ark)
     if not ark:
-        err('%r is not a FamilySearch record ark (1:1:XXXX-XXX)' % a.ark)
+        err(f'{a.ark!r} is not a FamilySearch record ark (1:1:XXXX-XXX)')
+        return EXIT_USAGE
+    control = getattr(a, 'control_ark', '')
+    if control and ark_id(control) in (None, ark):
+        err(f'--control-ark {control!r} must be a FamilySearch record ark (1:1:XXXX-XXX) other than the one you read')
         return EXIT_USAGE
     key = 'fs-record-' + ark.replace(':', '-')
-    return _save(a, R, record_url(ark), ACCEPT_RECORD, is_record, key, lambda d: record_candidates(d, ark),
-                 lambda d: None)
+    try:
+        return _save(a, R, record_url(ark), ACCEPT_RECORD, is_record, key, lambda d: record_candidates(d, ark),
+                     lambda d: None, on_403=_fs_on_403(a, R, ark))
+    except gwt_reader.Restricted as e:
+        err(str(e))
+        perms = sorted(set(_THEMIS.findall(e.body.decode('utf-8', 'replace'))))
+        env = gwt_reader.envelope(record_url(ark), None, status=e.status, access='restricted', permissions=perms)
+        base = gwt_reader.write_search(a.out, key, env, [])
+        gwt_reader.print_paths(SOURCE, base, out)
+        out('results\trestricted (HTTP 403 for this record only; no gate hit)')
+        return gwt_reader.EXIT_RESTRICTED
+
+
+def _pares_control_probe(R, url, h):
+    """The on_empty check for a pares search: the source's declared canary, read live through the gate at
+    its normal pace. True only when the canary answers with at least its minimum: the site is fine, so the empty
+    page is that query's own problem. A canary that reads short, cannot be reached (a 5xx, a dropped connection)
+    or meets a paused gate keeps the wall; one that meets a wall itself raises that Stop, with its own gate signal.
+    None when `url` is the canary: a canary never proves itself."""
+    ctl = next(s['controls'][0] for s in LEGACY if s['id'] == 'pares')
+    args = argparse.ArgumentParser()
+    _pares_search_args(args)
+    ns = args.parse_args(list(ctl['argv']))
+    probe = gwt_pares.search_url(ns.given, ns.surname, ns.words)
+    if url == probe:
+        return None
+
+    def on_empty():
+        try:
+            _st, _rh, body, _cached = R.get(probe, h, refresh=True, page=gwt_pares.is_results)
+        except gwt_reader.Stop as e:
+            if e.verdict in ('http', 'unexpected'):
+                return False    # no proof the site is fine: the empty page keeps its wall
+            raise
+        except Paused as _paused:   # another lane paused the gate: no proof either
+            return False
+        return len(gwt_pares.search_candidates(body.decode('utf-8', 'replace'))) >= ctl['min_count']
+    return on_empty
 
 
 def cmd_pares_search(a, R):
@@ -224,13 +366,20 @@ def cmd_pares_search(a, R):
     if a.refresh or R.cache.lookup('GET', url, h) is None:
         R.get(gwt_pares.FORM_URL, h, refresh=True, page=gwt_pares.is_form)
     key = gwt_reader.search_key(url, ['pares', a.given] + list(a.surname) + [a.words])
-    return _save_page(a, R, url, h, gwt_pares.is_results, key, gwt_pares.search_candidates, gwt_pares.total)
+    try:
+        return _save_page(a, R, url, h, gwt_pares.is_results, key, gwt_pares.search_candidates, gwt_pares.total,
+                          on_empty=_pares_control_probe(R, url, h))
+    except gwt_reader.Unreadable as e:
+        err(str(e))
+        out("results\tunreadable: the page came back empty, but the source's control answered; this query, "
+            "not the site (nothing saved, no gate hit; log it as unproven)")
+        return gwt_reader.EXIT_UNREADABLE
 
 
 def cmd_pares_record(a, R):
     did = gwt_pares.description_id(a.id)
     if not did:
-        err('%r is not a PARES description id (digits) or its URL' % a.id)
+        err(f'{a.id!r} is not a PARES description id (digits) or its URL')
         return EXIT_USAGE
     h = {'accept': gwt_pares.ACCEPT, 'accept-language': gwt_pares.LANGUAGE}
     return _save_page(a, R, gwt_pares.description_url(did), h, gwt_pares.is_description, 'pares-record-' + did,
@@ -241,13 +390,30 @@ def cmd_genae_search(a, R):
     if not (a.given or a.surname):
         err('give --given, --surname or both')
         return EXIT_USAGE
+    if a.locality is not None and not a.locality.strip():
+        err("--locality is blank: give the site's numeric locality id or a listed name, or leave the flag out for a regional search")
+        return EXIT_USAGE
+    h = {'accept': gwt_genae.ACCEPT, 'accept-language': gwt_genae.LANGUAGE, 'hx-request': 'true'}
+    if a.locality:   # an id too: the site ignores an l it does not know, and an id belongs to one province
+        # the form lists the localities and rarely changes: the cache's own age, never --refresh
+        _st, _rh, mbody, _cached = R.get(gwt_genae.LOCALITIES_URL, {'accept': gwt_genae.ACCEPT,
+                                         'accept-language': gwt_genae.LANGUAGE}, page=gwt_genae.is_locality_list)
+        try:
+            a.locality, label = gwt_genae.resolve_locality(a.locality, a.province,
+                                                           gwt_genae.locality_map(mbody.decode('utf-8', 'replace')))
+        except gwt_genae.LocalityFormError as exc:
+            err(str(exc))
+            return EXIT_ERROR
+        except gwt_genae.LocalityError as exc:
+            err(str(exc))
+            return EXIT_USAGE
+        out('locality\t%s\t%s' % (a.locality, label))
     sur = (list(a.surname) + ['', ''])[:2]
     query = gwt_genae.params(a.given, sur[0], sur[1], a.province, a.locality, a.year_from, a.year_to)
-    h = {'accept': gwt_genae.ACCEPT, 'accept-language': gwt_genae.LANGUAGE, 'hx-request': 'true'}
     cands, pages, seen = [], {}, set()
     for block in gwt_genae.BLOCKS:
         url = gwt_genae.block_url(block, query)
-        status, rh, body, cached = R.get(url, h, refresh=a.refresh, page=lambda p, b=block: gwt_genae.is_block(p, b))
+        _status, _rh, body, cached = R.get(url, h, refresh=a.refresh, page=lambda p, b=block: gwt_genae.is_block(p, b))
         page = body.decode('utf-8', 'replace')
         n = len(gwt_genae.rows(page))
         pages[block] = {'url': url, 'html': page, 'rows': n, 'cut': gwt_genae.is_cut(n), 'from_cache': cached}
@@ -256,12 +422,14 @@ def cmd_genae_search(a, R):
                 seen.add(c['id'])
                 cands.append(c)
     key = gwt_reader.search_key(gwt_genae.block_url('bautismos', query), ['genae', a.given] + list(a.surname))
+    cached = all(p['from_cache'] for p in pages.values())
     env = gwt_reader.envelope(gwt_genae.block_url('bautismos', query), None,
-                              text=' '.join(gwt_genae.text(p['html']) for p in pages.values()), blocks=pages)
+                              text=' '.join(gwt_genae.text(p['html']) for p in pages.values()), blocks=pages,
+                              from_cache=cached)
     base = gwt_reader.write_search(a.out, key, env, cands)
     gwt_reader.print_paths(gwt_genae.SOURCE, base, out)
-    out('results\t%s' % ', '.join('%s %d%s' % (b, pages[b]['rows'], '+ (cut: narrow the search)' if pages[b]['cut'] else '')
-                                   for b in gwt_genae.BLOCKS))
+    out('results\t%s%s' % (', '.join('%s %d%s' % (b, pages[b]['rows'], '+ (cut: narrow the search)' if pages[b]['cut'] else '')
+                                     for b in gwt_genae.BLOCKS), ' (cache)' if cached else ''))
     return EXIT_OK if cands else EXIT_EMPTY
 
 
@@ -270,12 +438,14 @@ def _boe_phrase(name):
 
 
 def _boe_read(a, R, phrase, pages, born=None):
-    """The candidates of one phrase over up to `pages` pages of results, and how many rows the site found."""
+    """The candidates of one phrase over up to `pages` pages of results, how many rows the site found, and whether
+    every page read came from the cache rather than the site."""
     h = {'accept': gwt_boe.ACCEPT, 'accept-language': gwt_boe.LANGUAGE}
     url = gwt_boe.search_url(phrase, a.year_from, a.year_to)
-    cands, found, first = [], 0, url
+    cands, found, first, cached_all = [], 0, url, True
     for n in range(pages):
         status, rh, body, cached = R.get(url, h, refresh=a.refresh, page=gwt_boe.is_results)
+        cached_all = cached_all and cached
         page = body.decode('utf-8', 'replace')
         if n == 0:
             found = gwt_boe.total(page)
@@ -283,7 +453,7 @@ def _boe_read(a, R, phrase, pages, born=None):
         url = gwt_boe.next_url(page)
         if not url or len(cands) >= found:
             break
-    return first, cands, found, page
+    return first, cands, found, page, cached_all
 
 
 def _boe_pdf_context(a, R, cands, phrase):
@@ -298,12 +468,12 @@ def _boe_pdf_context(a, R, cands, phrase):
     h = {'accept': 'application/pdf', 'accept-language': gwt_boe.LANGUAGE}
     for c in [c for c in cands if c['url'].endswith('.pdf') and not c.get('implausible')][:n]:
         # an HTML page served with 200 at a PDF URL is not the act: a STOP, never cached for 90 days
-        status, rh, body, cached = R.get(c['url'], h, refresh=a.refresh, page=lambda p: p.startswith('%PDF'))
+        _status, _rh, body, _cached = R.get(c['url'], h, refresh=a.refresh, page=lambda p: p.startswith('%PDF'))
         txt = gwt_boe.pdf_text(body)
         ctx = gwt_boe.context(txt, phrase)
         c['context'] = ctx
         if ctx:
-            c['note'] += ' | in the act: ...%s...' % ctx
+            c['note'] += f' | in the act: ...{ctx}...'
         else:
             c['note'] += ' [name not whole in the text layer: open the PDF]'
         every = gwt_boe.parents_after(txt, phrase)    # one (father, mother) or None per occurrence of the name
@@ -312,14 +482,15 @@ def _boe_pdf_context(a, R, cands, phrase):
             c['parents_in_act'] = [list(p) for p in found]
             same = gwt_boe.act_parents(every, getattr(a, 'parents', None))
             c['same_parents'] = same
-            c['note'] = '[parents in the act: %s%s] ' % ('; '.join('%s y %s' % p for p in found), '' if same is None else
-                                                        ', as in the tree' if same else ', NOT the tree\'s: another person?') + c['note']
+            parents = '; '.join(f'{father} y {mother}' for father, mother in found)
+            comparison = '' if same is None else ', as in the tree' if same else ", NOT the tree's: another person?"
+            c['note'] = f"[parents in the act: {parents}{comparison}] " + c['note']
 
 
 def _boe_verdicts(cands):
     for c in cands:
         c['verdict'] = gwt_boe.verdict(c)
-        c['note'] = '[%s] %s' % (c['verdict'], c['note'])
+        c['note'] = f"[{c['verdict']}] {c['note']}"
 
 
 def cmd_boe_search(a, R):
@@ -327,24 +498,69 @@ def cmd_boe_search(a, R):
     if len(phrase.split()) < 2:
         err('give --name with at least a given name and a surname')
         return EXIT_USAGE
-    first, cands, found, page = _boe_read(a, R, phrase, max(1, min(a.pages, 5)), a.born)
+    first, cands, found, page, cached = _boe_read(a, R, phrase, max(1, min(a.pages, 5)), a.born)
     _boe_pdf_context(a, R, cands, phrase)
     _boe_verdicts(cands)
     words = ['boe', phrase, str(a.pages), str(a.pdf_context), str(a.born), str(a.parents)] + sorted(a.near)
     # the readable part is cut at 60 characters, so the options go into the hash too: a long name rerun with other
     # --born, --parents or --near still gets its own file
     key = gwt_reader.search_key('\n'.join([first] + words), words)
-    env = gwt_reader.envelope(first, None, text=gwt_boe.text(page), total=found)
+    env = gwt_reader.envelope(first, None, text=gwt_boe.text(page), total=found, from_cache=cached)
     base = gwt_reader.write_search(a.out, key, env, cands)
     gwt_reader.print_paths(gwt_boe.SOURCE, base, out)
-    out('results\t%d of %d' % (len(cands), found))
+    out('results\t%d of %d%s' % (len(cands), found, ' (cache)' if cached else ''))
     for v in ('consistent', 'open', 'excluded'):
-        out('%s\t%d' % (v, sum(1 for c in cands if c['verdict'] == v)))
+        out(f"{v}\t{int(sum((1 for c in cands if c['verdict'] == v)))}")
     return EXIT_OK if cands else EXIT_EMPTY
 
 
-def _save_page(a, R, url, h, page_ok, key, to_cands, total_of):
-    status, rh, body, cached = R.get(url, h, refresh=a.refresh, page=page_ok)
+def cmd_insee_search(a, _reader=None):
+    """Every line of the deaths files whose surname matches one --surname, as candidates. Offline: the files are a
+    download the user made; nothing here touches the network."""
+    surnames = [s for s in a.surname if gwt_insee.fold(s)]
+    if not surnames:
+        err('give at least one --surname')
+        return EXIT_USAGE
+    try:
+        cands, files = gwt_insee.read_files(a.files, surnames)
+    except gwt_insee.LayoutError as e:
+        err(f'{e}; nothing was written')
+        return EXIT_EMPTY
+    except gwt_insee.EmptyFile as e:
+        err(f'{e}; nothing was written')
+        return EXIT_ERROR
+    except OSError as e:
+        err(f"cannot read {e.filename or 'a file'}: {e.strerror or e}; nothing was written")
+        return EXIT_ERROR      # a file that cannot be read is an error, never "no results"
+    return _write_insee_search(a, surnames, cands, files)
+
+
+def _insee_warnings(files):
+    for f in files:
+        if f['malformed']:
+            plural = '' if f['malformed'] == 1 else 's'
+            verb = 'keeps' if f['malformed'] == 1 else 'keep'
+            err(f"{f['file']}: {f['malformed']} line{plural} {verb} a value out of INSEE's own rules "
+                '(month over 12, day over 31, or a name with no "*"), kept as written and marked "malformed"')
+
+
+def _write_insee_search(a, surnames, cands, files):
+    _insee_warnings(files)
+    sums = sorted(f['sha256'] for f in files)
+    words = ['insee'] + sorted(gwt_insee.fold(' '.join(surnames)))
+    key = gwt_reader.search_key('\n'.join(['insee'] + sums + sorted(' '.join(gwt_insee.fold(s)) for s in surnames)),
+                                words)
+    env = gwt_reader.envelope('insee:' + ' '.join(f['file'] for f in files), None, files=files, surnames=surnames,
+                              text='\n'.join(f"{c['file']}:{c['line']} {c['name']}" for c in cands))
+    base = gwt_reader.write_search(a.out, key, env, cands)
+    gwt_reader.print_paths(gwt_insee.SOURCE, base, out)
+    plural = '' if len(files) == 1 else 's'
+    out(f"results\t{len(cands)} of {sum(f['lines'] for f in files)} lines in {len(files)} file{plural}")
+    return EXIT_OK if cands else EXIT_EMPTY
+
+
+def _save_page(a, R, url, h, page_ok, key, to_cands, total_of, on_empty=None):
+    status, rh, body, cached = R.get(url, h, refresh=a.refresh, page=page_ok, on_empty=on_empty)
     page = body.decode('utf-8', 'replace')
     cands = to_cands(page)
     env = gwt_reader.envelope(url, (rh or {}).get(FINAL_URL_HEADER), text=gwt_pares.text(page), html=page,
@@ -352,7 +568,7 @@ def _save_page(a, R, url, h, page_ok, key, to_cands, total_of):
     base = gwt_reader.write_search(a.out, key, env, cands)
     gwt_reader.print_paths(gwt_pares.SOURCE, base, out)
     total = total_of(page)
-    out('results\t%s total, %d read%s' % ('?' if total is None else total, len(cands), ' (cache)' if cached else ''))
+    out(f"results\t{'?' if total is None else total} total, {len(cands)} read{' (cache)' if cached else ''}")
     return EXIT_OK if cands else EXIT_EMPTY
 
 
@@ -372,53 +588,63 @@ def _boe_filters(sp):
                     'marked on the row, never a filter (a place, a trade); repeat for more')
 
 
-def parser():
-    p = argparse.ArgumentParser(prog='gwt-read', description=__doc__.split('\n')[0],
-                                epilog=__doc__[__doc__.index('Exit codes:'):],
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    sites = p.add_subparsers(dest='site', required=True)
-    pa = sites.add_parser('pares', help="PARES, the Spanish state archives' catalogue; public, no account")
-    _common(pa, 'GWT_PARES_USER_AGENT')
-    pa.add_argument('--gate-dir', help='default ~/.cache/gwt-gate-pares')
-    psub = pa.add_subparsers(dest='cmd', required=True)
-    s = psub.add_parser('search', help='a catalogue search; writes the page and its candidates')
+# ---------------------------------------------------------------- the sources gwt-read knows
+# Each source is a SPEC (see gwt_reader.spec_problems and read/_template.py) plus the functions that add its
+# options and run its commands. The older sources are declared here; a new one lives in its own module, which
+# gwt_reader.SOURCE_MODULES names, with the same keys at module level.
+
+
+def _site_args(ua_env, gate_dir):
+    def add(sp):
+        _common(sp, ua_env)
+        sp.add_argument('--gate-dir', help='default ' + gate_dir)
+    return add
+
+
+def _fs_site_args(sp):
+    sp.add_argument('--account', default=os.environ.get('GWT_FS_ACCOUNT', 'default'),
+                    help='names the account; each account gets its own gate (pace)')
+    _common(sp, 'GWT_FS_USER_AGENT')
+    sp.add_argument('--gate-dir', help='default ~/.cache/gwt-gate-fs-<account>')
+    sp.add_argument('--control-ark', default=os.environ.get('GWT_FS_CONTROL_ARK', ''),
+                    help='a record your account can read; on a 403 for a record, it is read again (no cache) and, '
+                    'when it answers, the 403 is that record\'s access ("restricted", exit 5), not a block')
+
+
+def _pares_search_args(s):
     s.add_argument('--given', default='')
     s.add_argument('--surname', action='append', default=[], help='first surname, then again for the second')
     s.add_argument('--words', default='', help='more words to find anywhere in a description')
-    s.add_argument('--out', required=True)
-    r = psub.add_parser('record', help='one archival description by its id')
+
+
+def _pares_record_args(r):
     r.add_argument('id')
-    r.add_argument('--out', required=True)
-    ge = sites.add_parser('genae', help='Genae, a volunteer index of parish baptisms, marriages and burials; public')
-    _common(ge, 'GWT_GENAE_USER_AGENT')
-    ge.add_argument('--gate-dir', help='default ~/.cache/gwt-gate-genae')
-    gsub = ge.add_subparsers(dest='cmd', required=True)
-    s = gsub.add_parser('search', help='a search over baptisms, marriages and burials; first page of each')
+
+
+def _genae_search_args(s):
     s.add_argument('--given', default='')
     s.add_argument('--surname', action='append', default=[], help='first surname, then again for the second')
     s.add_argument('--province', default='mu', choices=gwt_genae.PROVINCES)
-    s.add_argument('--locality', default='', help="the site's numeric locality id (its own l= field)")
+    s.add_argument('--locality', default=None, help="the site's numeric locality id, or its listed name: resolved against the search form first; an unknown, blank or ambiguous value stops the search")
     s.add_argument('--from', dest='year_from', type=int, default=1503)
     s.add_argument('--to', dest='year_to', type=int, default=1986)
-    s.add_argument('--out', required=True)
-    bo = sites.add_parser('boe', help='BOE and Gaceta de Madrid, a name in the text of official acts; public')
-    _common(bo, 'GWT_BOE_USER_AGENT')
-    bo.add_argument('--gate-dir', help='default ~/.cache/gwt-gate-boe')
-    bsub = bo.add_subparsers(dest='cmd', required=True)
-    s = bsub.add_parser('search', help='one phrase in quotes, the first page of results')
+
+
+def _boe_search_args(s):
     s.add_argument('--name', required=True, help='given name and surname(s), read as one phrase')
     s.add_argument('--parents', help='the parents\' first names the tree holds, "Father y Mother": with --pdf-context, an act that writes other parents is marked')
     s.add_argument('--born', type=int, help='birth year of the person: an act published before it or over 100 years after it is marked IMPLAUSIBLE, never hidden')
     s.add_argument('--pages', type=int, default=1, help='pages of 50 results to read, 1 to 5 (default 1)')
     _boe_filters(s)
-    s.add_argument('--out', required=True)
-    fs = sites.add_parser('familysearch', help='FamilySearch historical records, with your own session token')
-    fs.add_argument('--account', default=os.environ.get('GWT_FS_ACCOUNT', 'default'),
-                    help='names the account; each account gets its own gate (pace)')
-    _common(fs, 'GWT_FS_USER_AGENT')
-    fs.add_argument('--gate-dir', help='default ~/.cache/gwt-gate-fs-<account>')
-    sub = fs.add_subparsers(dest='cmd', required=True)
-    s = sub.add_parser('search', help='a records search; writes the answer and its candidates')
+
+
+def _insee_search_args(s):
+    s.add_argument('--files', nargs='+', required=True, help="INSEE deaths files (deces-YYYY.txt), downloaded once")
+    s.add_argument('--surname', action='append', default=[], help='a surname to keep; repeat for more, a line '
+                   'matching any of them is kept, so one pass serves a branch')
+
+
+def _fs_search_args(s):
     s.add_argument('--given', default='')
     s.add_argument('--surname', action='append', default=[], help='first surname, then again for the second')
     s.add_argument('--by', type=int, help='birth or baptism year')
@@ -429,44 +655,241 @@ def parser():
     s.add_argument('--mother', default='', help='"Given Surname"')
     s.add_argument('--collection', default='', help='a FamilySearch collection id')
     s.add_argument('--count', type=int, default=20, choices=range(1, 101), metavar='1-100')
-    s.add_argument('--out', required=True)
-    r = sub.add_parser('record', help='one indexed record by its ark')
+
+
+def _fs_record_args(r):
     r.add_argument('ark')
-    r.add_argument('--out', required=True)
-    return p
 
 
-def main(argv=None, urlopen=None, gate=None):
-    a = parser().parse_args(argv)
-    if a.site == 'pares':
-        # cookies live in memory for this run only: the session cookie never reaches the cache or a file
-        urlopen = urlopen or urllib.request.build_opener(urllib.request.HTTPCookieProcessor()).open
-        gate = gate or Gate(a.gate_dir or '~/.cache/gwt-gate-pares', **gwt_pares.PACE)
-        R = gwt_reader.Reader(FSCache(a.cache_dir, rules=PARES_RULES), gate, a.lane,
-                              urllib_fetcher(None, a.user_agent, urlopen), log=err)
-        return _run(R, {'search': cmd_pares_search, 'record': cmd_pares_record}[a.cmd], a)
-    if a.site == 'genae':
-        urlopen = urlopen or urllib.request.urlopen
-        gate = gate or Gate(a.gate_dir or '~/.cache/gwt-gate-genae', **gwt_genae.PACE)
-        R = gwt_reader.Reader(FSCache(a.cache_dir, rules=GENAE_RULES), gate, a.lane,
-                              urllib_fetcher(None, a.user_agent, urlopen), log=err)
-        return _run(R, cmd_genae_search, a)
-    if a.site == 'boe':
-        urlopen = urlopen or urllib.request.urlopen
-        gate = gate or Gate(a.gate_dir or '~/.cache/gwt-gate-boe', **gwt_boe.PACE)
-        R = gwt_reader.Reader(FSCache(a.cache_dir, rules=BOE_RULES), gate, a.lane,
-                              urllib_fetcher(None, a.user_agent, urlopen), log=err)
-        return _run(R, cmd_boe_search, a)
+def _default_build(src, a, urlopen, gate):
+    """The Reader of a public source: its own gate and cache rules, no token."""
+    urlopen = urlopen or urllib.request.urlopen
+    gate = gate or Gate(a.gate_dir or f"~/.cache/gwt-gate-{src['id']}", **src['pace'])
+    return gwt_reader.Reader(FSCache(a.cache_dir, rules=src['cache_rules']), gate, a.lane,
+                             urllib_fetcher(None, a.user_agent, urlopen), log=err)
+
+
+def _pares_build(src, a, urlopen, gate):
+    # cookies live in memory for this run only: the session cookie never reaches the cache or a file
+    urlopen = urlopen or urllib.request.build_opener(urllib.request.HTTPCookieProcessor()).open
+    return _default_build(src, a, urlopen, gate)
+
+
+def _fs_build(_src, a, urlopen, gate):
     urlopen = urlopen or urllib.request.urlopen
     token = token_from_env()
     if not token:
         err('no session token: set GWT_FS_TOKEN, or GWT_FS_TOKEN_FILE to a file holding it (mode 600)')
         return EXIT_USAGE
     acct = gwt_reader.slug(a.account)
-    gate = gate or Gate(a.gate_dir or '~/.cache/gwt-gate-fs-%s' % acct, **FS_PACE)
+    gate = gate or Gate(a.gate_dir or f'~/.cache/gwt-gate-fs-{acct}', **FS_PACE)
     cache = FSCache(a.cache_dir, rules=FAMILYSEARCH_RULES)
-    R = gwt_reader.Reader(cache, gate, a.lane, urllib_fetcher(token, a.user_agent, urlopen), log=err)
-    return _run(R, {'search': cmd_search, 'record': cmd_record}[a.cmd], a)
+    return gwt_reader.Reader(cache, gate, a.lane, urllib_fetcher(token, a.user_agent, urlopen), log=err)
+
+
+# Canaries: a search any working copy of the site answers with at least min_count rows, read without the cache.
+# Public and neutral on purpose: very common names, never a family's own surname. The older sources leave the page
+# markers empty: they check their pages with their own functions (gwt_pares.is_results, gwt_genae.is_block,
+# gwt_boe.is_results), so the markers would be a second copy of the same rule.
+LEGACY = (
+    {'id': 'pares', 'help': "PARES, the Spanish state archives' catalogue; public, no account",
+     'pace': gwt_pares.PACE, 'cache_rules': PARES_RULES,
+     # one surname alone is too broad: the site answers "too many results" (a page with no rows) instead
+     'controls': [{'argv': ['--given', 'Cristóbal', '--surname', 'Colón'], 'min_count': 10}],
+     'result_markers': [], 'negative_markers': [],
+     'site_args': _site_args('GWT_PARES_USER_AGENT', '~/.cache/gwt-gate-pares'), 'build': _pares_build,
+     'search_help': 'a catalogue search; writes the page and its candidates', 'add_search_args': _pares_search_args,
+     'search': cmd_pares_search,
+     'record_help': 'one archival description by its id', 'add_record_args': _pares_record_args,
+     'record': cmd_pares_record},
+    {'id': 'genae', 'help': 'Genae, a volunteer index of parish baptisms, marriages and burials; public',
+     'pace': gwt_genae.PACE, 'cache_rules': GENAE_RULES,
+     # the site's robots.txt disallows its search pages for every robot: no automated searches beyond the user's own
+     'controls': [],      # no canary on genae
+     'result_markers': [], 'negative_markers': [],
+     'site_args': _site_args('GWT_GENAE_USER_AGENT', '~/.cache/gwt-gate-genae'), 'build': _default_build,
+     'search_help': 'a search over baptisms, marriages and burials; first page of each',
+     'add_search_args': _genae_search_args, 'search': cmd_genae_search},
+    {'id': 'boe', 'help': 'BOE and Gaceta de Madrid, a name in the text of official acts; public',
+     'pace': gwt_boe.PACE, 'cache_rules': BOE_RULES,
+     'controls': [{'argv': ['--name', 'Manuel Rodríguez'], 'min_count': 10}],
+     'result_markers': [], 'negative_markers': [],
+     'site_args': _site_args('GWT_BOE_USER_AGENT', '~/.cache/gwt-gate-boe'), 'build': _default_build,
+     'search_help': 'one phrase in quotes, the first page of results', 'add_search_args': _boe_search_args,
+     'search': cmd_boe_search},
+    {'id': 'insee', 'help': "INSEE's French deaths files from data.gouv.fr, read offline; no request",
+     'pace': {'start': 0.0, 'floor': 0.0, 'ceil': 0.0}, 'cache_rules': (), 'controls': [],
+     'result_markers': [], 'negative_markers': [], 'offline': True,
+     'search_help': 'every line of the files whose surname matches, as candidates',
+     'add_search_args': _insee_search_args, 'search': cmd_insee_search},
+    {'id': 'familysearch', 'help': 'FamilySearch historical records, with your own session token',
+     'pace': FS_PACE, 'cache_rules': FAMILYSEARCH_RULES,
+     'controls': [{'argv': ['--surname', 'Smith'], 'min_count': 10}],
+     'result_markers': [], 'negative_markers': [],
+     'site_args': _fs_site_args, 'build': _fs_build,
+     'search_help': 'a records search; writes the answer and its candidates', 'add_search_args': _fs_search_args,
+     'search': cmd_search,
+     'record_help': 'one indexed record by its ark', 'add_record_args': _fs_record_args, 'record': cmd_record},
+)
+_MODULE_KEYS = ('add_search_args', 'search', 'add_record_args', 'record')
+
+
+def module_source(mod):
+    """A source module as a registry entry: its SPEC plus its command functions."""
+    src = dict(mod.SPEC)
+    for k in _MODULE_KEYS:
+        if hasattr(mod, k):
+            src[k] = getattr(mod, k)
+    src.setdefault('site_args', _site_args(f"GWT_{src['id'].upper().replace('-', '_')}_USER_AGENT",
+                                           f"~/.cache/gwt-gate-{src['id']}"))
+    src.setdefault('build', _default_build)
+    src.setdefault('search_help', 'a search; writes the answer and its candidates')
+    src.setdefault('record_help', 'one record by its id')
+    return src
+
+
+def sources(modules=None):
+    """{id: entry} of every source, in the order --help lists them: the older ones, then each module in
+    gwt_reader.SOURCE_MODULES that has a SPEC."""
+    registry = {s['id']: s for s in LEGACY}
+    for name in gwt_reader.SOURCE_MODULES if modules is None else modules:
+        mod = name if not isinstance(name, str) else __import__(name)
+        if hasattr(mod, 'SPEC'):
+            src = module_source(mod)
+            bad = gwt_reader.spec_problems(src)
+            if bad or src['id'] in registry:
+                raise ValueError(f"{getattr(mod, '__name__', mod)}: {'; '.join(bad) or 'id already taken'}")
+            registry[src['id']] = src
+    return registry
+
+
+# ---------------------------------------------------------------- canary controls
+
+
+def _canary(src, sp, ctl, a, R):
+    """(rows read, exit code) of one canary search, read without the cache into a scratch folder."""
+    with tempfile.TemporaryDirectory() as tmp:
+        ns = sp.parse_args(list(ctl['argv']) + ['--out', tmp])
+        for k, v in vars(a).items():
+            if not hasattr(ns, k):
+                setattr(ns, k, v)
+        ns.refresh, ns.out = True, tmp
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = src['search'](ns, R)
+        n = 0
+        for name in os.listdir(tmp):
+            if name.endswith('.candidates.json'):
+                with open(os.path.join(tmp, name), encoding='utf-8') as f:
+                    n += len(json.load(f)['candidates'])
+    return n, code
+
+
+def run_controls(src, sp, a, R, when='control', undo=None):
+    """Run every canary of the source. Prints one `control` line each; EXIT_OK when every one reads at least its
+    minimum, else EXIT_WALL with a `void` line (after `undo()`, which removes what the bracketed search left): a run
+    bracketed by a short canary proves nothing."""
+    short = 0
+    for ctl in src['controls']:
+        n, code = _canary(src, sp, ctl, a, R)
+        ok = code in (EXIT_OK, EXIT_EMPTY) and n >= ctl['min_count']
+        short += not ok
+        out(f"control\t{when}\t{' '.join(ctl['argv'])}\t{int(n)} read, want at least {int(ctl['min_count'])}\t{'ok' if ok else 'SHORT'}")
+    if short:
+        if undo:
+            undo()
+        out(f"void\t{src['id']}: {int(short)} of {len(src['controls'])} canaries read less than their minimum; read nothing here as \"no results\"")
+        return gwt_reader.EXIT_WALL
+    return EXIT_OK
+
+
+def parser(srcs=None):
+    srcs = sources() if srcs is None else srcs
+    argument_parser = argparse.ArgumentParser(prog='gwt-read', description=__doc__.split('\n')[0],
+                                epilog=__doc__[__doc__.index('Exit codes:'):],
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    sites = argument_parser.add_subparsers(dest='site', required=True)
+    for src in srcs.values():
+        sp = sites.add_parser(src['id'], help=src['help'])
+        if src.get('site_args'):
+            src['site_args'](sp)
+        commands = sp.add_subparsers(dest='cmd', required=True)
+        s = commands.add_parser('search', help=src['search_help'])
+        src['add_search_args'](s)
+        if src['controls']:
+            s.add_argument('--controls', choices=('before', 'after', 'both'),
+                           help='run the source\'s canary searches (no cache) before, after or around this one; '
+                           'a short canary makes the run void (exit 3)')
+        s.add_argument('--out', required=True)
+        if src.get('record'):
+            r = commands.add_parser('record', help=src['record_help'])
+            src['add_record_args'](r)
+            r.add_argument('--out', required=True)
+        if src['controls']:
+            commands.add_parser('control', help='run the canary searches (no cache): exit 0 when each reads at least its '
+                           'minimum, 3 (void) otherwise')
+        src['_search_parser'] = s
+    return argument_parser
+
+
+def main(argv=None, urlopen=None, gate=None, srcs=None):
+    srcs = sources() if srcs is None else srcs
+    a = parser(srcs).parse_args(argv)
+    src = srcs[a.site]
+    if src.get('offline'):
+        return src['search'](a, None)       # offline: no gate, no cache, no fetcher
+    R = src['build'](src, a, urlopen, gate)
+    if isinstance(R, int):
+        return R
+    if a.cmd == 'control':
+        return _run(R, lambda a, R: run_controls(src, src['_search_parser'], a, R), a)
+    cmd = src[a.cmd]
+    when = getattr(a, 'controls', None)
+    if not when:
+        return _run(R, cmd, a)
+
+    def bracketed(a, R):
+        a.refresh = True    # the canaries prove the site works now, so the search they bracket is read now too
+        if when in ('before', 'both'):
+            c = run_controls(src, src['_search_parser'], a, R, 'before')
+            if c:
+                return c
+        files, stored = _listing(a.out), []
+        store = R.cache.store
+        R.cache.store = lambda *s: stored.append(s[:4]) or store(*s)
+        try:
+            code = cmd(a, R)
+        finally:
+            R.cache.store = store
+        if when in ('after', 'both') and code in (EXIT_OK, EXIT_EMPTY):
+            def undo():
+                _undo(a.out, files, R.cache, stored)
+            try:
+                c = run_controls(src, src['_search_parser'], a, R, 'after', undo)
+            except (gwt_reader.Stop, Paused):
+                undo()      # a canary that was stopped proved nothing either: the run is void all the same
+                raise
+            if c:
+                return c
+        return code
+    return _run(R, bracketed, a)
+
+
+def _listing(folder):
+    """{file name: mtime} of a folder, empty when it does not exist yet."""
+    try:
+        return {e.name: e.stat().st_mtime_ns for e in os.scandir(folder) if e.is_file()}
+    except OSError:
+        return {}
+
+
+def _undo(folder, before, cache, stored):
+    """A void run leaves nothing that reads as "none": the files the search wrote and the answers it cached go."""
+    for name, mtime in _listing(folder).items():
+        if before.get(name) != mtime:
+            os.remove(os.path.join(folder, name))
+            out(f'removed\t{os.path.join(folder, name)}')
+    for method, url, headers, data in stored:
+        cache.forget(method, url, headers, data)
 
 
 def _run(R, cmd, a):
@@ -476,7 +899,7 @@ def _run(R, cmd, a):
         err(str(e))
         return e.exit_code
     except Paused as e:
-        err('%s; do other work' % e)
+        err(f'{e}; do other work')
         return EXIT_PAUSED
 
 

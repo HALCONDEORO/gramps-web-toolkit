@@ -12,3 +12,7 @@ gwt-access --map access.tsv plan "AD41,AD37,Boulogne"
 `plan` prints one verdict per archive: read now (viewer and no captcha), check (captcha not recorded), write for the act, blocked (needs a person), or unknown (never looked at). `set` changes only the fields given and stamps the date. The map path can also come from `GWT_ACCESS`.
 
 Exit 0 on success, 1 when `show` finds no row, 2 on a bad argument.
+
+## Parish and year access coverage
+
+The read-only [`coverage` report](access-coverage.md) maps supplied parish/year assertions to `online`, `restricted`, `not_digitised`, unknown gaps and explicit conflicts, with evidence references and checked dates. It never infers archive availability from a failed image search.

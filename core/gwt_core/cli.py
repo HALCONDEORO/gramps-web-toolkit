@@ -7,7 +7,15 @@ from pathlib import Path
 
 from .version import version
 
-TOOLS = {  # name: (module with main(argv), one line)
+TOOLS = {
+    "queue-audit": ("gwt_queue_audit", "offline read-only queue consistency audit"),
+    "install-doctor": ("gwt_install_doctor", "offline static packaging diagnostic"),
+    "retry-after": ("gwt_retry_after", "offline Retry-After proposal, never changes live gate state"),
+    "act-packet": ("gwt_act_packet", "offline evidence review, never writes to a tree"),
+    "pagination-audit": ("gwt_pagination_audit", "offline evidence review, never writes to a tree"),
+    "genae-act-link": ("gwt_genae_act_link", "offline evidence review, never writes to a tree"),
+    "transcription-review": ("gwt_transcription_review", "offline evidence review, never writes to a tree"),
+  # name: (module with main(argv), one line)
     "surname-clusters": ("gwt_fetch.surname_clusters", "offline human-maintained surname suggestions, never identity evidence"),
     "apply": ("gwt_apply.cli", "apply a JSON Lines change list to a tree, dry-run until --apply"),
     "check": ("gwt_check.cli", "read-only checks of a whole tree, with a self-test"),
@@ -22,6 +30,13 @@ TOOLS = {  # name: (module with main(argv), one line)
     "rawstore": ("gwt_rawstore", "keep source images in an S3-compatible bucket"),
     "mh": ("gwt_mh_cli", "MyHeritage records through a signed-in browser (extra: mh)"),
     "read": ("gwt_read", "FamilySearch and PARES record search and records, slow and cached"),
+    "report": ("gwt_report", "how two people are related, and what is new since the family was told"),
+    "geocode": ("gwt_geocode", "coordinates for the places events use, as a gwt-apply change list"),
+    "run": ("gwt_run", "backup, dry run, apply, verify and check of one list, resumable"),
+    "import-dna": ("gwt_dna", "DNA match lists from a testing site into Gramps Web's DNA view"),
+    "lint": ("gwt_lint.cli", "check a change list against the tree before it is applied, with self-proving rules"),
+    "import-gedcom": ("gwt_gedcom.cli", "turn a GEDCOM file into a gwt-apply change list; audit, split and export one"),
+    "corpus": ("gwt_corpus", "search everything already downloaded before going back to a site"),
 }
 
 

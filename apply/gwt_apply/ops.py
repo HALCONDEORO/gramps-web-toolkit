@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .client import ApiError, Client, Retryable
 from .dates import DateError, date_key, parse_date
+from .merge_guard import same_day_review_required
 
 TARGET_KINDS = {
     "person": "Person",
@@ -26,27 +27,31 @@ TARGET_KINDS = {
     "repository": "Repository",
 }
 
+# a person's other name (first_name, surnames, type, call, nick, title, suffix, date) or a place's (name, lang, date)
+ALT_NAME_FIELDS = {"first_name", "surnames", "type", "call", "nick", "title", "suffix", "lang", "date", "name"}
 # op -> (required fields, optional fields), on top of op/key/ruling
 SPECS: dict[str, tuple[set[str], set[str]]] = {
     "add_person": (
         {"surname", "first_name"},
         {"gender", "gramps_id", "allow_namesake", "namesake_reason", "namesake_of"},
     ),
-    "update_person": ({"person", "set"}, set()),
-    "update_event": ({"event", "set"}, set()),
-    "update_place": ({"place", "set"}, set()),
+    "update_person": ({"person", "set"}, {"expect"}),
+    "update_event": ({"event", "set"}, {"expect"}),
+    "update_place": ({"place", "set"}, {"expect"}),
     "update_note": ({"note", "set"}, {"expect"}),
-    "update_citation": ({"citation", "set"}, {"expect"}),
+    "update_citation": ({"citation", "set"}, {"expect", "expect_source"}),
     "update_source": ({"source", "set"}, {"expect"}),
-    "update_family": ({"family", "set"}, set()),
+    "update_family": ({"family", "set"}, {"expect"}),
+    "update_media": ({"media", "set"}, {"expect"}),
     "update_child_ref": ({"family", "child"}, {"set", "confirm_probable", "expect"}),
-    "detach": ({"target", "object"}, set()),
+    "detach": ({"target", "object"}, {"expect"}),
     "link_event": ({"person", "event", "role"}, set()),
     "add_event": ({"type"}, {"person", "family", "role", "date", "place", "description", "gramps_id"}),
     "add_family": (set(), {"father", "mother", "children", "type", "gramps_id", "allow_new_couple", "new_couple_reason",
                            "new_couple_of"}),
+    "repair_child_backlink": ({"family", "child", "citation", "frel", "mrel"}, set()),
     "link_child": ({"family", "child"}, {"frel", "mrel", "probable", "probable_reason"}),
-    "unlink_child": ({"family", "child", "reason"}, {"drop_link_sources"}),
+    "unlink_child": ({"family", "child", "reason"}, {"drop_link_sources", "expect"}),
     "add_place": ({"name", "type"}, {"enclosed_by", "lat", "long", "gramps_id"}),
     "add_source": ({"title"}, {"author", "pubinfo", "abbrev", "gramps_id"}),
     "add_repository": ({"name", "type"}, {"gramps_id", "url", "address"}),
@@ -55,20 +60,28 @@ SPECS: dict[str, tuple[set[str], set[str]]] = {
     "unlink_repository": ({"source", "repository"}, set()),
     "merge_repository": ({"winner", "loser"}, {"reason"}),
     "add_citation": ({"source", "page", "attach"}, {"confidence", "date", "gramps_id"}),
-    "add_media": ({"file", "path", "attach"}, {"desc", "mime", "gramps_id"}),
+    "add_media": ({"file", "path", "attach"}, {"desc", "mime", "gramps_id", "rect", "force"}),
     "add_note": ({"text", "attach"}, {"type", "gramps_id"}),
     "add_transcription": ({"text", "margin_reading", "attach"}, {"gramps_id"}),
-    "attach_existing": ({"object", "attach"}, set()),
+    "attach_existing": ({"object", "attach"}, {"expect", "rect"}),
     "add_tag": ({"target", "name"}, set()),
-    "remove_tag": ({"target", "name"}, set()),
+    "remove_tag": ({"target", "name"}, {"expect"}),
     "move_event": ({"event", "from", "to"}, {"role"}),
     "dedupe_list": ({"target", "list"}, set()),
     "set_attribute": ({"target", "type", "value"}, set()),
     "merge_person": ({"winner", "loser"}, {"use_loser", "reason"}),
     "merge_family": ({"winner", "loser"}, {"reason"}),
     "merge_event": ({"winner", "loser"}, {"reason"}),
-    "merge_source": ({"winner", "loser"}, {"reason"}),
+    "merge_place": ({"winner", "loser", "reason"}, set()),
+    "delete_place": ({"place", "reason", "expect_unreferenced"}, set()),
     "add_association": ({"person", "target", "relation"}, set()),
+    "merge_source": ({"winner", "loser"}, {"reason"}),
+    "merge_citation": ({"winner", "loser"}, {"reason"}),
+    "delete": ({"object", "expect_unreferenced"}, {"expect"}),
+    "reorder_refs": ({"target", "list", "ref", "position"}, set()),
+    "add_alternate_name": ({"target"}, ALT_NAME_FIELDS),
+    "remove_alternate_name": ({"target"}, ALT_NAME_FIELDS | {"expect"}),
+    "set_external_id": ({"target", "system", "id"}, {"url"}),
 }
 MERGE_LISTS = [  # what Gramps' merge carries from the loser to the winner, list by list
     "alternate_names", "event_ref_list", "citation_list", "note_list", "media_list", "attribute_list",
@@ -84,20 +97,37 @@ REF_OWN_LISTS = ("note_list", "citation_list", "attribute_list")  # what a Media
 # by hand further down.
 NOT_TEXT = {"set", "target", "object", "attach", "children", "namesake_of", "use_loser", "address",
             "allow_namesake", "new_couple_of", "allow_new_couple", "probable", "confidence", "lat", "long", "expect",
-            "drop_link_sources", "from", "to"}
+            "drop_link_sources", "from", "to", "rect", "force", "expect_unreferenced", "position", "surnames"}
 TEXT_CHECKED_BELOW = {("add_repository", "name"), ("add_repository", "type"), ("link_repository", "media_type"),
                       ("add_association", "relation"), ("add_transcription", "margin_reading"),
                       ("update_child_ref", "confirm_probable"), ("add_person", "gender"),
                       ("dedupe_list", "list")}
-PERSON_FIELDS = {"first_name", "surname", "gender"}
+PRIVATE = "private"  # every update_* takes it in `set`: true or false
+PERSON_FIELDS = {"first_name", "surname", "gender", "call_name", "nickname", "title", "suffix", PRIVATE}
+NAME_KEYS = {"call_name": "call", "nickname": "nick", "title": "title", "suffix": "suffix"}  # update_person -> Name
 ADDRESS_KEYS = {"street", "locality", "city", "county", "state", "country", "postal", "phone"}
-REPOSITORY_FIELDS = {"name", "type", "url", "address"}
-EVENT_FIELDS = {"type", "date", "place", "description"}
-PLACE_FIELDS = {"lat", "long", "enclosed_by", "name"}
-NOTE_FIELDS = {"text", "type"}
-CITATION_FIELDS = {"page", "confidence", "date"}
-SOURCE_FIELDS = {"title"}
-FAMILY_FIELDS = {"type"}
+REPOSITORY_FIELDS = {"name", "type", "url", "address", PRIVATE}
+EVENT_FIELDS = {"type", "date", "place", "description", PRIVATE}
+PLACE_FIELDS = {"lat", "long", "enclosed_by", "name", PRIVATE}
+NOTE_FIELDS = {"text", "type", PRIVATE}
+CITATION_FIELDS = {"page", "confidence", "date", "source", PRIVATE}
+SOURCE_FIELDS = {"title", PRIVATE}
+FAMILY_FIELDS = {"type", "father", "mother", PRIVATE}
+MEDIA_FIELDS = {"desc", "date", "path", "file", PRIVATE}
+# the updates whose expect is an object, {field of set: the value the object has now}; a field that differs is a conflict
+EXPECT_FIELDS = ("update_person", "update_event", "update_place", "update_family")
+EXPECT = ("present", "absent")  # what detach, remove_tag, unlink_child, attach_existing and delete find before they act
+# a scan or a photo is a document; these are not, and add_media refuses them unless `force` says it is meant
+NOT_A_DOCUMENT = ("text/", "application/json", "message/rfc822", "application/xhtml")
+DELETABLE = {**TARGET_KINDS, "note": "Note"}  # delete's object kinds
+# what takes a reference to each kind off before a delete: the op that delete's conflict names
+UNREFERENCE = {"Note": "detach it first", "Citation": "detach it first", "Media": "detach it first",
+               "Repository": "unlink_repository it first", "Source": "merge_source, or update_citation the citations to "
+               "another source first", "Place": "merge_place, or update_event and update_place them first",
+               "Event": "merge_event or move_event first", "Person": "unlink_child, merge_person or merge_family first",
+               "Family": "unlink_child or merge_family first"}
+_QUOTED = re.compile(r'"((?:[^"\\]|\\.)*)"')  # every string in a JSON text
+FAMILYSEARCH = "_FSFTID"  # the attribute Gramps' FamilySearch support and its GEDCOM import and export use
 CHILD_REF_FIELDS = {"frel", "mrel"}
 CONFIRMED = "[confirmed]"  # what a [probable] mark becomes once a document settles the link
 GENDER = {"F": 0, "M": 1, "U": 2}
@@ -113,6 +143,9 @@ CARRIES = {
 }
 CARRIES["citation_list"] = CARRIES["citation_list"] | {"ChildRef", "PersonRef"}
 CARRIES["note_list"] = CARRIES["note_list"] | {"PersonRef"}
+# reorder_refs: list -> (class of what it holds, the kinds of object that carry it)
+REORDERABLE = {"event_ref_list": ("Event", {"Person", "Family"}), "child_ref_list": ("Person", {"Family"}),
+               **{lst: (ATTACHABLE[lst[:-5]][0], CARRIES[lst] - {"ChildRef", "PersonRef"}) for lst in CARRIES}}
 
 
 def fold(text: str) -> str:
@@ -207,6 +240,20 @@ def _event_owner(spec) -> tuple[str, str]:
     return cls, ref
 
 
+KIND_NAME = {**{cls: kind for kind, cls in TARGET_KINDS.items()}, "ChildRef": "child_ref", "PersonRef": "association"}
+
+
+def _check_carrier(cls: str, lst: str, attaching: bool) -> None:
+    """Attach/detach guard: refuse a target that cannot hold this list, naming the kinds that can."""
+    if cls in CARRIES[lst]:
+        return
+    kind, name = lst[:-5], KIND_NAME[cls]
+    carriers = ", ".join(sorted(KIND_NAME[c] for c in CARRIES[lst]))
+    hint = f"; a reading you cannot tie to one of these yet goes in add_note on the {name}" if (
+        attaching and lst == "citation_list") else ""
+    raise ValueError(f"a {cls} cannot carry a {kind}; a {kind} goes on one of: {carriers}{hint}")
+
+
 def _parse_object(spec) -> tuple[str, str, str]:
     """attach_existing's object: {"media": "O0054"} -> ("Media", "O0054", "media_list")."""
     if not isinstance(spec, dict) or len(spec) != 1:
@@ -218,11 +265,56 @@ def _parse_object(spec) -> tuple[str, str, str]:
     return cls, ref, lst
 
 
+def _delete_object(spec) -> tuple[str, str]:
+    """delete's object: {"note": "N0007"} -> ("Note", "N0007"); any target kind or a note."""
+    if not isinstance(spec, dict) or len(spec) != 1:
+        raise ValueError(f"object is one of {sorted(DELETABLE)} -> ref, got {spec!r}")
+    (kind, ref), = spec.items()
+    if kind not in DELETABLE or not isinstance(ref, str) or not ref:
+        raise ValueError(f"object is one of {sorted(DELETABLE)} -> ref, got {spec!r}")
+    return DELETABLE[kind], ref
+
+
+PERSON_ALT = {"first_name", "surnames", "type", "call", "nick", "title", "suffix", "date"}
+PLACE_ALT = {"name", "lang", "date"}
+SURNAME_KEYS = {"surname", "origin", "prefix", "primary"}
+
+
+def _alt_name(op: dict) -> tuple[str, str, dict]:
+    """add_alternate_name / remove_alternate_name: (class, ref, the name's fields as the op gives them)."""
+    cls, ref = _parse_target(op.get("target"))
+    fields = {k: op[k] for k in ALT_NAME_FIELDS if k in op}
+    if cls == "Person":
+        if set(fields) - PERSON_ALT:
+            raise ValueError(f"a person's other name takes only {sorted(PERSON_ALT)}")
+        if not (fields.get("first_name") or fields.get("surnames")):
+            raise ValueError("a person's other name needs first_name or surnames")
+        surnames = fields.get("surnames", [])
+        if not isinstance(surnames, list) or not all(
+                isinstance(x, dict) and isinstance(x.get("surname"), str) and x["surname"].strip()
+                and not set(x) - SURNAME_KEYS and all(isinstance(x[k], str) for k in x if k != "primary")
+                and isinstance(x.get("primary", True), bool) for x in surnames):
+            raise ValueError(f"surnames is a list of objects with a non-empty surname and some of {sorted(SURNAME_KEYS)}")
+    elif cls == "Place":
+        if set(fields) - PLACE_ALT or not fields.get("name"):
+            raise ValueError(f"a place's other name needs name and takes only {sorted(PLACE_ALT)}")
+    else:
+        raise ValueError("an alternate name goes on a person or a place")
+    if "date" in fields:
+        parse_date(fields["date"])
+    return cls, ref, fields
+
+
 def _target_refs(spec) -> list:
     if not isinstance(spec, dict) or len(spec) != 1:
         return []
     value = next(iter(spec.values()))
     return [v for k, v in value.items() if k != "relation"] if isinstance(value, dict) else [value]
+
+
+def _is_familysearch(system: str) -> bool:
+    """FamilySearch however it is written: "FamilySearch", "Family Search", "family-search"."""
+    return re.sub(r"[\s._-]", "", fold(system)) == "familysearch"
 
 
 def _tag_names(value) -> list:
@@ -246,6 +338,34 @@ def _check_coords(f: dict) -> None:
         raise ValueError("lat and long are numbers") from None
     if not (-90 <= lat <= 90 and -180 <= long <= 180):
         raise ValueError("lat/long out of range")
+
+
+def _place_intent(name, op):
+    if name == "delete_place" and op.get("expect_unreferenced") is not True:
+        raise ValueError("delete_place needs expect_unreferenced: true")
+def _check_expect(op: dict) -> None:
+    """expect of the EXPECT_FIELDS updates: an object holding, for fields of set, the value the object has now,
+    written the way set writes it ("" for none)."""
+    e, s = op["expect"], op["set"]
+    if not isinstance(e, dict) or not e:
+        raise ValueError("expect is an object: for each field of set it guards, the value the object has now")
+    if set(e) - set(s):
+        raise ValueError(f"expect takes only fields of set; {sorted(set(e) - set(s))} not in set")
+    if op["op"] == "update_family" and {"father", "mother"} & set(e):
+        raise ValueError("expect takes no father or mother: update_family never replaces a parent it finds")
+    for k, v in e.items():
+        if k == PRIVATE and not isinstance(v, bool):
+            raise ValueError("expect.private is true or false")
+        if k == "gender" and (not isinstance(v, str) or v not in GENDER):
+            raise ValueError(f"expect.gender is one of {sorted(GENDER)}")
+        if k in ("lat", "long") and (isinstance(v, bool) or not isinstance(v, (str, int, float))):
+            raise ValueError(f"expect.{k} is a number, or \"\" for none")
+        if k not in (PRIVATE, "lat", "long") and not isinstance(v, str):
+            raise ValueError(f"expect.{k} is a text, \"\" for none")
+        if k == "date":
+            parse_date(v)
+        if k in ("place", "enclosed_by") and v and not (v.startswith("key:") or _GRAMPS_ID.match(v)):
+            raise ValueError(f"expect.{k} {v!r} is neither key:<key> nor a Gramps ID (never a handle)")
 
 
 def validate(ops: list[dict]) -> list[str]:
@@ -280,8 +400,12 @@ def validate(ops: list[dict]) -> list[str]:
         missing = [f for f in required if op.get(f) in (None, "", [])]
         if name == "add_citation" and op.get("page") == "":
             missing.remove("page")  # an empty page is a real value
-        if name == "add_person" and op.get("surname") == "":
-            missing.remove("surname")  # someone known by one name only has no surname
+        if name == "add_person":
+            for f in ("first_name", "surname"):
+                if op.get(f) == "":
+                    missing.remove(f)  # a known name part must not force a guessed other part
+            if not any(isinstance(op.get(f), str) and op[f].strip() for f in ("first_name", "surname")):
+                errors.append(f"{where}: first_name or surname must be non-blank")
         if missing:
             errors.append(f"{where}: missing {sorted(missing)}")
         extra = set(op) - allowed
@@ -292,7 +416,7 @@ def validate(ops: list[dict]) -> list[str]:
                 continue
             if f in optional and op[f] in (None, ""):
                 continue  # an optional text left "" or null means none, as older lists write it
-            blank_ok = (name, f) in (("add_citation", "page"), ("add_person", "surname"))
+            blank_ok = (name, f) in (("add_citation", "page"), ("add_person", "surname"), ("add_person", "first_name"))
             if not isinstance(op[f], str) or not (op[f].strip() or (blank_ok and op[f] == "")):
                 errors.append(f"{where}: {f} is a non-empty text")
         for f in ("children", "attach", "namesake_of", "new_couple_of", "use_loser"):
@@ -315,7 +439,9 @@ def validate(ops: list[dict]) -> list[str]:
         else:
             payloads[payload] = where
         refs = [op.get(f) for f in ("person", "family", "father", "mother", "child", "source", "place", "enclosed_by", "event",
-                                    "winner", "loser", "repository", "note", "citation")]
+                                    "winner", "loser", "repository", "note", "citation", "media", "ref")]
+        if name.startswith("update_") and isinstance(op.get("set"), dict):  # a set value that names another object
+            refs += [op["set"].get(f) for f in ("father", "mother", "source") if op["set"].get(f) is not None]
         refs += list(op.get("children") or [])
         if name == "attach_existing":
             refs += _target_refs(op.get("object"))
@@ -325,7 +451,7 @@ def validate(ops: list[dict]) -> list[str]:
         refs += _ref_list(op.get("new_couple_of")) if op.get("new_couple_of") else []
         for t in [op.get("target"), *(op.get("attach") or [])]:
             refs += _target_refs(t)
-        if name == "detach":
+        if name in ("detach", "delete"):
             refs += _target_refs(op.get("object"))
         if name == "move_event":
             refs += [*_target_refs(op.get("from")), *_target_refs(op.get("to"))]  # "event" is in the list above
@@ -371,6 +497,7 @@ def validate(ops: list[dict]) -> list[str]:
                     raise ValueError("person and target are the same")
                 if not isinstance(op.get("relation"), str) or not op["relation"].strip():
                     raise ValueError("relation is a non-empty text, e.g. DNA")
+            _place_intent(name, op)
             if name.startswith("merge_") and op.get("winner") == op.get("loser"):
                 raise ValueError("winner and loser are the same")
             if name == "merge_person" and set(op.get("use_loser") or []) - set(USE_LOSER):
@@ -393,6 +520,11 @@ def validate(ops: list[dict]) -> list[str]:
                     raise ValueError(f"set takes only {sorted(PERSON_FIELDS)}")
                 if "gender" in s and (not isinstance(s["gender"], str) or s["gender"] not in GENDER):
                     raise ValueError(f"gender is one of {sorted(GENDER)}")
+                for k in (*NAME_KEYS, "first_name", "surname"):  # "" clears the field
+                    if k in s and not isinstance(s[k], str):
+                        raise ValueError(f"{k} is a text")
+                if "first_name" in s and "surname" in s and not (s["first_name"].strip() or s["surname"].strip()):
+                    raise ValueError("set would leave first_name and surname both blank; keep one of them")
             if name == "update_event":
                 s = op.get("set")
                 if not isinstance(s, dict) or not s or set(s) - EVENT_FIELDS:
@@ -414,7 +546,8 @@ def validate(ops: list[dict]) -> list[str]:
                 s = op.get("set")
                 if not isinstance(s, dict) or not s or set(s) - PLACE_FIELDS:
                     raise ValueError(f"set takes only {sorted(PLACE_FIELDS)}")
-                _check_coords(s)
+                if not (s.get("lat") == "" and s.get("long") == ""):  # "" for both clears the point
+                    _check_coords(s)
                 if "enclosed_by" in s and not (isinstance(s["enclosed_by"], str) and (
                         s["enclosed_by"].startswith("key:") or _GRAMPS_ID.match(s["enclosed_by"]))):
                     raise ValueError(f"{s['enclosed_by']!r} is neither key:<key> nor a Gramps ID (never a handle)")
@@ -422,11 +555,14 @@ def validate(ops: list[dict]) -> list[str]:
                     raise ValueError("a place cannot enclose itself")
                 if "name" in s and not (isinstance(s["name"], str) and s["name"].strip()):
                     raise ValueError("name is a non-empty string")
+            if name.startswith("update_") and isinstance(op.get("set"), dict) and PRIVATE in op["set"] and not isinstance(
+                    op["set"][PRIVATE], bool):
+                raise ValueError("private is true or false")
             if name == "update_note":
                 f = op.get("set")
                 if not isinstance(f, dict) or not f or set(f) - NOTE_FIELDS:
                     raise ValueError(f"set takes only {sorted(NOTE_FIELDS)}")
-                for k in f:
+                for k in set(f) - {PRIVATE}:
                     if not isinstance(f[k], str) or not f[k].strip():
                         raise ValueError(f"{k} is a non-empty text")
                 if "text" in f and not isinstance(op.get("expect"), str):
@@ -448,20 +584,51 @@ def validate(ops: list[dict]) -> list[str]:
                     raise ValueError("confidence is 0-4")
                 if "date" in f:
                     parse_date(f["date"])
+                if "source" in f and not isinstance(f["source"], str):
+                    raise ValueError("source is a Gramps ID or key:<key>: a citation always cites a source")
+                if ("source" in f) != isinstance(op.get("expect_source"), str):
+                    raise ValueError("moving a citation to another source needs expect_source: the Gramps ID of the "
+                                     "source it has now (and expect_source goes only with set.source)")
             if name == "update_source":
                 f = op.get("set")
-                if not isinstance(f, dict) or set(f) != SOURCE_FIELDS:
+                if not isinstance(f, dict) or not f or set(f) - SOURCE_FIELDS:
                     raise ValueError(f"set takes only {sorted(SOURCE_FIELDS)}")
-                if not (isinstance(f["title"], str) and f["title"].strip()):
+                if "title" in f and not (isinstance(f["title"], str) and f["title"].strip()):
                     raise ValueError("title is a non-empty text")
-                if not isinstance(op.get("expect"), str):
-                    raise ValueError("changing the title needs expect: the title the source has now")
+                if ("title" in f) != isinstance(op.get("expect"), str):
+                    raise ValueError("changing the title needs expect: the title the source has now "
+                                     "(and expect goes only with set.title)")
             if name == "update_family":
                 f = op.get("set")
                 if not isinstance(f, dict) or not f or set(f) - FAMILY_FIELDS:
                     raise ValueError(f"set takes only {sorted(FAMILY_FIELDS)}")
-                if not isinstance(f["type"], str) or not f["type"].strip():
+                if "type" in f and (not isinstance(f["type"], str) or not f["type"].strip()):
                     raise ValueError("type is a non-empty text, e.g. Married")
+                for role in ("father", "mother"):
+                    if role in f and not isinstance(f[role], str):
+                        raise ValueError(f"{role} is a Gramps ID or key:<key>: a family's parent is never taken away "
+                                         "(unlink_child, or merge the two people)")
+                if f.get("father") is not None and f.get("father") == f.get("mother"):
+                    raise ValueError("father and mother are the same person")
+            if name in EXPECT_FIELDS and "expect" in op:
+                _check_expect(op)
+            if name == "update_media":
+                f = op.get("set")
+                if not isinstance(f, dict) or not f or set(f) - MEDIA_FIELDS:
+                    raise ValueError(f"set takes only {sorted(MEDIA_FIELDS)}")
+                if "desc" in f and not isinstance(f["desc"], str):
+                    raise ValueError("desc is a text")
+                if "date" in f:
+                    parse_date(f["date"])
+                if "path" in f and not (isinstance(f["path"], str) and f["path"].strip()) or Path(f.get("path") or "").is_absolute():
+                    raise ValueError("path is a non-empty text, relative to the tree's media folder")
+                if "file" in f and not Path(str(f["file"])).is_file():
+                    raise ValueError(f"file not found: {f['file']}")
+                if "file" in f and "path" in f:
+                    raise ValueError("the server names a replaced file itself: set path in another op")
+                if ("file" in f) != bool(isinstance(op.get("expect"), str) and re.fullmatch(r"[0-9a-f]{32}", op["expect"])):
+                    raise ValueError("replacing the file needs expect: the MD5 the media object has now, 32 lower-case "
+                                     "hex digits (and expect goes only with set.file)")
             if name == "update_child_ref":
                 f = op.get("set") or {}
                 if not f and not op.get("confirm_probable"):
@@ -478,8 +645,7 @@ def validate(ops: list[dict]) -> list[str]:
             if name == "detach":
                 cls, _ = _parse_target(op.get("target"))
                 ocls, _, lst = _parse_object(op.get("object"))
-                if cls not in CARRIES[lst]:
-                    raise ValueError(f"a {cls} cannot carry a {lst[:-5]}")
+                _check_carrier(cls, lst, attaching=False)
             if name in ("add_tag", "remove_tag"):
                 _tag_target(op.get("target"))
             if name == "move_event" and _event_owner(op.get("from")) == _event_owner(op.get("to")):
@@ -512,8 +678,45 @@ def validate(ops: list[dict]) -> list[str]:
             for spec in (op.get("attach") or []) if name in ("attach_existing", "add_citation", "add_media",
                                                              "add_note", "add_transcription") else []:
                 cls, _ = _parse_target(spec)
-                if cls not in CARRIES[lst]:
-                    raise ValueError(f"a {cls} cannot carry a {lst[:-5]}")
+                _check_carrier(cls, lst, attaching=True)
+            if "expect" in op and name in ("detach", "remove_tag", "unlink_child", "attach_existing", "delete",
+                                           "remove_alternate_name") and (
+                    op["expect"] not in EXPECT):
+                raise ValueError(f"expect is one of {list(EXPECT)}")
+            if "rect" in op:
+                r = op["rect"]
+                if name == "attach_existing" and _parse_object(op.get("object"))[0] != "Media":
+                    raise ValueError("rect goes only with a media object")
+                if not (isinstance(r, list) and len(r) == 4 and all(type(v) is int and 0 <= v <= 100 for v in r)
+                        and r[0] < r[2] and r[1] < r[3]):
+                    raise ValueError("rect is [x1, y1, x2, y2]: whole percentages 0-100 of the image, x1 < x2, y1 < y2")
+            if "force" in op and op["force"] is not True:
+                raise ValueError("force is true or absent")
+            if name == "delete":
+                _delete_object(op.get("object"))
+                if op.get("expect_unreferenced") is not True:
+                    raise ValueError("expect_unreferenced: true is required: delete only takes an object nothing "
+                                     "points at")
+            if name == "reorder_refs":
+                cls, _ = _parse_target(op.get("target"))
+                if op.get("list") not in REORDERABLE:
+                    raise ValueError(f"list is one of {sorted(REORDERABLE)}")
+                if cls not in REORDERABLE[op["list"]][1]:
+                    raise ValueError(f"a {cls} has no {op['list']}")
+                if type(op.get("position")) is not int or op["position"] < 0:
+                    raise ValueError("position is a whole number from 0, the first place in the list")
+            if name in ("add_alternate_name", "remove_alternate_name"):
+                _alt_name(op)
+            if name == "set_external_id":
+                if _parse_target(op.get("target"))[0] in ("ChildRef", "PersonRef", "Place"):
+                    raise ValueError("an external id goes on an object with attributes, not a place or a link")
+                if "url" in op and not re.match(r"^https?://\S+$", str(op["url"])):
+                    raise ValueError("url starts with http:// or https://")
+                if "url" in op and _parse_target(op.get("target"))[0] not in ("Person", "Repository"):
+                    raise ValueError("url goes on a person or a repository")
+                if _is_familysearch(str(op.get("system"))) and not re.fullmatch(
+                        r"[A-Z0-9]{4}-[A-Z0-9]{2,4}", str(op.get("id")).strip().upper()):
+                    raise ValueError("a FamilySearch tree id is four letters or digits, a dash and two to four more")
             if name == "add_media" and not Path(op.get("file", "")).is_file():
                 raise ValueError(f"file not found: {op.get('file')}")
             if name == "add_media" and Path(op.get("path", "")).is_absolute():
@@ -551,10 +754,39 @@ class Result:
 
 
 
+def _joined(*parts: str) -> str:
+    """Name parts joined with one space, leaving out the empty ones."""
+    return " ".join(x for x in parts if x)
+
+
+def _stored_name(person: dict) -> tuple[str, str]:
+    """A stored person's first name and surname, the surname list joined with spaces."""
+    name = person.get("primary_name") or {}
+    return name.get("first_name", ""), " ".join(s.get("surname", "") for s in name.get("surname_list") or [])
+
+
+def _amended_people(ops: list[dict]) -> dict[str, set[str]]:
+    """add_person key -> the identity fields (first_name, surname, gender) an update_person of the same list sets on
+    that person, named as key:<key> or by the Gramps ID the add_person gives."""
+    ids = {op["gramps_id"]: op["key"] for op in ops if op.get("op") == "add_person" and op.get("gramps_id")}
+    out: dict[str, set[str]] = {}
+    for op in ops:
+        if op.get("op") != "update_person":
+            continue
+        ref = str(op.get("person", ""))
+        key = ref[4:] if ref.startswith("key:") else ids.get(ref)
+        fields = {"first_name", "surname", "gender"} & set(op.get("set") or {})
+        if key and fields:
+            out.setdefault(key, set()).update(fields)
+    return out
+
+
 class Applier:
     def __init__(self, client: Client, *, retries: int = 5, retry_wait: float = 30.0, lock=None, tag: str | None = None,
-                 verify: bool = False, private_new: bool = False):
+                 verify: bool = False, private_new: bool = False, landed: frozenset = frozenset()):
         self.c = client
+        # op keys an earlier --apply of this same list logged as done: a removal of theirs that finds nothing has landed
+        self.landed = landed
         self.verify = verify  # a Gramps ID that was merged away resolves to its winner through the merge note
         self._merges: dict[str, list[tuple[str, str]]] | None = None  # class -> (merge note text, note handle)
         self.reasons: list[str] = []
@@ -575,6 +807,12 @@ class Applier:
         self._holding: str | None = None  # set by an add_association whose write is held
         self._flushing = False
         self._unlink_notes: dict[str, list[str]] = {}  # op key -> link marks unlink_child still has to delete
+        self._lost = False
+        self._list_deletes: set[tuple[str, str]] = set()  # (class, ref) of every object a delete op of the list takes
+        self._amended: dict[str, set[str]] = {}  # add_person key -> identity fields a later update_person of the list sets
+        self._merge_of: dict[str, tuple[int, dict]] = {}  # loser -> (index, merge_* op of the list that names it)
+        self._merged_keys: dict[str, str] = {}  # key a rerun found merged away by this list -> the line its ops skip with
+        self._refs: dict[str, list[tuple[str, str]]] | None = None  # offline: handle -> the snapshot objects naming it
         client.touch = self._touch
 
     # -- references -------------------------------------------------------
@@ -603,18 +841,34 @@ class Applier:
         if self._merges is None:
             self._merges = {}
             for n in self.c.list_all("Note", ["text"]):
-                m = re.match(r"Merged (Person|Family|Event|Repository) (\S+) ", (n.get("text") or {}).get("string") or "")
+                m = re.match(r"Merged (Person|Family|Event|Repository|Place|Source|Citation) (\S+?)(?::)? ", (n.get("text") or {}).get("string") or "")
                 if m:
                     self._merges.setdefault(m[1], []).append((m[2], n["handle"]))
         notes = {h for loser, h in self._merges.get(cls, []) if loser == ref}
-        if not notes:
+        winner = self._note_holder(cls, notes) if notes else None
+        if winner is None:
             return None
+        self.actions.append(f"{cls} {ref} was merged into {self.label(winner)}: reading it there")
+        return winner["handle"]
+
+    def _note_holder(self, cls: str, notes: set[str]) -> dict | None:
+        """The one object of `cls` whose note list holds one of `notes`. None when no object, or more than one, does."""
         rows = [r for r in self.c.list_all(cls, ["note_list", "gramps_id"]) if notes & set(r.get("note_list") or [])]
         if len(rows) != 1:  # two holders: no way to tell which one is the winner, so the op stays a conflict
             return None
-        winner = rows[0]
-        self.actions.append(f"{cls} {ref} was merged into {self.label(winner)}: reading it there")
-        return winner["handle"]
+        return rows[0]
+
+    def _merge_winner(self, cls: str, merge: dict) -> dict:
+        """The winner of a merge op of the list. When a later merge took that winner away too, Gramps moved this
+        op's merge note on to the next winner with the rest of its note list, so the one object that holds the note
+        now stands in for it. With no such object the Conflict of the missing winner stands."""
+        try:
+            return self.obj(cls, merge["winner"])
+        except Conflict:  # the winner is gone: look for the object its merge note moved on to
+            holder = self._note_holder(cls, {stable_handle(merge["key"] + "#merge")})
+            if holder is None:
+                raise
+            return holder
 
     def obj(self, cls: str, ref: str) -> dict:
         obj = self.c.get(cls, self.resolve(cls, ref))
@@ -633,6 +887,83 @@ class Applier:
         on a list's first dry run such a skip means the tree already held the change, not that the list ran before."""
         self.actions.append(line)
         self._noop = True
+
+    @staticmethod
+    def _private(obj: dict, s: dict) -> None:
+        """`private` of an update_* set: the object's own private flag."""
+        if PRIVATE in s and bool(obj.get("private")) != s[PRIVATE]:
+            obj["private"] = s[PRIVATE]
+
+    def _expect(self, op: dict, obj: dict) -> None:
+        """`expect` of update_person, update_event, update_place and update_family, read before anything changes, as
+        update_note reads its own: a field that has neither the value the list read (expect) nor the value set gives
+        it was changed since, a Conflict, so nothing is written. A field that already has the new value is a rerun
+        or --verify of a landed list, never a conflict."""
+        for f, read in (op.get("expect") or {}).items():
+            has, shown = self._field_now(obj, f)
+            if has != self._field_form(f, op["set"][f]) and has != self._field_form(f, read):
+                raise Conflict(f"{obj['_class']} {self.label(obj)} no longer has {f} {read!r} (it has {shown!r}); "
+                               "read it again")
+
+    def _field_form(self, f: str, value):
+        """A value of `set` or `expect` in the form _field_now compares."""
+        if f == PRIVATE:
+            return value
+        if f == "gender":
+            return GENDER[value]
+        if f == "date":
+            return date_key(parse_date(value))
+        if f == "place":
+            return self.resolve("Place", value) if value else ""
+        if f == "enclosed_by":
+            return [self.resolve("Place", value)] if value else []
+        return str(value).strip()
+
+    def _field_now(self, obj: dict, f: str) -> tuple[object, str]:
+        """(the value a field of set has on the object now, compared with _field_form; that value as set writes it)."""
+        cls = obj["_class"]
+        if f == PRIVATE:
+            return bool(obj.get(PRIVATE)), str(bool(obj.get(PRIVATE))).lower()
+        if f == "gender":
+            return obj.get("gender"), next((g for g, v in GENDER.items() if v == obj.get("gender")), "")
+        if f == "date":
+            return date_key(obj.get("date")), _date_text(obj.get("date"))
+        if f in ("place", "enclosed_by"):
+            refs = [obj.get("place") or ""] if f == "place" else [r.get("ref") for r in obj.get("placeref_list") or []]
+            shown = ", ".join((self.c.get("Place", h) or {}).get("gramps_id") or h for h in refs if h)
+            return (refs[0] if f == "place" else refs), shown
+        if cls == "Person":
+            name = obj.get("primary_name") or {}
+            if f == "surname":
+                surnames = name.get("surname_list") or [{}]
+                value = next((x for x in surnames if x.get("primary")), surnames[0]).get("surname")
+            else:
+                value = name.get(NAME_KEYS.get(f, f))
+        elif cls == "Place" and f == "name":
+            value = (obj.get("name") or {}).get("value")
+        else:  # an event's type and description, a place's lat and long, a family's type
+            value = obj.get(f)
+        value = str(value or "").strip()
+        return value, value
+
+    def _absent(self, op: dict, what: str) -> None:
+        """A removal (detach, remove_tag, unlink_child, delete, remove_alternate_name) that finds nothing to remove.
+        A conflict unless the list says it may already be gone (expect: absent): a mistyped ID must never pass as a
+        skip. --verify asks whether the list landed, and there nothing left to remove is what it left; so is the
+        retry of an op whose earlier try wrote and lost its answer, and the rerun of an op an earlier --apply of the
+        same list logged as done."""
+        if self._lost:
+            self.actions.append(f"{what}: already gone")
+        elif self.verify:
+            self.actions.append(f"skip: {what}, as this op leaves it")
+        elif op["key"] in self.landed:
+            self.actions.append(f"skip: {what}: an earlier --apply of this list removed it")
+        elif op.get("expect") == "absent":
+            self.skip_noop(f"skip: {what} (expect: absent)")
+        else:
+            raise Conflict(f"{what}, so there is nothing to remove: check the IDs. If an earlier run of this list "
+                           "removed it, the list has landed (see --verify); set expect: \"absent\" when it may "
+                           "already be gone")
 
     def tag_handle(self, name: str) -> str:
         """The handle of the tag with this name, made if the tree has none."""
@@ -706,17 +1037,24 @@ class Applier:
             raise Conflict(f"{ref[1]} is not a child of Family {self.label(family)}")
         return family, entry, f"child_ref of {ref[1]} in Family {self.label(family)}"
 
-    def attach(self, specs: list, list_name: str, handle: str) -> None:
+    @staticmethod
+    def _has(items: list, handle: str, rect: list | None = None) -> bool:
+        """Whether a list holds the reference; with `rect`, a media reference to that region of the image."""
+        if rect is not None:
+            return any(isinstance(i, dict) and i.get("ref") == handle and list(i.get("rect") or []) == rect for i in items)
+        return handle in [i if isinstance(i, str) else i.get("ref") for i in items]
+
+    def attach(self, specs: list, list_name: str, handle: str, rect: list | None = None) -> None:
         for spec in specs:
             cls, ref = _parse_target(spec)
             target, carrier, label = self.holder(cls, ref)
             items = carrier.get(list_name) or []
-            present = [i if isinstance(i, str) else i.get("ref") for i in items]
-            if handle in present:
+            if self._has(items, handle, rect):
                 self.actions.append(f"skip: {label} already has it in {list_name}")
                 continue
             before = copy.deepcopy(target)
-            new_item = handle if list_name != "media_list" else {"_class": "MediaRef", "ref": handle}
+            new_item = handle if list_name != "media_list" else {"_class": "MediaRef", "ref": handle,
+                                                                **({"rect": rect} if rect else {})}
             carrier[list_name] = [*items, new_item]
             self.save(before, target)
 
@@ -732,7 +1070,13 @@ class Applier:
         return results
 
     def _run(self, ops: list[dict], results: list[Result]) -> None:
-        for op in ops:
+        self._list_deletes = {_delete_object(op["object"]) for op in ops if op.get("op") == "delete"}
+        self._amended = _amended_people(ops)
+        self._merge_of = {}
+        for i, op in enumerate(ops):
+            if "loser" in op:
+                self._merge_of.setdefault(op["loser"], (i, op))  # the first merge of a loser is the one that can land
+        for index, op in enumerate(ops):
             res = Result(op["key"], op["op"], op["ruling"])
             self._op_tags = list(dict.fromkeys(t for t in [self.run_tag, *_tag_names(op.get("tag"))] if t))
             self.c.context = {"key": op["key"], "op": op["op"], "ruling": op["ruling"]}
@@ -746,8 +1090,10 @@ class Applier:
                 self.c.unknown_write = []
                 # a dry run's plan of this try: dropped on a retry, or the next try reads it as already done
                 planned = (dict(self.c.pending), set(self.c.deleted)) if self.c.dry_run else None
+                self._lost = bool(lost)  # an earlier try wrote and its answer never came: an op may find its own change
                 try:
-                    getattr(self, op["op"])(op)
+                    if not self._before_landed_merge(index, op):
+                        getattr(self, op["op"])(op)
                     res.status = "done" if self.wrote else "skip"
                     res.noop = res.status == "skip" and self._noop
                     if lost and self.wrote and not self._reread_found:  # the re-read did not find the change, so this try wrote it
@@ -770,16 +1116,19 @@ class Applier:
                     self.c.log(event="retry", attempt=attempt, error=str(exc))
                     time.sleep(self.retry_wait)
                 except Conflict as exc:
+                    lost.extend(f"answer lost on try {attempt}: {write_path}" for write_path in self.c.unknown_write)
                     res.status = "conflict"
                     self.actions += [f"{line}; the server may hold that write" for line in lost]
                     self.actions.append(f"conflict: {exc}")
                     break
                 except ApiError as exc:
+                    lost.extend(f"answer lost on try {attempt}: {write_path}" for write_path in self.c.unknown_write)
                     res.status = "error"
                     self.actions += [f"{line}; the server may hold that write" for line in lost]
                     self.actions.append(f"error: {exc}")
                     break
                 except Exception as exc:  # a bug or an input validate() let through: stop here, never a traceback
+                    lost.extend(f"answer lost on try {attempt}: {write_path}" for write_path in self.c.unknown_write)
                     res.status = "error"
                     self.actions += [f"{line}; the server may hold that write" for line in lost]
                     self.actions.append(f"error: {type(exc).__name__}: {exc}")
@@ -863,6 +1212,35 @@ class Applier:
             self.actions.append(f"skip: {cls} {self.label(obj)} already made by key {op['key']!r}")
         return obj
 
+    def _merged_away(self, cls: str, op: dict) -> bool:
+        """A rerun of a list that makes an object and then merges it into another with merge_person or merge_family:
+        the object is gone and the winner carries the note that merge wrote (or, when a later merge took the winner
+        away too, the object that holds the note now). The add has landed, so it skips, and so do the merge and every
+        op between them that names key:<key>."""
+        _, merge = self._merge_of.get(f"key:{op['key']}", (0, None))
+        if merge is None:
+            return False
+        try:
+            winner = self._merge_winner(cls, merge)
+        except Conflict:  # the winner is not there either, and no one object holds the note: the add makes the object
+            return False
+        if stable_handle(merge["key"] + "#merge") not in (winner.get("note_list") or []):
+            return False
+        line = f"skip: {cls} key {op['key']!r} is already merged into {self.label(winner)} by {merge['key']!r}"
+        self._merged_keys[op["key"]] = line
+        self.actions.append(line)
+        return True
+
+    def _before_landed_merge(self, index: int, op: dict) -> bool:
+        """An op between an add that _merged_away skipped and its merge, naming key:<key>: it ran before that merge
+        landed, since a list runs in order, so it skips. It is never sent to the winner, which kept its own values."""
+        for key, line in self._merged_keys.items():
+            at, _ = self._merge_of[f"key:{key}"]
+            if index < at and json.dumps(f"key:{key}", ensure_ascii=False) in json.dumps(op, ensure_ascii=False):
+                self.actions.append(line + ", and this op ran before that merge")
+                return True
+        return False
+
     def _reuse(self, cls: str, candidates: list[dict], matched: str, checks, fix) -> dict | None:
         """Of the objects that match the op on `matched`, the one where every other field the op sets is the same.
 
@@ -898,9 +1276,7 @@ class Applier:
         if self._names is None:
             self._names = {}
             for row in self.c.list_all("Person", ["primary_name", "gramps_id"]):
-                n = row.get("primary_name") or {}
-                surname = " ".join(s.get("surname", "") for s in n.get("surname_list") or [])
-                name = self._name_key(n.get("first_name", ""), surname)
+                name = self._name_key(*_stored_name(row))
                 self._names.setdefault(name, []).append(row.get("gramps_id") or row["handle"])
         return self._names
 
@@ -914,20 +1290,25 @@ class Applier:
         return refs
 
     def add_person(self, op):
-        if self._existing("Person", op):
+        existing = self._existing("Person", op)
+        if existing is not None:
+            if op["key"] not in self.landed:
+                self._same_person(existing, op)
+            return
+        if self._merged_away("Person", op):
             return
         self._check_gramps_id("Person", op)
         name = self._name_key(op["first_name"], op["surname"])
         same = self.namesakes().get(name, [])
         if same and not op.get("allow_namesake"):
             raise Conflict(
-                f"{op['first_name']} {op['surname']} already exists as {', '.join(same)}; "
+                f"{_joined(op['first_name'], op['surname'])} already exists as {', '.join(same)}; "
                 "use that ID, or set allow_namesake with namesake_reason and namesake_of if this is another person"
             )
         unchecked = [x for x in same if x not in self._compared(op)]
         if unchecked:
             raise Conflict(
-                f"{op['first_name']} {op['surname']} also exists as {', '.join(unchecked)}, "
+                f"{_joined(op['first_name'], op['surname'])} also exists as {', '.join(unchecked)}, "
                 "which namesake_of does not name; compare with them too"
             )
         if same:
@@ -952,10 +1333,32 @@ class Applier:
         self.keymap[op["key"]] = h
         self._names.setdefault(name, []).append(op.get("gramps_id") or f"key:{op['key']}")
 
+    def _same_person(self, person: dict, op: dict) -> None:
+        """A key an earlier list made stands for that person only: a Conflict when the op names someone else.
+
+        Compared: the folded first name and surname, and the gender and Gramps ID when the op gives them. A field an
+        update_person of this same list sets on key:<key> is left out, since the list itself changes it."""
+        first, surname = _stored_name(person)
+        rows = [("first_name", fold(first) == fold(op["first_name"]), first, op["first_name"]),
+                ("surname", fold(surname) == fold(op["surname"]), surname, op["surname"])]
+        if "gender" in op:
+            stored = next((g for g, v in GENDER.items() if v == person.get("gender")), person.get("gender"))
+            rows.append(("gender", stored == op["gender"], stored, op["gender"]))
+        if op.get("gramps_id"):
+            rows.append(("gramps_id", person.get("gramps_id") == op["gramps_id"], person.get("gramps_id"), op["gramps_id"]))
+        amended = self._amended.get(op["key"], set())
+        diffs = [r for r in rows if not r[1] and r[0] not in amended]
+        if diffs:
+            said = "; ".join(f"{f} {theirs!r} in the tree, {ours!r} in this op" for f, _, theirs, ours in diffs)
+            raise Conflict(f"key collision: {op['key']!r} already made Person {self.label(person)}, and it differs: {said}. "
+                           "If it is the same person, corrected since, make this op match the tree or drop it "
+                           f"(key:{op['key']} still finds the person); if it is another person, give it a new key")
+
     def update_person(self, op):
         person = self.obj("Person", op["person"])
         person.setdefault("_class", "Person")
         before = copy.deepcopy(person)
+        self._expect(op, person)
         s = op["set"]
         if "gender" in s:
             person["gender"] = GENDER[s["gender"]]
@@ -967,6 +1370,12 @@ class Applier:
             primary = next((x for x in surnames if x.get("primary")), surnames[0])
             primary["surname"] = s["surname"]
             name["surname_list"] = surnames
+        for k, gramps in NAME_KEYS.items():
+            if k in s and (name.get(gramps) or "") != s[k].strip():
+                name[gramps] = s[k].strip()
+        if ("first_name" in s or "surname" in s) and not any(x.strip() for x in _stored_name(person)):
+            raise Conflict(f"Person {self.label(before)} would be left with no first name and no surname; keep one of them")
+        self._private(person, s)
         if person == before:
             self.skip_noop(f"skip: Person {self.label(person)} already has those values")
             return
@@ -976,6 +1385,7 @@ class Applier:
         event = self.obj("Event", op["event"])
         event.setdefault("_class", "Event")
         before = copy.deepcopy(event)
+        self._expect(op, event)
         s = op["set"]
         if "type" in s:
             event["type"] = s["type"]
@@ -985,6 +1395,7 @@ class Applier:
             event["place"] = self.resolve("Place", s["place"]) if s["place"] else ""
         if "description" in s:
             event["description"] = s["description"]
+        self._private(event, s)
         if event == before:
             self.skip_noop(f"skip: Event {self.label(event)} already has those values")
             return
@@ -994,9 +1405,11 @@ class Applier:
         place = self.obj("Place", op["place"])
         place.setdefault("_class", "Place")
         before = copy.deepcopy(place)
+        self._expect(op, place)
         s = op["set"]
-        if "lat" in s:
-            place["lat"], place["long"] = str(s["lat"]), str(s["long"])
+        point = (str(s["lat"]), str(s["long"])) if "lat" in s else None
+        if point and (place.get("lat") or "", place.get("long") or "") != point:  # a place with no point clears to a skip
+            place["lat"], place["long"] = point
         if "enclosed_by" in s:
             parent = self.resolve("Place", s["enclosed_by"])
             # compared with the parent the place has now, by handle: a place already under that one parent and no
@@ -1012,6 +1425,7 @@ class Applier:
             if current.get("value") != name:
                 self._refuse_place_namesake(place, name)
                 place["name"] = {**current, "_class": "PlaceName", "value": name}
+        self._private(place, s)
         if place == before:
             self.skip_noop(f"skip: Place {self.label(place)} already has those values")
             return
@@ -1139,6 +1553,8 @@ class Applier:
         mother = self.resolve("Person", op["mother"]) if op.get("mother") else None
         children = [self.resolve("Person", c) for c in op.get("children") or []]
         family = self._existing("Family", op)
+        if family is None and self._merged_away("Family", op):
+            return
         if family is None:
             parent = self.c.get("Person", father or mother)
             fams = self.c.get_many("Family", parent.get("family_list") or [])
@@ -1206,6 +1622,41 @@ class Applier:
         self.wrote = True
         self._holding = handle
 
+    def repair_child_backlink(self, op):
+        """Repair only a missing family-side child ref with an existing citation, in one Family PUT.
+
+        This is not permission to infer parentage: the person must already list this parent family,
+        and both relationship kinds must be explicit in the reviewed operation.
+        """
+        family = self.obj("Family", op["family"])
+        person = self.obj("Person", op["child"])
+        citation = self.resolve("Citation", op["citation"])
+        fam, child = family["handle"], person["handle"]
+        if fam not in (person.get("parent_family_list") or []):
+            raise Conflict("repair_child_backlink requires the person's existing parent-family link")
+        refs = family.get("child_ref_list") or []
+        existing = [r for r in refs if r.get("ref") == child]
+        if existing:
+            if (len(existing) == 1 and existing[0].get("frel") == op["frel"]
+                    and existing[0].get("mrel") == op["mrel"]
+                    and citation in (existing[0].get("citation_list") or [])):
+                self.skip_noop("skip: family-side link and its citation already present")
+                return
+            raise Conflict("family-side child ref already exists with different relations or citation; review it")
+        family.setdefault("_class", "Family")
+        before = copy.deepcopy(family)
+        family["child_ref_list"] = [*refs, {"_class": "ChildRef", "ref": child,
+            "frel": op["frel"], "mrel": op["mrel"], "citation_list": [citation],
+            "note_list": [], "private": False}]
+        # The API may remove the person's older reciprocal link when reverting this Family PUT.
+        # Record the side effect obligation, not a synthetic Person PUT that never happened.
+        old_context = self.c.context
+        self.c.context = {**old_context, "preserve_parent_link": {"child": child, "family": fam}}
+        try:
+            self.save(before, family)
+        finally:
+            self.c.context = old_context
+
     def link_child(self, op):
         family = self.resolve("Family", op["family"])
         child = self.resolve("Person", op["child"])
@@ -1237,7 +1688,7 @@ class Applier:
         listed = fam in (child.get("parent_family_list") or [])
         retry = op["key"] in self._unlink_notes  # an earlier try of this op wrote, and its answer was lost
         if entry is None and not listed and not retry:
-            self.actions.append(f"skip: Person {clabel} is not a child of Family {flabel}")
+            self._absent(op, f"Person {clabel} is not a child of Family {flabel}")
             return
         drop, other = [], []  # every check before the first write: a conflict leaves the server as it was
         if entry is not None:
@@ -1296,10 +1747,18 @@ class Applier:
         if not self.c.offline:
             links = (self.c.get_live(cls, handle, backlinks=True) or {}).get("backlinks") or {}
             return {(k, h) for k, hs in links.items() for h in hs or []}
-        objs = {(c, h): o for c, rows in (self.c.snapshot or {}).items() for h, o in rows.items()}
-        objs.update(self.c.pending)
-        return {(c.lower(), h) for (c, h), o in objs.items()
-                if h != handle and (c, h) not in self.c.deleted and handle in json.dumps(o)}
+        if self._refs is None:  # once per run: a handle, not a substring of one, and no scan of the tree per call
+            snap = self.c.snapshot or {}
+            known = {h for rows in snap.values() for h in rows}
+            self._refs = {}
+            for c, rows in snap.items():
+                for h, o in rows.items():
+                    for s in set(_QUOTED.findall(json.dumps(o))) & known:
+                        self._refs.setdefault(s, []).append((c, h))
+        quoted = json.dumps(handle)
+        found = {k for k in self._refs.get(handle, []) if k not in self.c.pending}
+        found |= {k for k, o in self.c.pending.items() if quoted in json.dumps(o)}
+        return {(c.lower(), h) for c, h in found if h != handle and (c, h) not in self.c.deleted}
 
     def _drop_mark(self, handle: str) -> None:
         """Delete a link mark unlink_child took off its link, unless something has taken it up since."""
@@ -1332,6 +1791,7 @@ class Applier:
             note["text"] = {**(note.get("text") or {"_class": "StyledText"}), "string": s["text"], "tags": []}
         if "type" in s:
             note["type"] = s["type"]
+        self._private(note, s)
         if note == before:
             self.skip_noop(f"skip: Note {self.label(note)} already has those values")
             return
@@ -1350,6 +1810,15 @@ class Applier:
             cit["confidence"] = int(s["confidence"])
         if "date" in s and date_key(cit.get("date")) != date_key(parse_date(s["date"])):
             cit["date"] = parse_date(s["date"])
+        if "source" in s:  # moves the citation, page and all, to another source
+            new = self.resolve("Source", s["source"])
+            if cit.get("source_handle") != new:
+                if cit.get("source_handle") != self.resolve("Source", op["expect_source"]):
+                    now = self.c.get("Source", cit.get("source_handle") or "") or {}
+                    raise Conflict(f"Citation {self.label(cit)} is no longer on Source {op['expect_source']} (it is on "
+                                   f"{now.get('gramps_id') or cit.get('source_handle')}); read it again")
+                cit["source_handle"] = new
+        self._private(cit, s)
         if cit == before:
             self.skip_noop(f"skip: Citation {self.label(cit)} already has those values")
             return
@@ -1362,8 +1831,9 @@ class Applier:
         source = self.obj("Source", op["source"])
         source.setdefault("_class", "Source")
         before = copy.deepcopy(source)
-        new, now = op["set"]["title"].strip(), (source.get("title") or "").strip()
-        if now != new:
+        new, now = (op["set"].get("title") or "").strip(), (source.get("title") or "").strip()
+        self._private(source, op["set"])
+        if "title" in op["set"] and now != new:
             if now != op["expect"].strip():
                 raise Conflict(f"Source {self.label(source)} no longer has the title {op['expect']!r} (it has {now!r})")
             for row in self.c.list_all("Source", ["title", "author", "pubinfo", "gramps_id"]):
@@ -1373,17 +1843,43 @@ class Applier:
                                    "the same author and publication info; they may be one source")
             source["title"] = new
         if source == before:
-            self.skip_noop(f"skip: Source {self.label(source)} already has that title")
+            self.skip_noop(f"skip: Source {self.label(source)} already has those values")
             return
         self.save(before, source)
 
     def update_family(self, op):
+        """Type, private, and a father or mother for a family that has none: a parent it already has is never
+        replaced (merge the two people, or unlink), and a couple another family already has is a conflict."""
         family = self.obj("Family", op["family"])
         family.setdefault("_class", "Family")
         before = copy.deepcopy(family)
-        family["type"] = op["set"]["type"]
+        self._expect(op, family)
+        s = op["set"]
+        if "type" in s:
+            family["type"] = s["type"]
+        for role in ("father", "mother"):
+            if role not in s:
+                continue
+            person = self.resolve("Person", s[role])
+            other = "mother" if role == "father" else "father"
+            if person == family.get(f"{other}_handle") or person in {r.get("ref") for r in family.get("child_ref_list") or []}:
+                raise Conflict(f"{s[role]} is already the {other} or a child of Family {self.label(family)}; not "
+                               f"made its {role}")
+            now = family.get(f"{role}_handle") or None
+            if now not in (None, person):
+                p = self.c.get("Person", now) or {}
+                raise Conflict(f"Family {self.label(family)} already has a {role}, {p.get('gramps_id') or now}; merge "
+                               "the two people with merge_person if they are one, a family is never given another parent")
+            family[f"{role}_handle"] = person
+        couple = (family.get("father_handle") or None, family.get("mother_handle") or None)
+        if couple != (before.get("father_handle") or None, before.get("mother_handle") or None) and all(couple):
+            for fam in self.c.get_many("Family", (self.c.get("Person", couple[0]) or {}).get("family_list") or []):
+                if fam["handle"] != family["handle"] and (fam.get("father_handle"), fam.get("mother_handle")) == couple:
+                    raise Conflict(f"Family {self.label(fam)} already has these parents; merge the two families with "
+                                   "merge_family instead")
+        self._private(family, s)
         if family == before:
-            self.skip_noop(f"skip: Family {self.label(family)} already has that type")
+            self.skip_noop(f"skip: Family {self.label(family)} already has those values")
             return
         self.save(before, family)
 
@@ -1426,13 +1922,17 @@ class Applier:
         """Take a note, citation or media reference off a target. The object stays in the tree (an orphan
         that gwt-check lists), so nothing is lost and attach_existing can put it back."""
         ocls, oref, lst = _parse_object(op["object"])
+        if (ocls, oref) in self._list_deletes and self._find(ocls, oref) is None:
+            # detach, then delete: once the list has landed, the object is gone, so there is nothing to detach
+            self._absent(op, f"{ocls} {oref} is gone (a delete op of this list takes it)")
+            return
         handle = self.resolve(ocls, oref)
         cls, ref = _parse_target(op["target"])
         target, carrier, label = self.holder(cls, ref)
         items = carrier.get(lst) or []
         keep = [i for i in items if (i if isinstance(i, str) else i.get("ref")) != handle]
         if len(keep) == len(items):
-            self.actions.append(f"skip: {label} does not have it in {lst}")
+            self._absent(op, f"{label} does not have {oref} in {lst}")
             return
         for i in items:
             if isinstance(i, dict) and i.get("ref") == handle and (i.get("rect") or any(i.get(o) for o in REF_OWN_LISTS)):
@@ -1544,6 +2044,7 @@ class Applier:
         if "type" in s:
             repo["type"] = s["type"]
         self._repo_fields(repo, s)
+        self._private(repo, s)
         if repo == before:
             self.skip_noop(f"skip: Repository {self.label(repo)} already has those values")
             return
@@ -1681,6 +2182,9 @@ class Applier:
         mime = op.get("mime") or mimetypes.guess_type(op["file"])[0]
         if not mime:
             raise Conflict(f"cannot tell the MIME type of {op['file']}; set mime")
+        if mime.startswith(NOT_A_DOCUMENT) and not op.get("force"):
+            raise Conflict(f"{op['file']} is {mime}, not a scan or a photo: a transcript goes in add_transcription, a "
+                           "web page or a mail is read and cited, not stored; set force: true if it is meant")
         media = self._existing("Media", op)
         handle = media["handle"] if media else None
         if media is not None and media.get("checksum") != checksum:
@@ -1716,7 +2220,7 @@ class Applier:
             self.actions.append(f"file: {outcome}")
             if outcome == "uploaded":
                 self.wrote = True
-        self.attach(op["attach"], "media_list", handle)
+        self.attach(op["attach"], "media_list", handle, op.get("rect"))
 
     def add_note(self, op, marker: str | None = None):
         """A note on each target; with `marker`, any note on a target that starts with it counts as this one."""
@@ -1784,7 +2288,15 @@ class Applier:
         to a second person: add_citation, add_media and add_note only make new objects.
         """
         cls, ref, lst = _parse_object(op["object"])
-        self.attach(op["attach"], lst, self.resolve(cls, ref))
+        handle = self.resolve(cls, ref)
+        # every check before the first write; a link this list made on an earlier --apply of it is no surprise
+        if op.get("expect") == "absent" and not (self.verify or self._lost or op["key"] in self.landed):
+            for spec in op["attach"]:
+                _, carrier, label = self.holder(*_parse_target(spec))
+                if self._has(carrier.get(lst) or [], handle, op.get("rect")):
+                    raise Conflict(f"{label} already has {ref} in {lst}, and expect: \"absent\" says it has not: "
+                                   "check the IDs")
+        self.attach(op["attach"], lst, handle, op.get("rect"))
 
     def add_tag(self, op):
         """Put a tag (made if the tree has none) on an object the tree already has: a research mark such as
@@ -1803,7 +2315,7 @@ class Applier:
     def remove_tag(self, op):
         """Take one tag off an object the tree already has: a weak mark once the fact is proven. The tag itself
         stays in the tree, and so does everything else on the object. A name the tree has no tag for is a conflict
-        (a typo would otherwise pass as a skip); an object without the tag is a skip."""
+        (a typo would otherwise pass as a skip); so is an object without the tag, unless expect: absent."""
         cls, ref = _tag_target(op["target"])
         target = self.obj(cls, ref)
         target.setdefault("_class", cls)
@@ -1816,7 +2328,7 @@ class Applier:
         tags = target.get("tag_list") or []
         keep = [h for h in tags if h not in handles]
         if len(keep) == len(tags):
-            self.skip_noop(f"skip: {cls} {self.label(target)} does not have the tag {name!r}")
+            self._absent(op, f"{cls} {self.label(target)} does not have the tag {name!r}")
             return
         before = copy.deepcopy(target)
         target["tag_list"] = keep
@@ -2002,7 +2514,8 @@ class Applier:
         self.actions.append(f"delete {cls} {self.label(loser)}")
 
     def _merge_done(self, cls: str, op) -> bool:
-        """A rerun: the loser is gone and the winner carries this op's merge note."""
+        """A rerun: the loser is gone and the winner carries this op's merge note. A winner a later merge took away
+        is read on the object that holds the note now."""
         ref = op["loser"]
         if ref.startswith("key:"):
             present = self.c.exists(cls, self.keymap.get(ref[4:]) or stable_handle(ref[4:]))
@@ -2011,7 +2524,7 @@ class Applier:
         if present:
             return False
         note = stable_handle(op["key"] + "#merge")
-        winner = self.obj(cls, op["winner"])
+        winner = self._merge_winner(cls, op)
         if note in (winner.get("note_list") or []):
             self.actions.append(f"skip: {cls} {op['loser']} is already merged into {self.label(winner)}")
             return True
@@ -2021,6 +2534,9 @@ class Applier:
         if self._merge_done("Person", op):
             return
         winner, loser = self.obj("Person", op["winner"]), self.obj("Person", op["loser"])
+        if same_day_review_required(self.c, winner, loser, self._name_key):
+            raise Conflict(f"Person {self.label(winner)} and {self.label(loser)}: "
+                           "same-day namesake merge requires review; this does not establish distinct identities")
         for o in (winner, loser):
             o.setdefault("_class", "Person")
         name = loser.get("primary_name") or {}
@@ -2113,6 +2629,14 @@ class Applier:
                 holders.append(f"  Citation {self.label(row)}{page}: cites {self.label(winner)} instead of {self.label(loser)}")
         return holders
 
+    def merge_place(self, op):
+        from .place_ops import merge_place
+        merge_place(self, op, Conflict, fold, self._referrers, self._merge_done, self._merge_note, self._show_merge)
+
+    def delete_place(self, op):
+        from .place_ops import delete_place
+        delete_place(self, op, Conflict, stable_handle, self._referrers)
+
     def merge_source(self, op):
         """Two sources that are one register entered twice: the loser's citations cite the winner, then the loser goes.
 
@@ -2160,3 +2684,260 @@ class Applier:
         self._show_merge(winner, loser)
         self.c.merge("Family", winner["handle"], loser["handle"], body)
         self.wrote = True
+
+    def _merge_simple(self, cls: str, op, describe=lambda o: "", refuse=lambda w, l_: None) -> None:
+        """Gramps' own merge of two places, sources or citations: everything that points at the loser points at
+        the winner, the loser's lists join the winner's, and the loser is deleted. The winner keeps its own fields,
+        so `refuse` stops a merge that would lose a fact; `describe` adds the loser's name to the merge note."""
+        if self._merge_done(cls, op):
+            return
+        winner, loser = self.obj(cls, op["winner"]), self.obj(cls, op["loser"])
+        for o in (winner, loser):
+            o.setdefault("_class", cls)
+        if winner["handle"] == loser["handle"]:
+            raise Conflict(f"winner and loser are the same {cls.lower()}")
+        refuse(winner, loser)
+        self._merge_note(op, cls, f"{cls} {self.label(loser)}{describe(loser)}")
+        winner = self.obj(cls, op["winner"])
+        winner.setdefault("_class", cls)
+        self._show_merge(winner, loser)
+        self.c.merge(cls, winner["handle"], loser["handle"])
+        self.wrote = True
+
+    def _inside(self, place: str, other: str) -> bool:
+        """Whether Place `place` lies inside Place `other`, at any depth."""
+        seen, todo = set(), [r.get("ref") for r in (self.c.get("Place", place) or {}).get("placeref_list") or []]
+        while todo:
+            h = todo.pop()
+            if h == other:
+                return True
+            if h and h not in seen:
+                seen.add(h)
+                todo += [r.get("ref") for r in (self.c.get("Place", h) or {}).get("placeref_list") or []]
+        return False
+
+
+
+    def merge_citation(self, op):
+        """Two citations of one page: every object that cites the loser cites the winner. A different source,
+        page, confidence or date is a conflict: the merge keeps only the winner's."""
+        def refuse(w, l_):
+            if w.get("source_handle") != l_.get("source_handle"):
+                raise Conflict(f"Citation {self.label(w)} and {self.label(l_)} cite different sources; merge the "
+                               "sources first, or move one with update_citation")
+            for f, same in (("page", (w.get("page") or "").strip() == (l_.get("page") or "").strip()),
+                            ("confidence", w.get("confidence", 2) == l_.get("confidence", 2)),
+                            ("date", date_key(w.get("date")) == date_key(l_.get("date")))):
+                if not same:
+                    raise Conflict(f"Citation {self.label(w)} and {self.label(l_)} differ in {f}; the merge keeps only "
+                                   "the winner's, so correct one with update_citation first")
+        self._merge_simple("Citation", op, lambda o: f" ({o.get('page') or ''})", refuse)
+
+    # -- deletes, order, names, ids, media ---------------------------------
+
+    def _find(self, cls: str, ref: str) -> str | None:
+        """The handle of key:<key> or a Gramps ID, or None when the tree has no such object."""
+        if ref.startswith("key:"):
+            handle = self.keymap.get(ref[4:]) or stable_handle(ref[4:])
+            return handle if self.c.exists(cls, handle) else None
+        return self.c.handle_for_gramps_id(cls, ref)
+
+    def _holders(self, cls: str, handle: str) -> set[tuple[str, str]]:
+        """What points at the object now: the server's backlinks, less what a dry run of this list has already
+        planned to take off or delete."""
+        out = set()
+        for c, h in self._referrers(cls, handle):
+            key = next(((k, h) for k in NAMESPACE_CLASSES if k.lower() == c), (c, h))
+            if h == handle or key in self.c.deleted:
+                continue
+            if key in self.c.pending and json.dumps(handle) not in json.dumps(self.c.pending[key]):
+                continue
+            out.add((c, h))
+        return out
+
+    def delete(self, op):
+        """Delete an object nothing points at: an orphan note, a duplicate place emptied by hand, an empty family.
+        Anything that still points at it is a conflict that names it (detach it first); `expect_unreferenced: true`
+        says so in the list. The whole object goes in the log, so --revert makes it again."""
+        cls, ref = _delete_object(op["object"])
+        handle = self._find(cls, ref)
+        if handle is None:
+            self._absent(op, f"the tree has no {cls} {ref}")
+            return
+        obj = self.c.get(cls, handle)
+        obj.setdefault("_class", cls)
+        held = self._holders(cls, handle)
+        if held:
+            names = []
+            for c, h in sorted(held)[:5]:
+                rcls = next((k for k in NAMESPACE_CLASSES if k.lower() == c), None)
+                names.append(f"{c} {((self.c.get(rcls, h) if rcls else None) or {}).get('gramps_id') or h}")
+            shown = ", ".join(names) + (f" and {len(held) - 5} more" if len(held) > 5 else "")
+            raise Conflict(f"{cls} {self.label(obj)} is still referenced by {shown}; {UNREFERENCE[cls]}, nothing was "
+                           "deleted")
+        kept = {k: v for k, v in obj.items() if k not in ("_read", "_snap", "backlinks", "extended", "profile")}
+        self.actions.append(f"delete {cls} {self.label(obj)}: {json.dumps(kept, ensure_ascii=False)}")
+        self.reasons.append(f"missing: delete {cls} {self.label(obj)}")
+        self.c.remove(cls, handle, record=kept)
+        self.wrote = True
+
+    def reorder_refs(self, op):
+        """Move one reference to `position` (0 is first) in a list: a person's events, a family's children, the
+        citations of an event. The rest keep their order, and a person's birth and death keep their events."""
+        cls, ref = _parse_target(op["target"])
+        target, carrier, label = self.holder(cls, ref)
+        name, pos = op["list"], op["position"]
+        handle = self.resolve(REORDERABLE[name][0], op["ref"])
+        items = list(carrier.get(name) or [])
+        at = [i for i, x in enumerate(items) if (x if isinstance(x, str) else x.get("ref")) == handle]
+        if not at:
+            raise Conflict(f"{label} has no {op['ref']} in {name}")
+        if len(at) > 1:
+            raise Conflict(f"{label} lists {op['ref']} {len(at)} times in {name}; dedupe_list first")
+        if pos >= len(items):
+            raise Conflict(f"{name} of {label} has {len(items)} entries; position {pos} is past its end")
+        if at[0] == pos:
+            self.skip_noop(f"skip: {op['ref']} is already at position {pos} in {name} of {label}")
+            return
+        before, old = copy.deepcopy(target), list(items)
+        items.insert(pos, items.pop(at[0]))
+        carrier[name] = items
+        if cls == "Person" and name == "event_ref_list":
+            self._reindex(target, old)
+        self.save(before, target)
+
+    @staticmethod
+    def _alt_matches(name: dict, cls: str, f: dict) -> bool:
+        """Whether a stored other name has every field the op gives (text without case or accents)."""
+        if cls == "Place":
+            return (fold(name.get("value")) == fold(f["name"]) and ("lang" not in f or name.get("lang") == f["lang"])
+                    and ("date" not in f or date_key(name.get("date")) == date_key(parse_date(f["date"]))))
+        for k in ("first_name", "call", "nick", "title", "suffix", "type"):
+            if k in f and fold(str(name.get(k) or "")) != fold(f[k]):
+                return False
+        if "surnames" in f:
+            have = [(fold(s.get("surname")), fold(str(s.get("origintype") or ""))) for s in name.get("surname_list") or []]
+            want = [(fold(s["surname"]), fold(s.get("origin", ""))) for s in f["surnames"]]
+            if [h[0] for h in have] != [w[0] for w in want] or any(
+                    w[1] and h[1] != w[1] for h, w in zip(have, want)):
+                return False
+        return "date" not in f or date_key(name.get("date")) == date_key(parse_date(f["date"]))
+
+    def add_alternate_name(self, op):
+        """Another name for a person (a married name, a spelling in another record) or a place (its name in another
+        language, or before a renaming). One the person or place already has, by the fields given, is a skip."""
+        cls, ref, f = _alt_name(op)
+        obj = self.obj(cls, ref)
+        obj.setdefault("_class", cls)
+        lst = "alternate_names" if cls == "Person" else "alt_names"
+        names = obj.get(lst) or []
+        if any(self._alt_matches(n, cls, f) for n in names):
+            self.skip_noop(f"skip: {cls} {self.label(obj)} already has that other name")
+            return
+        if cls == "Person" and self._alt_matches(obj.get("primary_name") or {}, cls, {"first_name": "", "surnames": [], **f}):
+            raise Conflict(f"Person {self.label(obj)} has that name as its primary name; an other name the same as it "
+                           "is a duplicate")
+        if cls == "Place":
+            new = {"_class": "PlaceName", "value": f["name"].strip(), "lang": f.get("lang", "")}
+        else:
+            new = {"_class": "Name", "type": f.get("type", "Also Known As"), "first_name": f.get("first_name", "").strip(),
+                   "surname_list": [{"_class": "Surname", "surname": s["surname"].strip(), "prefix": s.get("prefix", ""),
+                                     "primary": s.get("primary", i == 0), "origintype": s.get("origin", "")}
+                                    for i, s in enumerate(f.get("surnames", []))],
+                   **{k: f[k].strip() for k in ("call", "nick", "title", "suffix") if k in f}}
+        if "date" in f:
+            new["date"] = parse_date(f["date"])
+        before = copy.deepcopy(obj)
+        obj[lst] = [*names, new]
+        self.save(before, obj)
+
+    def remove_alternate_name(self, op):
+        """Take one other name off a person or a place, found by the fields given. More than one match is a
+        conflict (give more fields); none follows the removal rule of expect."""
+        cls, ref, f = _alt_name(op)
+        obj = self.obj(cls, ref)
+        obj.setdefault("_class", cls)
+        lst = "alternate_names" if cls == "Person" else "alt_names"
+        names = obj.get(lst) or []
+        found = [n for n in names if self._alt_matches(n, cls, f)]
+        if len(found) > 1:
+            raise Conflict(f"{cls} {self.label(obj)} has {len(found)} other names that match; give more fields")
+        if not found:
+            self._absent(op, f"{cls} {self.label(obj)} has no other name that matches")
+            return
+        before = copy.deepcopy(obj)
+        obj[lst] = [n for n in names if n is not found[0]]
+        self.save(before, obj)
+
+    def set_external_id(self, op):
+        """The id an outside tree gives this person or record. FamilySearch's goes in the attribute _FSFTID, where
+        Gramps' FamilySearch support and its GEDCOM export read it; any other system in an attribute "<system> ID", and with `url` a link on
+        a person or repository too. Another id of the same system already there is a conflict, never replaced."""
+        cls, ref = _parse_target(op["target"])
+        target = self.obj(cls, ref)
+        target.setdefault("_class", cls)
+        system, value = op["system"].strip(), op["id"].strip()
+        atype = FAMILYSEARCH if _is_familysearch(system) else f"{system} ID"
+        if atype == FAMILYSEARCH:
+            value = value.upper()
+        before = copy.deepcopy(target)
+        attrs = target.get("attribute_list") or []
+        other = [a.get("value") for a in attrs if str(a.get("type")) == atype and a.get("value") != value]
+        if other:
+            raise Conflict(f"{cls} {self.label(target)} already has {atype} = {other[0]!r}; check which is right "
+                           "(set_attribute replaces it)")
+        if not any(str(a.get("type")) == atype for a in attrs):
+            attr_cls = "SrcAttribute" if cls in ("Citation", "Source") else "Attribute"
+            target["attribute_list"] = [*attrs, {"_class": attr_cls, "type": atype, "value": value}]
+        if op.get("url") and not any(u.get("path") == op["url"] for u in target.get("urls") or []):
+            target["urls"] = [*(target.get("urls") or []), {"_class": "Url", "path": op["url"], "type": "Web Home",
+                                                            "desc": f"{system} {value}"}]
+        if target == before:
+            self.skip_noop(f"skip: {cls} {self.label(target)} already has {atype} = {value!r}")
+            return
+        self.save(before, target)
+
+    def update_media(self, op):
+        """Description, date, path, private, and the file itself. A new file needs `expect`, the MD5 the media
+        object has now: the server checks it too (If-Match), so a file someone replaced since is a conflict. The
+        server stores the new file under its own name and sets path and MIME type."""
+        media = self.obj("Media", op["media"])
+        media.setdefault("_class", "Media")
+        s, label = op["set"], self.label(media)
+        if "file" in s:
+            data = Path(s["file"]).read_bytes()
+            new = hashlib.md5(data).hexdigest()
+            mime = mimetypes.guess_type(s["file"])[0]
+            if not mime:
+                raise Conflict(f"cannot tell the MIME type of {s['file']}")
+            if media.get("checksum") != new:
+                if media.get("checksum") != op["expect"]:
+                    raise Conflict(f"Media {label} no longer holds the file with MD5 {op['expect']} (it holds "
+                                   f"{media.get('checksum')}); read it again")
+                outcome = self.c.replace_file(media["handle"], data, mime, op["expect"])
+                self.actions.append(f"file: {outcome} (MD5 {op['expect']} -> {new})")
+                self.reasons.append(f"differs: Media {label} checksum {op['expect']!r} != {new!r}")
+                self.wrote = True
+                if not self.c.dry_run:
+                    media = self.c.get("Media", media["handle"])
+                    media.setdefault("_class", "Media")
+        before = copy.deepcopy(media)
+        if "desc" in s:
+            media["desc"] = s["desc"]
+        if "path" in s:
+            media["path"] = s["path"].strip()
+        if "date" in s and date_key(media.get("date")) != date_key(parse_date(s["date"])):
+            media["date"] = parse_date(s["date"])
+        self._private(media, s)
+        if media != before:
+            self.save(before, media)
+        elif not self.wrote:
+            self.skip_noop(f"skip: Media {label} already has those values")
+
+
+NAMESPACE_CLASSES = ("Person", "Family", "Event", "Place", "Citation", "Source", "Repository", "Media", "Note", "Tag")
+
+
+def ops_table() -> dict[str, dict[str, list[str]]]:
+    """Every op with its required and optional fields; `key` and `ruling` go on every op, and so may `tag`."""
+    return {name: {"required": sorted(req), "optional": sorted(opt | {"tag"})} for name, (req, opt) in sorted(SPECS.items())}

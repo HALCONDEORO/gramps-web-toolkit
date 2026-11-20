@@ -118,6 +118,16 @@ Two shared files keep parallel agents from paying twice:
 - **The ledger** ([`ledger/`](https://github.com/HALCONDEORO/gramps-web-toolkit/tree/main/ledger)): every agent checks it before a search and appends after, negatives included. A negative leaves nothing in the tree, so without the ledger nobody knows it was done.
 - **The cache** ([`fscache/`](https://github.com/HALCONDEORO/gramps-web-toolkit/tree/main/fscache)): every good API answer is kept on disk. A repeated request costs no network call and no rate budget. Errors and blocks are never cached.
 
+## Source images live in the bucket
+
+A research repo that commits every scanned page slows every `git status`, commit and backup, because each one walks thousands of images. Keep the images in an S3-compatible bucket with [gwt-rawstore](rawstore.md) and only its `rawstore.tsv` manifests in git:
+
+1. New downloads: `gwt-fetch iiif URL --out raw/<folder> --rawstore`. Each image goes to the bucket and is deleted locally once the bucket confirms it; a later run of the same command skips it.
+2. Images already committed: on a full clone (a server is a good place), `gwt-rawstore migrate raw --evict`, review `git status`, commit. History is not rewritten.
+3. Pull that commit on the laptop. Git deletes the untracked images there and keeps the manifests, so no sparse-checkout rule is needed; `gwt-rawstore get <path|sha256>` fetches any one image when you need to read it.
+
+After the migration git ignores new images in those folders, so a scan saved without `--rawstore` is neither committed nor stored; sweep with `gwt-rawstore put --remove raw`.
+
 ## Rate-limit gates
 
 Every lane that touches a rate-limited site goes through one shared gate ([`gate/`](https://github.com/HALCONDEORO/gramps-web-toolkit/tree/main/gate), [gwt-gate](gate.md)):
@@ -165,3 +175,13 @@ The judge starts the next round by reading:
 - how far back each branch of each tree reaches.
 
 Branches that reach the fewest generations get more lanes. Each round also has fixed lanes: property and wills per tree, missing civil death records for direct ancestors, and a coverage lane per tree that works the empty cells of the source-coverage table.
+
+## The repo every lane shares
+
+Many lanes read and commit to one research repo, often a `blob:none` partial clone. Three habits keep it from filling the disk ([hard-won.md](hard-won.md#git-and-disk), lessons 56 to 57):
+
+- Every agent runs with `GIT_NO_LAZY_FETCH=1`, so a command that would download history fails instead. `checkout`, `switch` and `pull` then need the batch prefetch after each `git fetch` (lesson 57).
+- Lanes read a fresh file over the forge's raw URL, or the main thread fetches what changed in one batch; never one `git show origin/main:<path>` per read.
+- Packs are merged only with `git repack --geometric=2 -d`, then `git multi-pack-index write`, at a quiet time.
+
+Run `gwt-rawstore doctor` at the start of each round ([rawstore.md](rawstore.md#repo-health-doctor)). It never fetches, and it exits 1 when packs, lazy fetching, tracked binaries, scratch or caches, or Time Machine need attention.

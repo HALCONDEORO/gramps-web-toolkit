@@ -1,0 +1,3 @@
+#!/usr/bin/env python3
+from gwt_genae_act_link import main
+raise SystemExit(main())

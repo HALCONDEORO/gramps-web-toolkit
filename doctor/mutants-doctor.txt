@@ -1,0 +1,20 @@
+# Mutations the doctor tests must catch. One row each: file | exact text | replacement | why
+# The text must occur exactly once in the file. All rows are killed by NoParserTests/EntryParsingTests, which run on every Python (3.10 too).
+gwt_install_doctor.py | if Path(rel).is_absolute(): | if False: | an absolute path, even one inside the root, is refused
+gwt_install_doctor.py | target.relative_to(root.resolve()) | target.relative_to(root.resolve().parent) | a path that leaves the root is refused, not only one that leaves its parent
+gwt_install_doctor.py | if not sep or _valid_module(mod) is None or _valid_module(func) is None: | if not sep or _valid_module(mod) is None: | an entry point with an empty or non-identifier function is a bad entry
+gwt_install_doctor.py | mod, func = mod.strip(), func.strip() | mod, func = mod, func | blanks around an entry point module and function are ignored
+gwt_install_doctor.py | if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)): | if isinstance(node, (ast.FunctionDef, ast.ClassDef)): | an async function is a statically defined entry point
+gwt_install_doctor.py | (a.asname or a.name.split(".")[0]) == name | a.name.split(".")[0] == name | an import alias binds the name an entry point can use
+gwt_install_doctor.py | node.level == 0 and node.module: | node.module: | a relative import is local, never a third-party import root
+gwt_install_doctor.py | for ch in " ;[<>=!~(@": | for ch in " ;[<>=!~(": | a direct-URL requirement (name@url) is reduced to its name
+gwt_install_doctor.py | for lvl in ("error", "warning", "unknown"): | for lvl in ("error", "unknown"): | a script with only warnings has status warning
+gwt_install_doctor.py | used = sorted(p for p in pkgs if p in seen_imports) | used = sorted(pkgs) | an extra lists only the packages that scripts import
+gwt_install_doctor.py | mod in seen and mod not in declared and mod not in local | mod in seen and mod not in local | an optional import already declared as a dependency is not reported
+gwt_install_doctor.py | real.relative_to(root.resolve()) | real.relative_to(root.resolve().parent) | a module file whose symlink target leaves the root is ignored
+gwt_install_doctor.py | return parts if all(p.isidentifier() for p in parts) else None | return parts | a dotted module name with a non-identifier component is invalid
+gwt_install_doctor.py | return "dynamic" if _dynamic_module(tree) else "no" | return "no" | a missing name in a module with star imports or __getattr__ is dynamic (unknown), not missing
+gwt_install_doctor.py | any(a.name == "*" for a in node.names) | any(a.name == "?" for a in node.names) | a star import marks the module as dynamic
+gwt_install_doctor.py | _scan_binding(tree, "__getattr__") == "yes" | _scan_binding(tree, "__getattr__") != "yes" | a module-level __getattr__ marks the module as dynamic
+gwt_install_doctor.py | if kind == "strtable" and not all(isinstance(x, str) for x in v.values()): | if False: | a string-table whose values are not all strings is a bad shape
+gwt_install_doctor.py | if i < len(path) - 1 and not isinstance(cur, dict): | if False: | a non-table intermediate key (e.g. tool = 1) is reported as a bad shape

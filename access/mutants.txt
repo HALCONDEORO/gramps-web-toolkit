@@ -1,0 +1,9 @@
+# file | exact text | replacement | why
+gwt_access.py | if lo > hi: | if False: | reversed source ranges are rejected
+gwt_access.py | if row["status"] not in COVERAGE_STATUSES: | if False: | unsupported availability cannot become a status
+gwt_access.py | datetime.date.fromisoformat(row["checked"]) | pass | invalid calendar dates are rejected
+gwt_access.py | row["parish"] == parish and row["record_type"] == record_type | row["parish"].casefold() == parish.casefold() and row["record_type"] == record_type | parish queries match exact names
+gwt_access.py | and lo <= year_to and hi >= year_from | and lo < year_to and hi > year_from | inclusive single-year endpoints are retained
+gwt_access.py | if r["year_from"] <= year <= r["year_to"] | if r["year_from"] <= year < r["year_to"] | the final year is not lost
+gwt_access.py | or year_to - year_from + 1 > COVERAGE_MAX_SPAN | or False | large query spans cannot grow output without a bound
+gwt_access.py | sources.add(tuple(row[c] for c in COVERAGE_COLS)) | pass | explicit provenance is retained

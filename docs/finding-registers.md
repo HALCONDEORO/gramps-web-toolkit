@@ -23,6 +23,8 @@ Order to try:
 
 Civil registers (état civil) are put online by each departmental archive on its own site. [FranceArchives, "État civil numérisé"](https://francearchives.gouv.fr/fr/article/38170) is the official entry point; it does not promise that every department or period is online, so check each archive.
 
+For which books are online and which indexes cover them in the departments this project has worked in, see [France: indexed registers](france-registers-indexed.md).
+
 For a wider view there is a dataset on data.gouv.fr, [Principaux corpus d'archives numérisés et mis en ligne par les Archives départementales](https://www.data.gouv.fr/datasets/principaux-corpus-darchives-numerises-et-mis-en-ligne-par-les-archives-departementales). It is not an official or governmental source and is not exhaustive: a contributor published it (Maïwenn Bourdic, updated 15 October 2025). Use it to find leads and confirm on the archive's own site. Record each archive's viewer, captcha and index with [gwt-access](access.md).
 
 ## Recording what you find

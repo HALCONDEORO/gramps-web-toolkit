@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import hashlib
 import json
 import os
 import time
@@ -126,6 +127,7 @@ class Client:
         # lines before that wait in `_pending_log`, so a run that never logs in leaves no file.
         self._log_path = log_path
         self._log = None
+        self._log_durable = False
         self._log_ready = False
         self._pending_log: list[dict] = []
         self.run_info: dict = {}
@@ -143,6 +145,37 @@ class Client:
     def _write(self, entry: dict) -> None:
         self._log.write(json.dumps(entry, ensure_ascii=False) + "\n")
         self._log.flush()
+        os.fsync(self._log.fileno())
+        if not self._log_durable:
+            self._fsync_dir(os.path.dirname(os.path.abspath(self._log_path)))
+            self._log_durable = True
+
+    @staticmethod
+    def _fsync_dir(path: str) -> None:
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    def _ensure_log_parent(self) -> None:
+        # Persist every directory entry in a newly made path, not just the file contents.
+        parent = os.path.dirname(os.path.abspath(self._log_path))
+        chain = []
+        while True:
+            chain.append(parent)
+            above = os.path.dirname(parent)
+            if above == parent:
+                break
+            parent = above
+        for directory in reversed(chain):
+            try:
+                os.mkdir(directory, 0o700)
+            except FileExistsError:
+                if not os.path.isdir(directory):
+                    raise
+        for directory in chain:  # child first, through the existing root anchor
+            self._fsync_dir(directory)
 
     def log(self, **entry):
         if not self._log_path:
@@ -158,8 +191,9 @@ class Client:
         """Once the run is in: open the log with its `start` line, then the lines held back until now."""
         if not self._log_path or self._log is not None or not self._log_ready:
             return
-        os.makedirs(os.path.dirname(os.path.abspath(self._log_path)), exist_ok=True)
-        self._log = open(self._log_path, "x", encoding="utf-8")
+        self._ensure_log_parent()
+        fd = os.open(self._log_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        self._log = os.fdopen(fd, "w", encoding="utf-8")
         self._write(self._stamp({"event": "start", **self.run_info, "tree": self.tree}))
         for entry in self._pending_log:
             self._write(entry)
@@ -221,7 +255,7 @@ class Client:
     def _snapped(self, cls: str, handle: str) -> bool:
         return self.snapshot is not None and cls not in self.unsnapped and (cls, handle) not in self.stale
 
-    def _request(self, method: str, path: str, *, write: bool = False, **kw):
+    def _request(self, method: str, path: str, *, write: bool = False, record: dict | None = None, **kw):
         if self.offline:
             raise ApiError(f"{method} {path}: a dry run on a snapshot does not reach the server")
         if self.token is None:
@@ -237,7 +271,8 @@ class Client:
             except (requests.ConnectionError, requests.Timeout) as exc:
                 # the write may or may not have happened: the op starts over from fresh reads. The body goes in the
                 # log line, so a revert can tell whether the server holds it.
-                entry = {"method": method, "path": path, "status": None, "error": f"{type(exc).__name__}: {exc}"[:500]}
+                entry = {"method": method, "path": path, "status": None, "error": f"{type(exc).__name__}: {exc}"[:500],
+                         **({"object": record} if record is not None else {})}
                 if write and "json" in kw:
                     entry["body"] = kw["json"]
                 self.log(**entry)
@@ -249,7 +284,7 @@ class Client:
                 self.login()
                 continue
             break
-        entry = {"method": method, "path": path, "status": r.status_code}
+        entry = {"method": method, "path": path, "status": r.status_code, **({"object": record} if record is not None else {})}
         if write and "json" in kw:
             entry["body"] = kw["json"]
             if method == "POST" and path == "/objects/" and r.status_code == 201:
@@ -282,6 +317,7 @@ class Client:
             if obj is None:
                 return None
             obj = copy.deepcopy(obj)
+            obj["_read"] = json.dumps(obj, sort_keys=True)  # full preimage, including same-second edits
             obj["_snap"] = obj.get("change")  # what `update` compares with the server
             return obj
         return self.get_live(cls, handle)
@@ -369,7 +405,7 @@ class Client:
 
     def _read_list(self, cls: str, keys: list[str]) -> list[dict]:
         """One class's list with only `keys`: from the snapshot when there is one, else from the server."""
-        if self.snapshot is not None:
+        if self.snapshot is not None and cls not in self.unsnapped:
             return [{k: o.get(k) for k in ["handle", *keys]} for o in self.snapshot.get(cls, {}).values()]
         r = self._request("GET", f"/{NAMESPACE[cls]}/", params={"keys": ",".join(["handle", *keys])})
         if r.status_code != 200:
@@ -429,53 +465,96 @@ class Client:
             members += [r.get("ref") for r in obj.get("child_ref_list") or []]
             self.stale |= {("Person", h) for h in members if h}
 
-    def update(self, obj: dict) -> None:
-        """PUT the whole object back, if it still is what the op read.
+    @staticmethod
+    def _update_state(obj: dict) -> dict:
+        """Canonical semantic object for readback; Gramps class tags are transport metadata."""
+        def clean(value):
+            if isinstance(value, dict):
+                return {k: clean(v) for k, v in value.items() if k != "_class"}
+            if isinstance(value, list):
+                return [clean(v) for v in value]
+            return value
+        return clean({k: v for k, v in obj.items()
+                      if k not in ("change", "_read", "_snap", "extended", "profile", "backlinks")})
 
-        The ETag a GET returns cannot be used as If-Match: PUT compares it with a
-        hash of the stored object, while a GET's ETag hashes the response body (up
-        to Gramps Web API 3.23.x) or the request cache key (3.24.0 on), so If-Match
-        always answers 412. Instead the object is read again right before the PUT.
+    def update(self, obj: dict) -> None:
+        """Recheck, persist preimage, PUT, read back. This is not atomic compare-and-swap.
+
+        The GET ETag is not the stored-object hash that PUT's If-Match expects. API3.25.1
+        validates that header before DbTxn anyway. A concurrent writer can still race this
+        read/PUT: callers must choose an appropriate operational window and reviewed scope.
+        Normal CLI writes always supply a private durable log; direct library callers must
+        supply log_path for persistent preimages. No credentials are added to these records.
         """
         cls = obj["_class"]
         self._touched(cls, obj["handle"])
-        body = {k: v for k, v in obj.items() if k not in ("_read", "_snap", "extended", "profile")}
+        body = {k: v for k, v in obj.items() if k not in ("_read", "_snap", "extended", "profile", "backlinks")}
+        path = f"/{NAMESPACE[cls]}/{obj['handle']}"
         if self.dry_run:
             self.pending[(cls, obj["handle"])] = copy.deepcopy(body)
-            self.log(method="PUT", path=f"/{NAMESPACE[cls]}/{obj['handle']}", body=body, planned=True)
+            self.log(method="PUT", path=path, body=body, planned=True)
             return
-        if "_snap" in obj:
-            live = self.get_live(cls, obj["handle"])
-            if live is None or live.get("change") != obj["_snap"]:
-                raise Stale(f"{cls} {obj.get('gramps_id') or obj['handle']} changed since the snapshot; take a new one")
-        elif "_read" in obj:
-            fresh = self.get_live(cls, obj["handle"])
-            if fresh is None or fresh["_read"] != obj["_read"]:
-                raise Retryable(f"update {cls} {obj['handle']}: changed since read")
+        fresh = self.get_live(cls, obj["handle"])
+        if fresh is None:
+            raise Stale(f"{cls} {obj['handle']} disappeared before update")
+        if "_snap" in obj and fresh.get("change") != obj["_snap"]:
+            raise Stale(f"{cls} {obj.get('gramps_id') or obj['handle']} changed since the snapshot; take a new one")
+        if "_read" in obj and self._update_state(fresh) != self._update_state(json.loads(obj["_read"])):
+            raise Retryable(f"update {cls} {obj['handle']}: changed since read")
+        before = {k: v for k, v in fresh.items() if k != "_read"}
+        self.log(event="update-preimage", path=path, before=before, intended=body,
+                 before_sha256=hashlib.sha256(json.dumps(before, sort_keys=True).encode()).hexdigest())
         self._wrote(cls, body)
-        r = self._request("PUT", f"/{NAMESPACE[cls]}/{obj['handle']}", write=True, json=body)
+        try:
+            r = self._request("PUT", path, write=True, json=body)
+        except Retryable as exc:
+            # Reconcile once before the caller can retry an operation. Never resend here.
+            try:
+                now = self.get_live(cls, obj["handle"])
+            except ApiError as read_exc:
+                self.log(event="update-reconciliation", path=path, state="unknown-unreadable")
+                raise ApiError("update result unknown and readback unavailable; inspect before retry") from read_exc
+            if now is not None and self._update_state(now) == self._update_state(body):
+                self.log(event="update-reconciliation", path=path, state="landed", after=now)
+                # Retain the established op-level answer_lost reporting and idempotence path.
+                raise exc
+            if now is not None and self._update_state(now) == self._update_state(before):
+                self.log(event="update-reconciliation", path=path, state="unchanged", after=now)
+                raise exc
+            self.log(event="update-reconciliation", path=path, state="diverged", after=now)
+            raise ApiError("update result differs from both preimage and intended object; no automatic retry") from exc
         if r.status_code != 200:
             raise ApiError(f"update {cls}: HTTP {r.status_code} {r.text[:300]}", r.status_code)
+        try:
+            after = self.get_live(cls, obj["handle"])
+        except ApiError as exc:
+            self.log(event="update-readback", path=path, state="unknown-unreadable")
+            raise ApiError("PUT succeeded but readback unavailable; inspect before retry") from exc
+        if after is None or self._update_state(after) != self._update_state(body):
+            self.log(event="update-readback", path=path, state="mismatch", after=after)
+            raise ApiError("PUT succeeded but readback differs from intended object; no automatic retry")
+        self.log(event="update-readback", path=path, state="verified", after=after)
         self.written[(cls, obj["handle"])] = copy.deepcopy(body)
 
-    def delete(self, cls: str, handle: str) -> None:
-        """DELETE one object: the lock note, and what `remove` deletes."""
+    def delete(self, cls: str, handle: str, record: dict | None = None) -> None:
+        """DELETE one object: the lock note, and what `remove` deletes. `record` (the whole object) goes in the log
+        line, so --revert can make it again."""
         if self.dry_run:
             raise ApiError("delete in a dry run")
-        r = self._request("DELETE", f"/{NAMESPACE[cls]}/{handle}", write=True)
+        r = self._request("DELETE", f"/{NAMESPACE[cls]}/{handle}", write=True, record=record)
         if r.status_code not in (200, 404):
             raise ApiError(f"delete {cls} {handle}: HTTP {r.status_code} {r.text[:300]}", r.status_code)
         self.written.pop((cls, handle), None)
         self._handles.get(cls, set()).discard(handle)
 
-    def remove(self, cls: str, handle: str) -> None:
+    def remove(self, cls: str, handle: str, record: dict | None = None) -> None:
         """DELETE an object an op has emptied of references. A dry run only marks it as gone."""
         self.deleted.add((cls, handle))
         if self.dry_run:
             self.log(method="DELETE", path=f"/{NAMESPACE[cls]}/{handle}", planned=True)
             return
         try:
-            self.delete(cls, handle)
+            self.delete(cls, handle, record)
         except Retryable:
             # like a lost merge: the object may still be there, so the retry asks the server
             self.deleted.discard((cls, handle))
@@ -499,8 +578,11 @@ class Client:
         if self.dry_run:
             self.log(method="POST", path=path, body=body or {}, planned=True)
             return
-        # a merge rewrites people, families and notes that pointed at the loser: stop trusting the snapshot for them
-        self.unsnapped |= {"Person", "Family", "Note"} | ({"Citation"} if cls == "Source" else set())
+        # a merge rewrites people, families and notes that pointed at the loser: stop trusting the snapshot for them;
+        # a place, source or citation can be pointed at from any class
+        self.unsnapped |= {"Person", "Family", "Note"} if cls in ("Person", "Family", "Event") else set(NAMESPACE)
+        if cls == "Place":
+            self._lists = {k: v for k, v in self._lists.items() if k[0] not in ("Place", "Event")}
         self.stale |= {(cls, winner), (cls, loser)}
         try:
             r = self._request("POST", path, write=True, json=body or {})
@@ -533,3 +615,21 @@ class Client:
         if r.status_code == 409:
             return "file already on server"
         raise ApiError(f"upload {handle}: HTTP {r.status_code} {r.text[:300]}", r.status_code)
+
+    def replace_file(self, handle: str, data: bytes, mime: str, expect: str) -> str:
+        """Replace the file of a media object (PUT /media/<handle>/file). If-Match carries the MD5 the object must
+        still have, so the server refuses a file someone replaced since (412). The server stores the new file under
+        its own name and updates checksum, path and MIME type."""
+        if self.dry_run:
+            self.log(method="PUT", path=f"/media/{handle}/file", planned=True)
+            return "would replace"
+        self.stale.add(("Media", handle))
+        r = self._request("PUT", f"/media/{handle}/file", write=True, data=data,
+                          headers={"Content-Type": mime, "If-Match": expect})
+        if r.status_code == 200:
+            return "replaced"
+        if r.status_code == 409:
+            return "file already on server"
+        if r.status_code == 412:
+            raise ApiError(f"replace the file of Media {handle}: it no longer has MD5 {expect}", 412)
+        raise ApiError(f"replace the file of Media {handle}: HTTP {r.status_code} {r.text[:300]}", r.status_code)

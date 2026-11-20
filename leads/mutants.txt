@@ -1,11 +1,83 @@
-gwt_leads.py | if gap is None or not | if not | only a link no record fully supports is listed, never one a birth record names both parents for
+gwt_leads.py | if gap is None: | if False: | only a link no record fully supports is listed, never one a birth record names both parents for
 gwt_leads.py | if 'unsupported-link' in kinds and not args.links: | if False: | the unsupported-link kind without --links stops, never an empty list
 gwt_leads.py | if args.links and 'unsupported-link' not in kinds: | if False: | --links alone turns the unsupported-link kind on
 gwt_leads.py | if row['level'] not in LINK_GAPS and row['level'] not in LINK_NOT_GAPS: | if False: | a level gwt-leads does not know stops the run, never drops its rows in silence
 gwt_leads.py | if p and c.get('ref') == p['handle']), None) | if p), None) | a report row whose child is not in that family in this dump is caught as a stale or foreign report
-gwt_leads.py |         if stale: |         if False: | a stale or foreign report stops with exit 2 instead of queueing tasks for whoever holds those ids now
+gwt_leads.py | if stale: | if False: | a stale or foreign report stops with exit 2 instead of queueing tasks for whoever holds those ids now
 gwt_leads.py | not (is_birth_relation(ref.get('frel')) and is_birth_relation(ref.get('mrel'))) | False | an adoptive, step or foster link is never a birth-record gap
 gwt_leads.py | for k in ('father_handle', 'mother_handle')) < 2: | for k in ('father_handle', 'mother_handle')) < 0: | a record naming the only parent a family has is full support, not a gap
 gwt_leads.py | row['kind'] in ('uncited', 'unsupported-link') | row['kind'] in ('uncited',) | an unsupported link is record work (a verify task), never folded into the person's search task
 gwt_leads.py | why == 'private') | why == 'living') | the held-back note counts the private records apart from the people who may be living
 gwt_leads.py | LINK_NOT_GAPS = ('the link itself is cited', | LINK_NOT_GAPS = ( | a cited link is a level gwt-check links writes, so a report with one is read, not refused as unknown
+gwt_leads.py | folded = [fold(n) for n in chain] | folded = [fold(n) for n in chain[:2]] | --archives matches every level of the event's place, so a country row matches, not just the two levels of bp
+gwt_leads.py | next((archives[n] for n in folded if n in archives), None) | next((archives[n] for n in reversed(folded) if n in archives), None) | the deepest matching level wins over a row higher up, whatever the file order
+gwt_leads.py | index.setdefault(fold(row['match']), {'archive' | index.__setitem__(fold(row['match']), {'archive' | between rows of the same name the first row in the file wins
+gwt_leads.py | text = ''.join(c for c in text if not unicodedata.combining(c)) | pass | archive names compare with accents folded, like the ledger
+gwt_leads.py | return year(ev) if (d.get('modifier') or 0) in (0, 3) else None | return year(ev) | a before, after or range year leaves online unknown, never a guess
+gwt_leads.py | if not ev or ev.get('private') is True: | if not ev: | a private event never gets an archive hint
+gwt_leads.py | return death(T, p) | return birth_dated(T, p) | a death gap asks for the death record, its place and its year
+gwt_leads.py | if missing or unknown: | if missing: | an unknown column in the archives file exits 2
+gwt_leads.py | bad = [f for f, spec, conv in fields if f not in URL_FIELDS or spec or conv] | bad = [] | a url placeholder other than {place} and {year} exits 2
+gwt_leads.py | if access not in ACCESS: | if False: | an access value outside online, browser, letter, unknown exits 2
+gwt_leads.py | if not m or int(m.group(2) or m.group(1)) < int(m.group(1)): | if not m: | a backwards years range exits 2
+gwt_leads.py | if None in row: | if False: | a row with more cells than the header exits 2, never drops the extra cell
+gwt_leads.py | access = row.get('access') or 'unknown' | access = row.get('access') | an empty or missing access reads as unknown
+gwt_leads.py | if where: | if True: | without --archives, or without a match, a row has no where key: json output is unchanged
+gwt_leads.py | if wheres: | if False: | a matched gap puts a where part in the queue note
+gwt_leads.py | if g.get('where') and g['where'] not in wheres: | if g.get('where'): | a task of several gaps on the same record lists that hint once
+gwt_leads.py | return fact_note({k: v for k, v in shown.items() if v not in (None, '')}) | return fact_note(shown) | an empty value or an unknown online is left out of the note
+gwt_leads.py | next((archives[n] for n in folded if n in archives), None) | next((r for m, r in archives.items() if m in folded), None) | a gap looks up each level of its place, never scans every row of a commune-sized file
+gwt_leads.py | delimiter='\t', quoting=csv.QUOTE_NONE) | delimiter='\t') | a quote in the archives file is a character: a stray one never swallows the rows after it
+gwt_leads.py | if repeated: | if False: | a column named twice in the archives header exits 2, never keeps the last cell in silence
+gwt_leads.py | unknown = [c or '(empty)' for c in header | unknown = [c for c in header | an empty header cell is named in the message, not left blank
+gwt_leads.py | open(real, encoding='utf-8-sig', newline='') | open(real, encoding='utf-8', newline='') | an archives file saved with a byte-order mark reads its first column
+gwt_leads.py | header = [h.strip() for h in reader.fieldnames or []] | header = list(reader.fieldnames or []) | spaces around a column name in the archives header do not count
+gwt_leads.py | row = {k: (v or '').strip() for k, v in row.items()} | row = {k: (v or '') for k, v in row.items()} | spaces around an archives cell do not count
+gwt_leads.py | gap.startswith(('birth-', 'link-')) | gap.startswith(('birth-',)) | an unsupported link asks for the child's birth record
+gwt_leads.py | if not fold(row['match']) or not row['archive']: | if not fold(row['match']): | an archives row with an empty archive exits 2
+gwt_leads.py | or spec or conv] | or conv] | a url placeholder with a format spec exits 2
+gwt_leads.py | if f is not None] | ] | a url with text after its last placeholder, or none at all, loads
+gwt_leads.py | quote(chain[0], safe='') | quote(chain[0]) | a slash in a place name is encoded in the url, never a path step
+gwt_leads.py | any(a <= y <= b for a, b in row['years']) | any(a < y < b for a, b in row['years']) | a years range includes its ends, so a single year is a range of one
+gwt_leads.py | m = re.fullmatch(r'(\d{1,4})(?: | m = re.match(r'(\d{1,4})(?: | a years cell with junk after the year (1850s) exits 2
+gwt_leads.py | elif y is not None and row['years'] and not any(lo <= y <= hi for lo, hi in row['years']): | elif False: | a catalogue row whose years exclude the event's year gives no hint and is listed outside
+gwt_leads.py | return urllib.parse.quote(str(v), safe='') | return str(v) | a catalogue url encodes every value, so a space or an & in a name never breaks the query
+gwt_leads.py | if want not in row['record_types']: | if False: | a catalogue row that does not hold the record asked for (a census for a birth) is never a hint
+gwt_leads.py | if row['coverage'] and not row['coverage'] & set(levels): | if False: | a row whose coverage_places miss the event's place is listed outside, never a hint
+gwt_leads.py | for name in levels + ['*']: | for name in levels: | the world rows (match *) are hints for any place, after the rows of the place itself
+gwt_leads.py | for w in g.get('also', [])[:NOTE_HINTS - 1]: | for w in g.get('also', []): | a queue note carries at most three catalogue hints per record
+gwt_leads.py | 'online': False if row['access'] != 'online' else None if y is None else True, | 'online': None if y is None else True, | a catalogue source reached by letter, login or payment is never called online
+gwt_leads.py | r'\1-9999', text.strip())) | r'\1', text.strip())) | an open years end (1871-) runs to today, not just its first year
+gwt_leads.py | if row['access'] not in CATALOGUE_ACCESS or row['robots'] not in CATALOGUE_ROBOTS: | if False: | a catalogue access or robots value outside its list stops the load
+gwt_leads.py | bad = [f for f, spec, conv in fields if spec or conv or f not in CATALOGUE_URL_FIELDS] | bad = [] | a catalogue url placeholder outside the known seven stops the load
+gwt_leads.py | if not lines or tuple(lines[0].split('\t')) != CATALOGUE_COLUMNS: | if not lines: | a catalogue file whose header is not exactly the catalogue columns stops the load
+gwt_leads.py | if len(cells) != len(CATALOGUE_COLUMNS): | if False: | a catalogue row with a cell too many or too few stops the load
+gwt_leads.py | or (row['match_level'] == 'world') != (folded == ['*']): | : | match * goes with match_level world and nothing else
+gwt_leads.py | if not all(folded) or len(set(folded)) != len(folded): | if not all(folded): | a catalogue match naming the same place twice (once folded) stops the load
+gwt_leads.py | or not set(types) <= set(RECORD_TYPES) or len(set(types)) != len(types): | : | a record type outside the list, or one named twice, stops the load
+gwt_leads.py | if not re.fullmatch(r'(\d{4})?', row['civil_start']): | if False: | a civil_start that is not a year stops the load
+gwt_leads.py | datetime.date.fromisoformat(row['tested']) | pass | a tested cell that is not a date stops the load
+gwt_leads.py | if any(v != v.strip() for v in cells): | if False: | a catalogue cell with spaces around it stops the load
+gwt_leads.py | if row['url'] and not row['url'].startswith(('https://', 'http://')): | if False: | a catalogue url that is not a web address stops the load
+gwt_leads.py | if not asked or unknown: | if unknown: | --archives builtin: with no code stops with the codes there are
+gwt_leads.py | builtin = (args.archives or '').startswith(BUILTIN) | builtin = False | --archives builtin:CC reads the shipped catalogue, never a file of that name
+gwt_leads.py | ok = status is not None and 200 <= status < 400 | ok = status is not None | the probe dates only a url that answered 2xx or 3xx
+gwt_leads.py | if status in (405, 501): | if False: | the probe retries with GET when a server refuses HEAD
+gwt_leads.py | if not robots[host][0].can_fetch(PROBE_AGENT, url): | if False: | the probe never requests a path robots.txt forbids
+gwt_leads.py | rp.disallow_all = True | rp.allow_all = True | a robots.txt that errors or does not answer forbids the whole host
+gwt_leads.py | if host not in robots: | if True: | the probe fetches robots.txt once per host
+gwt_leads.py | read_catalogue(path)  # a bad file stops here, before any request | pass | a bad catalogue file stops the probe before any request
+gwt_leads.py | if args.delay < 1: | if False: | the probe never waits less than a second between requests
+gwt_leads.py | follow = url.endswith('/robots.txt') | follow = False | a robots.txt that redirects is followed, so a host that moved it is not read as forbidding everything
+gwt_leads.py | if follow else (_NoRedirect,) | if True else (_NoRedirect,) | the probe never follows a redirect from the url it checks: a 3xx is the answer
+gwt_leads.py | if row.get('home') is not None and named & row['countries'] and not named & row['home']: | if False: | a region row of one country never fits a same-name place in another country (Barcelona, Venezuela)
+gwt_leads.py | key=lambda r: CATALOGUE_ACCESS.index(r['access'])): | key=lambda r: 0): | rows of one level go by access, so an online source comes before one reached in person
+gwt_leads.py | if not world:  # Yad Vashem's years say nothing about an 1890 death | if True: | a world row whose years miss the event is no hint and is never listed outside
+gwt_leads.py | OSError, ValueError, http.client.HTTPException) as exc: | OSError, ValueError) as exc: | a server that answers a broken status line is a failed url, not a probe crash
+gwt_leads.py | why = 'robots.txt %s' % (status if status is not None else text[:80]) | pass | a robots.txt that errors prints its status, so it never reads as a real Disallow
+gwt_leads.py | if code != 'XX' and row['match_level'] in ('region', 'place'): | if row['match_level'] in ('region', 'place'): | a several-country (XX) row is never refused as a namesake of another country
+gwt_leads.py | if id(row) not in seen: | if True: | a row whose names match two levels of the place (Paris, Seine) is one hint, not two
+gwt_leads.py | cover = [fold(c) for c in row['coverage_places'] | cover = [c for c in row['coverage_places'] | coverage_places match the place whatever its case or accents
+gwt_leads.py | if not ev or ev.get('private', False) is True: | if not ev: | a private event never gets a catalogue hint
+gwt_leads.py | if w not in wheres: | if True: | a hint shared by two gaps of one task is named once in its queue note
+gwt_leads.py | for name in ('archives', 'gwt_leads_archives'): | for name in ('archives',): | the catalogue is found beside an installed module, where the wheel puts it as gwt_leads_archives

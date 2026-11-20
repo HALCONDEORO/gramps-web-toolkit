@@ -29,7 +29,7 @@ gwt_apply/ops.py | if name == "merge_person" and set(op.get("use_loser") or []) 
 
 The four fields are the file (relative to the package), the exact text to replace (it must occur exactly once), the replacement, and what the guard protects. `python3 .github/scripts/run_tests.py --mutants [--only PKG]` copies the package to a scratch folder once per row, applies the replacement, and runs the package's tests there. The run fails when a mutant survives (the tests still pass), or when a row's text is not found.
 
-When you add a guard, add its row and a test that fails with the row applied. CI runs the mutants of every package a pull request touches, and all of them on a push to `main` or when a pull request changes `.github/`.
+Rows can also go in `<pkg>/mutants.d/*.txt`, same format, read after `mutants.txt` in name order; a new gwt-read source puts its rows in `read/mutants.d/<id>.txt`, so changes made at the same time never edit one file. When you add a guard, add its row and a test that fails with the row applied. CI runs the mutants of every package a pull request touches, and all of them on a push to `main` or when a pull request changes `.github/`.
 
 ## Releases and the changelog
 
@@ -41,11 +41,12 @@ Every pull request that changes how an existing change list behaves (an op newly
 
 ```sh
 python3 -m pip install -r docs/requirements-docs.txt
-mkdocs serve            # http://127.0.0.1:8000, rebuilds on save
-mkdocs build --strict   # the build CI runs
+python3 -m zensical serve                          # http://127.0.0.1:8000, rebuilds on save
+python3 -m zensical build --clean --strict         # the build CI runs
+python3 -I .github/scripts/site-check.py site      # the check CI runs after it
 ```
 
-The build is strict: a broken link, a link to a missing heading, a page left out of the nav, or a link that leaves `docs/` fails it. Link a file outside `docs/` by its GitHub URL. MkDocs logs a link to an excluded file (a capitalised `.md`) only as `INFO`, which `--strict` lets through, so CI also fails the build when the log says `which is excluded from the built site`. A push to `main` that changes the docs publishes the site.
+The site is built with [Zensical](https://zensical.org/) from `docs/` and `zensical.toml`. The strict build fails on a broken link, a link to a missing heading, a link that leaves `docs/`, or a link to an excluded file (a capitalised `.md`); link a file outside `docs/` by its GitHub URL. `site-check.py` fails on what the build lets through: a page left out of the nav, a nav entry for a missing file, a missing image, a link rooted at `/`. A push to `main` that changes the docs publishes the site.
 
 ## Rules for a change
 

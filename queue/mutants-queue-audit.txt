@@ -1,0 +1,18 @@
+gwt_queue_audit.py | if age is None or age >= stale_days: | if age is None or age > stale_days: | blocked work exactly stale_days old is already stale
+gwt_queue_audit.py | if end is None or now > end: | if end is None or now >= end: | a claim whose lease ends exactly now is still live
+gwt_queue_audit.py | if done and done > now: | if done and done >= now: | a done_at equal to the audit instant is not in the future
+gwt_queue_audit.py | if done and claimed and done < claimed: | if done and claimed and done <= claimed: | finishing at the very instant of claiming is not before claiming
+gwt_queue_audit.py | need != r['id'] and need in states and states[need] != {'done'} | need != r['id'] and states[need] != {'done'} | a done row waiting on an id that is not in the queue is a missing prerequisite, never a false completion
+gwt_queue_audit.py | states[need] != {'done'} | states[need] == {'open'} | a claimed prerequisite is not done either, so its done dependant is a false completion
+gwt_queue_audit.py | lines += ', ...' if len(group) > MAX_LISTED_LINES else '' | lines += ', ...' if len(group) >= MAX_LISTED_LINES else '' | the line list is cut only when more lines than the cap share an id
+gwt_queue_audit.py | if r['dedupe_key'] and r['status'] in ('open', 'claimed'): | if r['dedupe_key'] and r['status'] in ('open',): | a claimed row is live work, so a shared dedupe key with it still collides
+gwt_queue_audit.py | if row[col] and not re.fullmatch(r'-?\d+', row[col].strip()): | if row[col] and not re.fullmatch(r'\d+', row[col].strip()): | a negative priority is a valid integer, not a schema value error
+gwt_queue_audit.py | if row['status'] == 'open' and (row['token'] or row['lane']): | if row['status'] == 'open' and row['token']: | an open row that keeps only a lane is still reported
+gwt_queue_audit.py | and not row['evidence'].strip(): | and not row['evidence']: | evidence of only spaces is no evidence for a hit
+gwt_queue_audit.py | (row.get('source', '') or '').lower().startswith('private') | (row.get('source', '') or '').startswith('private') | a source named Private-... in any letter case marks the row private
+gwt_queue_audit.py | PRIVATE_RE.search(row.get('note', '') or '') | PRIVATE_RE.search(row.get('query', '') or '') | the word private in the note marks the row private
+gwt_queue_audit.py | if not math.isfinite(days) or days < 0 or days > MAX_STALE_DAYS: | if days < 0 or days > MAX_STALE_DAYS: | nan and inf stale days are rejected with ValueError
+gwt_queue_audit.py | if os.path.islink(o): | if False: | a report destination that is a symlink is refused
+gwt_queue_audit.py | failed = [path for path in reversed(done) if not restore(path, before[path])] | failed = [] | a failed restore is reported as RollbackError, never as restored
+gwt_queue_audit.py | if len(data) > MAX_QUEUE_BYTES: | if len(data) > MAX_QUEUE_BYTES * 1000: | the read itself is capped even when the file grew after the size check
+gwt_queue_audit.py | except RollbackError as e: | except ZeroDivisionError as e: | the CLI tells the user the rollback failed (exit 2)

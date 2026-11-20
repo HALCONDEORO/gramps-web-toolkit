@@ -24,6 +24,8 @@ of the headers the cache sees. Standard library only.
 import datetime, hashlib, json, os, re, struct, unicodedata
 
 EXIT_OK, EXIT_ERROR, EXIT_EMPTY, EXIT_WALL, EXIT_DEAD, EXIT_PAUSED = 0, 1, 2, 3, 4, 6
+EXIT_RESTRICTED = 5      # the site refuses this one record to every account of this access level: a result, not a block
+EXIT_UNREADABLE = 7    # an empty page the source's own canary answers: that query's own problem, not a block
 
 # ---------------------------------------------------------------- small helpers
 
@@ -61,7 +63,7 @@ def write_json(path, obj):
 # Session secrets a page or a search carries: bearer tokens, the FamilyGraph tokens a MyHeritage page embeds
 # (fgToken, webClientFgToken, ...), session ids, XSRF and CSRF tokens, and Authorization headers.
 _SECRET_NAME = r'\w*(?:fgtoken|xsrftoken|csrftoken|csrf_token|bearer_token|bearertoken|access_token|accesstoken)'
-_SECRET_KEY = re.compile(r'^%s$|^authorization$' % _SECRET_NAME, re.I)
+_SECRET_KEY = re.compile(rf'^{_SECRET_NAME}$|^authorization$', re.I)
 _SECRET_RES = (
     re.compile(r'(%s(?:\\*["\'])?\s*[:=]\s*(?:\\*["\'])?)([^"\'&\s,;}\\<]+)' % _SECRET_NAME, re.I),
     re.compile(r'(name="bearer_token"\r?\n\r?\n)([^\r\n]+)'),
@@ -101,7 +103,7 @@ def envelope(url, final_url=None, text='', json_body=None, **extra):
 def search_key(normalized_url, words):
     """<slug of the words>-<10 hex of the URL>: readable, and two different searches never collide."""
     h = hashlib.sha256(normalized_url.encode()).hexdigest()[:10]
-    return '%s-%s' % (slug(' '.join(str(w) for w in words if w)), h)
+    return f"{slug(' '.join((str(w) for w in words if w)))}-{h}"
 
 
 def write_search(out_dir, key, env, candidates):
@@ -114,9 +116,9 @@ def write_search(out_dir, key, env, candidates):
 
 def print_paths(source, base, out=print):
     """The three lines a lane copies into its ledger row: the source slug, the evidence and the candidates."""
-    out('source\t%s' % source)
-    out('evidence\t%s.json' % base)
-    out('candidates\t%s.candidates.json' % base)
+    out(f'source\t{source}')
+    out(f'evidence\t{base}.json')
+    out(f'candidates\t{base}.candidates.json')
 
 
 # ---------------------------------------------------------------- manifest of saved files (gwt-rawstore)
@@ -189,9 +191,9 @@ def write_manifest(path, rows):
 class Stop(Exception):
     """An answer that must end the run: nothing is saved as a result. exit_code is the process exit."""
 
-    def __init__(self, msg, exit_code=EXIT_ERROR):
+    def __init__(self, msg, exit_code=EXIT_ERROR, verdict=None, status=None, body=b''):
         super().__init__(msg)
-        self.exit_code = exit_code
+        self.exit_code, self.verdict, self.status, self.body = exit_code, verdict, status, body
 
 
 # Bot walls, rate pages and captchas (Imperva/Incapsula, Cloudflare, Akamai, hCaptcha, reCAPTCHA), and the
@@ -201,9 +203,31 @@ WALL_MARKERS = ('_incapsula_resource', 'incapsula incident', 'captcha', 'cf-chl'
                 'request unsuccessful', 'security check')
 LOGIN_MARKERS = ('type="password"', "type='password'", 'sign in to familysearch', 'iniciar sesión', 'log in',
                  'sign in', '/auth/', 'ident.familysearch.org')
+# Cloudflare adds a small script to ordinary pages it serves (its JavaScript detections beacon), and the script's path
+# holds 'challenge-platform'. It is not a challenge: a real one loads /cdn-cgi/challenge-platform/h/..., so only the
+# beacon's own <script> element is left out before the wall markers are read.
+_CF_BEACON = '/cdn-cgi/challenge-platform/scripts/jsd/main.js'
 
 
-def classify_answer(status, headers, body, expect=None, page=None):
+def _drop_beacon(low):
+    """`low` (a lowercased page) without each <script> element that holds Cloudflare's beacon path. String finds, not a
+    regex: a page of many unclosed <script> tags stays linear."""
+    out, pos = [], 0
+    while True:
+        i = low.find(_CF_BEACON, pos)
+        if i < 0:
+            break
+        start, end = low.rfind('<script', pos, i), low.find('</script>', i)
+        if start < 0 or end < 0 or low.find('</script>', start, i) >= 0:     # the path is not inside a <script>
+            out.append(low[pos:i + len(_CF_BEACON)])
+            pos = i + len(_CF_BEACON)
+            continue
+        out.append(low[pos:start])
+        pos = end + len('</script>')
+    return ''.join(out) + low[pos:]
+
+
+def classify_answer(status, _headers, body, expect=None, page=None):
     """'ok', 'blocked' (HTTP 403: the site refused the account or the IP), 'wall' (HTTP 429, a rate page or a
     captcha), 'dead' (signed out), 'empty' (an empty frame: no body or a page with no readable answer, read as
     a block), 'unexpected' (JSON of the wrong shape) or 'http' (any other non-2xx). A JSON reader passes
@@ -223,7 +247,7 @@ def classify_answer(status, headers, body, expect=None, page=None):
     try:
         doc = json.loads(data)
     except ValueError:
-        low = data[:65536].decode('utf-8', 'replace').lower()
+        low = _drop_beacon(data[:65536].decode('utf-8', 'replace').lower())
         if any(m in low for m in WALL_MARKERS):
             return 'wall'
         if page is not None and page(data.decode('utf-8', 'replace')):
@@ -248,6 +272,23 @@ STOP_FOR = {  # verdict: (exit code, what the lane reads, what the gate hears: b
 NOT_STORED = 599     # the status the cache sees for a 2xx that is a STOP, so it is never stored
 
 
+class Restricted(Stop):
+    """A 403 the source has shown is about one record's access, not about the account or the IP: a result
+    (`restricted`), never a gate hit."""
+
+    def __init__(self, msg, status=403, body=b''):
+        super().__init__(msg, EXIT_RESTRICTED)
+        self.status, self.body = status, body
+
+
+class Unreadable(Stop):
+    """An empty or unreadable page the source's own canary answers: the query's own problem, never the
+    site's. A result the lane logs as unreadable (exit 7); the gate hears nothing."""
+
+    def __init__(self, msg):
+        super().__init__(msg, EXIT_UNREADABLE, verdict='unreadable')
+
+
 class Reader:
     """GET through gwt-fscache and gwt-gate. fetcher(method, url, headers, data) -> (status, headers, body)
     is gwt-fscache's fetcher signature; the token belongs inside it, never in `headers`, which the cache sees."""
@@ -258,24 +299,38 @@ class Reader:
         self.cache, self.gate, self.lane, self.fetcher = cache, gate, lane, fetcher
         self.log = log or (lambda m: None)
 
-    def get(self, url, headers=None, expect=None, refresh=False, page=None):
+    def get(self, url, headers=None, expect=None, refresh=False, page=None, on_403=None, data=None, on_empty=None):
         """(status, headers, body, from_cache) for a 2xx answer the site really gave; raises Stop otherwise.
-        `expect` checks a JSON answer, `page` an HTML one (see classify_answer)."""
+        `expect` checks a JSON answer, `page` an HTML one (see classify_answer). `on_403(body)` is asked about a
+        403 before the gate blocks: 'restricted' only logs it as a denial (gate.denied: no pause, no block) and raises
+        Restricted; anything else is a block, as without it. `data` (bytes) makes it a POST, for a site whose search
+        is a form or a JSON body; the cache keeps a POST only when it was built with methods=('GET', 'POST').
+        `on_empty()` is asked about an empty answer before the gate hears it: true (a live source control answered)
+        does not send a denial to the gate and raises Unreadable; false or absent keeps the wall."""
         state = {}
 
         def gated(method, u, h, data):
             self.gate.wait(self.lane)       # raises gwt_gate.Paused: the caller exits without a request
             st, rh, body = self.fetcher(method, u, h, data)
             verdict = classify_answer(st, rh, body, expect, page)
-            state.update(status=st, verdict=verdict)
-            self.log('%s %s -> HTTP %s %s' % (method, u, st, verdict))
+            state.update(status=st, verdict=verdict, body=body)
+            self.log(f'{method} {u} -> HTTP {st} {verdict}')
             return (st if verdict == 'ok' or not 200 <= st < 300 else NOT_STORED), rh, body
 
-        status, rh, body = self.cache.fetch('GET', url, headers or {}, None, gated, refresh=refresh)
+        status, rh, body = self.cache.fetch('GET' if data is None else 'POST', url, headers or {}, data, gated,
+                                            refresh=refresh)
         verdict = state.get('verdict', 'ok')
+        if verdict == 'blocked' and on_403 is not None and on_403(state['body']) == 'restricted':
+            self.gate.denied(self.lane, f'HTTP 403 {url[:120]}')     # logged; no pause, no block
+            raise Restricted(f'restricted: HTTP 403 at {url} is about this record\'s access, not a block; no gate hit',
+                             state['status'], state['body'])
         if verdict != 'ok':
+            if verdict == 'empty' and on_empty is not None and on_empty():
+                raise Unreadable(f"empty or unreadable page, but the source's control answered: this query's own "
+                                 f"problem, not a block; nothing saved, no gate hit (HTTP {state['status']} "
+                                 f"at {url[:120]})")
             code, why, tell = STOP_FOR[verdict]
-            what = 'HTTP %s %s' % (state['status'], url[:120])
+            what = f"HTTP {state['status']} {url[:120]}"
             if tell == 'block':
                 self.gate.hit(self.lane, what)
                 self.gate.block(self.BLOCK_HOURS, what)
@@ -283,5 +338,126 @@ class Reader:
                 self.gate.hit(self.lane, what)
             elif tell == 'dead':
                 self.gate.dead(self.lane, what)
-            raise Stop('%s (HTTP %s at %s)' % (why, state['status'], url), code)
+            raise Stop('%s (HTTP %s at %s)' % (why, state['status'], url), code, verdict, state['status'],
+                       state['body'])
         return status, rh, body, 'status' not in state
+
+
+# ---------------------------------------------------------------- the source registry and its contract
+#
+# A source is one record site gwt-read can search. A source module (read/gwt_<id>.py, copy read/_template.py)
+# declares itself in SPEC and gives the commands; gwt-read builds its subcommands, cache rules, gate and canary
+# controls from that, so a new source touches its own module, its tests and docs/sources/<id>.md, plus one line in
+# SOURCE_MODULES below and its line in pyproject.toml's force-include.
+
+# Every module beside gwt_read that holds a source, in the order `gwt-read --help` lists them. A module with a
+# SPEC is a source by itself; the older ones (pares, genae, boe, insee) are declared in gwt_read.LEGACY.
+SOURCE_MODULES = ('gwt_pares', 'gwt_genae', 'gwt_boe', 'gwt_insee',
+                  'gwt_openarch', 'gwt_wikitree', 'gwt_archiveorg', 'gwt_matchid',
+                  'gwt_riksarkivet',
+                  'gwt_tna',
+                  'gwt_census1950',
+                  'gwt_digitalnz',
+                  'gwt_dokuklik',
+                  'gwt_hiski',
+                  'gwt_digitalarkivet',
+                  'gwt_geneteka',
+                  'gwt_freeukgen',
+                  'gwt_bvph',
+                  'gwt_delpher',
+                  'gwt_trove',
+                  'gwt_kramerius')
+
+SPEC_KEYS = {'id': str, 'help': str, 'pace': dict, 'cache_rules': tuple, 'controls': list,
+             'result_markers': list, 'negative_markers': list}
+
+
+def spec_problems(spec):
+    """Why a SPEC does not have the shape gwt-read builds from, as a list of strings; empty when it does."""
+    bad = []
+    for key, kind in SPEC_KEYS.items():
+        if not isinstance(spec.get(key), kind):
+            bad.append(f'{key} must be a {kind.__name__}')
+    if not re.fullmatch(r'[a-z][a-z0-9-]*', str(spec.get('id', ''))):
+        bad.append('id must be a lowercase slug')
+    if isinstance(spec.get('pace'), dict) and set(spec['pace']) != {'start', 'floor', 'ceil'}:
+        bad.append('pace must be {start, floor, ceil} seconds')
+    for c in spec.get('controls') or []:
+        if not (isinstance(c, dict) and isinstance(c.get('argv'), list) and c['argv']
+                and isinstance(c.get('min_count'), int) and c['min_count'] > 0):
+            bad.append('each control is {argv: [search options], min_count: an int above 0}')
+    return bad
+
+
+def _matches(markers, page):
+    return any(re.search(m, page) for m in markers or ())
+
+
+def classify(page, spec):
+    """'hits' (a row of results is on the page), 'none' (the site says in its own words that nothing matched) or
+    'unknown' (anything else: a skeleton with no rows, a block page, new wording). 'unknown' is never zero results:
+    page_check() makes it a STOP, exit 3."""
+    page = page or ''
+    if _matches(spec.get('result_markers'), page):
+        return 'hits'
+    if _matches(spec.get('negative_markers'), page):
+        return 'none'
+    return 'unknown'
+
+
+def page_check(spec):
+    """The `page` predicate for Reader.get: true for 'hits' and 'none', false for 'unknown'."""
+    return lambda page: classify(page, spec) != 'unknown'
+
+
+def rows_check(spec, rows, parse):
+    """page_check(spec), and on a page with results every row it shows read: `rows` (a regex) counts the rows the page
+    shows, `parse(page)` reads them. A row the parser cannot read (new markup, a new id form) makes the page a STOP,
+    never a page with fewer results or "none"."""
+    check = page_check(spec)
+    return lambda page: check(page) and (classify(page, spec) != 'hits'
+                                         or 0 < len(parse(page)) == len(re.findall(rows, page)))
+
+
+# ---------------------------------------------------------------- open APIs: a server error is the service down
+
+
+def api_reason(body):
+    """The reason a JSON API gives with an error answer ({"msg": ...}, {"message": ...} or {"error": ...}), short; ''
+    when there is none."""
+    try:
+        d = json.loads(body.decode('utf-8', 'replace') if isinstance(body, bytes) else body or '')
+    except ValueError:
+        return ''
+    why = next((d[k] for k in ('msg', 'message', 'error', 'detail') if d.get(k)), '') if isinstance(d, dict) else ''
+    why = '; '.join(str(x) for x in why) if isinstance(why, list) else str(why)
+    return ' '.join(why.split())[:300]
+
+
+def get_api(R, url, headers=None, expect=None, refresh=False, page=None, wall=None, data=None):
+    """R.get for an open JSON API. A 5xx or no answer at all (a timeout, a refused connection) is the service down,
+    not an error in this one request: it becomes a wall (exit 3, the gate hears a hit), so a lane pauses and never
+    logs the search as "none" or moves on as if it had been read. `wall(status, body)` names a source's own
+    refusals that mean the same (matchID's spent anonymous quota, a 422). Any other error answer stays as R.get
+    gives it, with the API's own reason added to its text."""
+    try:
+        return R.get(url, headers, expect=expect, refresh=refresh, page=page, data=data)
+    except Stop as e:
+        if e.verdict != 'http':
+            raise
+        why = api_reason(e.body)
+        why = ': %s' % why if why else ''
+        if e.status == 0 or 500 <= (e.status or 0) < 600 or (wall is not None and wall(e.status, e.body or b'')):
+            what = 'HTTP %s %s' % (e.status, url[:120])
+            R.gate.hit(R.lane, what)
+            raise Stop('the service is down, not answering or refusing more requests, read as a block, never as no '
+                       'results; every lane on this source pauses (HTTP %s at %s)%s' % (e.status, url, why),
+                       EXIT_WALL, 'wall', e.status, e.body) from None
+        if why:
+            raise Stop('%s%s' % (e, why), e.exit_code, e.verdict, e.status, e.body) from None
+        raise
+
+
+def past_end(cands, offset):
+    """The note a search's results line carries when a page past the last row came back empty."""
+    return ' (past the end)' if not cands and offset else ''

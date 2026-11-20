@@ -25,7 +25,7 @@ class LedgerTest(unittest.TestCase):
     def add(self, person='Ana Peiro Toledo', source='FamilySearch', query='Ana Peiro bautismo 1850-1860',
             result='none', agent='lane-1'):
         return run('--ledger', self.path, 'add', '--person', person, '--label', person, '--source', source,
-                   '--query', query, '--result', result, '--agent', agent)
+                   '--query', query, '--result', result, '--agent', agent, '--control-ok', 'fixture-control')
 
     def test_normalize_strips_accents_and_punctuation(self):
         self.assertEqual(L.normalize('  Peiró, JOSÉ «Pepe»  1890-1900 '), 'peiro jose pepe 1890 1900')
@@ -134,14 +134,14 @@ class LedgerTest(unittest.TestCase):
         lanes = os.path.join(self.dir.name, 'lanes')
         for agent, query in (('Lane A', 'Ana Peiro bautismo 1850'), ('lane-b', 'Ana Peiro boda 1875')):
             self.assertEqual(run('--ledger', self.path, '--ledger-dir', lanes, 'add', '--person', 'Ana Peiro Toledo',
-                                 '--source', 'FamilySearch', '--query', query, '--result', 'none', '--agent', agent)[0], 0)
+                                 '--source', 'FamilySearch', '--query', query, '--result', 'none', '--control-ok', 'fixture-control', '--agent', agent)[0], 0)
         self.assertEqual(sorted(os.listdir(lanes)), ['lane-a.tsv', 'lane-a.tsv.lock',
                                                      'lane-b.tsv', 'lane-b.tsv.lock'])
         with open(self.path) as f:
             self.assertEqual(len(f.read().splitlines()), 2)  # the shared file got no new rows
         for query in ('Ana Peiro bautismo 1850', 'Ana Peiro boda 1875', 'Ana Peiro defuncion 1890'):
             code, _ = run('--ledger', self.path, '--ledger-dir', lanes, 'check', '--person', 'Ana Peiro Toledo',
-                          '--source', 'FamilySearch', '--query', query)
+                          '--source', 'FamilySearch', '--query', query, '--any-result')
             self.assertEqual(code, 0, query)  # a row of lane A is seen from lane B, and the old ledger still counts
         self.assertIn('rows\t3', run('--ledger', self.path, '--ledger-dir', lanes, 'stats')[1])
         self.assertEqual(run('--ledger', self.path, 'check', '--person', 'Ana Peiro Toledo', '--source', 'FamilySearch',
@@ -151,7 +151,7 @@ class LedgerTest(unittest.TestCase):
         err = io.StringIO()
         with redirect_stderr(err), self.assertRaises(SystemExit):
             run('--ledger', self.path, '--ledger-dir', self.dir.name, 'add', '--person', 'x', '--source', 's',
-                '--query', 'q', '--result', 'none', '--agent', '')
+                '--query', 'q', '--result', 'none', '--control-ok', 'fixture-control', '--agent', '')
         self.assertIn('add needs --agent', err.getvalue())
 
     def test_cli_launcher(self):
@@ -180,7 +180,7 @@ class LedgerTest(unittest.TestCase):
         for next_date, want in (('2000-01-01', 1), (datetime.date.today().isoformat(), 1), ('2999-01-01', 0)):
             self.path = os.path.join(self.dir.name, next_date + '.tsv')
             run('--ledger', self.path, 'add', '--person', 'ana', '--source', 'fs', '--query', 'q uno',
-                '--result', 'none', '--next-date', next_date)
+                '--result', 'none', '--control-ok', 'fixture-control', '--next-date', next_date)
             argv = ('--ledger', self.path, 'check', '--query', 'q uno')
             self.assertEqual(run(*argv)[0], want, next_date)
             self.assertEqual(run(*argv, '--any-result')[0], 0, next_date)
@@ -192,14 +192,14 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual(L.normalize('李 小龍'), '李 小龍')
         self.assertEqual(L.normalize('snake_case'), 'snake case')  # underscore stays a separator, as before
         run('--ledger', self.path, 'add', '--person', 'Hans Ørsted', '--source', 'kirkebog', '--query', 'Ørsted 1777',
-            '--result', 'none')
+            '--result', 'none', '--control-ok', 'fixture-control')
         row = L.read_rows(self.path)[0]
         self.assertEqual((row['person_key'], row['query']), ('hans-ørsted', 'ørsted 1777'))
         self.assertEqual(run('--ledger', self.path, 'check', '--person', 'Hans Ørsted', '--query', 'Ørsted 1777')[0], 0)
 
     def test_two_different_cyrillic_names_do_not_match(self):
         run('--ledger', self.path, 'add', '--person', 'Ivan Petrov', '--source', 'metryki',
-            '--query', 'Иван Петров 1880', '--result', 'none')
+            '--query', 'Иван Петров 1880', '--result', 'none', '--control-ok', 'fixture-control')
         self.assertEqual(L.read_rows(self.path)[0]['query'], 'иван петров 1880')
         self.assertEqual(run('--ledger', self.path, 'check', '--query', 'Мария Сидорова'), (1, ''))
         self.assertEqual(run('--ledger', self.path, 'check', '--query', 'Мария Сидорова 1880'), (1, ''))
@@ -209,8 +209,8 @@ class LedgerTest(unittest.TestCase):
         self.add()
         for argv in (('check', '--query', '!!! ...'), ('check', '--person', '«»', '--query', 'Ana Peiro'),
                      ('list', '--person', '...'),
-                     ('add', '--person', '?', '--source', 's', '--query', 'q', '--result', 'none'),
-                     ('add', '--person', 'x', '--source', 's', '--query', '—', '--result', 'none')):
+                     ('add', '--person', '?', '--source', 's', '--query', 'q', '--result', 'none', '--control-ok', 'fixture-control'),
+                     ('add', '--person', 'x', '--source', 's', '--query', '—', '--result', 'none', '--control-ok', 'fixture-control')):
             err = io.StringIO()
             with self.assertRaises(SystemExit) as e, redirect_stderr(err):
                 run('--ledger', self.path, *argv)
@@ -226,15 +226,15 @@ class LedgerTest(unittest.TestCase):
         for person, query in (('José Peiró Ruiz', 'Peiró, JOSÉ: bautismo 1850-1860'),
                               ('jose-peiro-ruiz', 'bautismo de Jose Peiro 1850 1860')):
             code, out = run('--ledger', self.path, 'check', '--person', person, '--source', 'FamilySearch',
-                            '--query', query)
+                            '--query', query, '--any-result')
             self.assertEqual(code, 0, query)
         self.assertEqual(run('--ledger', self.path, 'check', '--exact', '--source', 'familysearch',
-                             '--query', 'PEIRÓ José bautismo 1850/1860')[0], 0)
+                             '--query', 'PEIRÓ José bautismo 1850/1860', '--any-result')[0], 0)
 
     def test_next_date_and_due(self):
         run('--ledger', self.path, 'add', '--person', 'x', '--source', 's', '--query', 'q one', '--result', 'denied',
             '--next-date', '2026-11-14')
-        run('--ledger', self.path, 'add', '--person', 'y', '--source', 's', '--query', 'q two', '--result', 'none')
+        run('--ledger', self.path, 'add', '--person', 'y', '--source', 's', '--query', 'q two', '--result', 'none', '--control-ok', 'fixture-control')
         self.assertEqual(run('--ledger', self.path, 'due', '--on', '2026-11-13'), (0, ''))
         code, out = run('--ledger', self.path, 'due', '--on', '2026-11-14')
         self.assertEqual(code, 0)
@@ -271,7 +271,7 @@ class LedgerTest(unittest.TestCase):
         code, out = run('--ledger', self.path, 'check', '--source', 'familysearch',
                         '--query', 'Ana Peiro bautismo 1850-1860')
         self.assertEqual(code, 0)
-        self.assertEqual([line.split('\t')[6] for line in out.splitlines()], ['blocked', 'hit', 'partial', 'none'])
+        self.assertEqual([line.split('\t')[6] for line in out.splitlines()], ['blocked', 'hit', 'partial', 'unproven'])
         # A better score still comes first: a newer row that only matches with a typo goes last.
         self.dated('2027-01-01', 'hit', query='Ana Peiro bautizmo 1850-1860')
         out = run('--ledger', self.path, 'check', '--query', 'Ana Peiro bautismo 1850-1860')[1]

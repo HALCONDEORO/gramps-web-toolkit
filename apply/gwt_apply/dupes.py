@@ -45,7 +45,7 @@ class Who:
         return (first[0] if first else "", sur[0] if sur else "")
 
     def label(self) -> str:
-        return f"{self.ref} ({self.first} {self.surname}{', ' + '/'.join(map(str, sorted(self.years))) if self.years else ''})"
+        return f"{self.ref} ({' '.join(x for x in (self.first, self.surname) if x)}{', ' + '/'.join(map(str, sorted(self.years))) if self.years else ''})"
 
 
 def _year(date) -> int | None:
@@ -168,11 +168,16 @@ def preflight(ops: list[dict], client) -> list[str]:
                for op in ops):
         return []
     tree, family_parents, couples = tree_people(client)
+    # Keep IDs for parents an earlier run made, even when their ops are in this list.
+    parent_ids = {w.handle: w.ref for w in tree}
     # people an earlier run of this list already made are the ops themselves, not duplicates of them
     made = {stable_handle(op["key"]) for op in ops if op["op"] == "add_person"}
     tree = [w for w in tree if w.handle not in made]
     ids = {w.ref for w in tree}
     new = list_people(ops, family_parents)
+    for who in new.values():
+        who.parents = {parent_ids.get(stable_handle(r[4:]), r) if r.startswith("key:") else r
+                       for r in who.parents}
     return _person_pass(ops, tree, ids, new) + _couple_pass(ops, tree, couples, new)
 
 
@@ -182,13 +187,13 @@ def _person_pass(ops: list[dict], tree: list[Who], ids: set[str], new: dict[str,
         by_loose.setdefault(w.loose, []).append(w)
     problems = []
     by_key = {f"key:{op['key']}": op for op in ops if op["op"] == "add_person"}
-    seen: list[Who] = []
+    seen: dict[tuple[str, str], list[Who]] = {}  # earlier new people by loose name (same full name, same loose)
     for ref, who in new.items():
         op = by_key[ref]
         compared = set(_ref_list(op.get("namesake_of") or [])) if op.get("allow_namesake") else set()
         # key:<key> of a person an earlier list made: that person is in the tree under its own Gramps ID
         compared |= {stable_handle(r[4:]) for r in compared if r.startswith("key:")}
-        candidates = by_loose.get(who.loose, []) + [w for w in seen if w.loose == who.loose or w.full == who.full]
+        candidates = by_loose.get(who.loose, []) + seen.get(who.loose, [])
         for other in candidates:
             why = _alike(who, other)
             if why is None or other.ref in compared or other.handle in compared:
@@ -198,7 +203,7 @@ def _person_pass(ops: list[dict], tree: list[Who], ids: set[str], new: dict[str,
             where = "in the tree" if other.ref in ids else "made by another op"
             problems.append(f"op {op['key']!r}: {who.label()} looks like {other.label()} {where} ({why}); "
                             "use that person, or set allow_namesake with namesake_reason and namesake_of naming them")
-        seen.append(who)
+        seen.setdefault(who.loose, []).append(who)
     return problems
 
 

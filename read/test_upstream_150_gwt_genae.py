@@ -1,0 +1,363 @@
+"""Tests for `gwt-read genae`. Invented rows in fixtures/, a fake transport, a fake gate: no request ever leaves
+this machine. Run: cd read && python3 -m unittest -v test_gwt_genae"""
+import contextlib, io, json, os, unittest
+
+from test_gwt_read import Base, FakeGate, FakeNet, CAPTCHA
+import gwt_genae  # noqa: E402
+import gwt_read  # noqa: E402
+import gwt_rank  # noqa: E402
+
+FIX = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures')
+PAGE = {b: open(os.path.join(FIX, 'genae-%s.html' % b), 'rb').read() for b in gwt_genae.BLOCKS}
+ANSWERS = [(200, PAGE[b]) for b in gwt_genae.BLOCKS]
+EMPTY_FRAME = b'<html><body><div id="resultados"></div></body></html>'
+NO_BOOKS = (b'<aside id="resultados-cobertura"><strong>Sin registros indexados disponibles</strong></aside>'
+            b'<section id="bloque-casadas" class="bloque-categoria" data-aviso-cobertura="No hay registros indexados '
+            b'de Casadas para los a\xc3\xb1os pedidos en esta localidad."></section>')
+SEARCH_FORM = b'<html><body><form id="form-busqueda" action="buscar"><section id="bloque-otro"><table></table></section></form></body></html>'
+
+
+class Genae(Base):
+    def run_genae(self, args, net, gate):
+        o, e = io.StringIO(), io.StringIO()
+        argv = ['genae', '--cache-dir', self.cache, '--lane', 't', 'search'] + args + ['--out', self.out]
+        with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
+            code = gwt_read.main(argv, urlopen=net, gate=gate)
+        lines = dict(l.split('\t', 1) for l in o.getvalue().splitlines() if '\t' in l)
+        return code, lines, o.getvalue() + e.getvalue()
+
+    def search(self, net, gate, extra=()):
+        return self.run_genae(['--given', 'Ana', '--surname', 'Zorvalo'] + list(extra), net, gate)
+
+
+LOCALITIES = (b'<html><body><form id="form-busqueda" action="buscar">'
+              b'<select name="l">'
+              b'<option value="" selected>Todas</option>'
+              b'<option value="701" data-provincia="mu" data-desde="1700" data-hasta="1900">Villazul</option>'
+              b'<option value="702" data-provincia="mu">Pe\xc3\xb1afria (Norte)</option>'
+              b'<option value="703" data-provincia="mu">Pe\xc3\xb1afria (Sur)</option>'
+              b'<option value="801" data-provincia="ab">Villarreal de Arriba</option>'
+              b'</select></form></body></html>')
+
+
+class Localities(unittest.TestCase):
+    MAP = gwt_genae.locality_map(LOCALITIES.decode())
+
+    def test_map_parses_listed_options_by_province(self):
+        self.assertEqual(self.MAP['mu'], [('701', 'Villazul'), ('702', 'Peñafria (Norte)'), ('703', 'Peñafria (Sur)')])
+        self.assertEqual(self.MAP['ab'], [('801', 'Villarreal de Arriba')])
+        self.assertTrue(gwt_genae.is_locality_list(LOCALITIES.decode()))
+        self.assertFalse(gwt_genae.is_locality_list(PAGE['bautismos'].decode()))
+
+    def test_a_listed_numeric_id_resolves_to_itself_and_its_name(self):
+        self.assertEqual(gwt_genae.resolve_locality('701', 'mu', self.MAP), ('701', 'Villazul'))
+        self.assertEqual(gwt_genae.resolve_locality(' 701 ', 'mu', self.MAP), ('701', 'Villazul'))
+
+    def test_an_unknown_id_or_an_id_of_another_province_stops(self):
+        # the site ignores an l it does not know: an unchecked id is the same silent regional search as a name
+        for lid in ('999', '801'):
+            with self.assertRaises(gwt_genae.LocalityError):
+                gwt_genae.resolve_locality(lid, 'mu', self.MAP)
+
+    def test_a_name_resolves_ignoring_case_accents_and_spaces(self):
+        self.assertEqual(gwt_genae.resolve_locality('villazul', 'mu', self.MAP), ('701', 'Villazul'))
+        self.assertEqual(gwt_genae.resolve_locality('  Peñafría  (norte) ', 'mu', self.MAP)[0], '702')
+
+    def test_a_hyphen_folds_like_a_space(self):
+        self.assertEqual(gwt_genae.fold('Torre-Mayor'), gwt_genae.fold('torre mayor'))
+
+    def test_a_unique_prefix_is_never_taken_only_suggested(self):
+        # a place the site does not list must not silently become a longer listed name
+        with self.assertRaises(gwt_genae.LocalityError) as ctx:
+            gwt_genae.resolve_locality('Villa', 'mu', self.MAP)
+        self.assertIn('did you mean: 701 Villazul', str(ctx.exception))
+
+    def test_two_options_with_one_name_stop_and_list_their_ids(self):
+        page = ('<option value="711" data-provincia="mu">Villazul</option>'
+                '<option value="712" data-provincia="mu">Villazul</option>')
+        with self.assertRaises(gwt_genae.LocalityError) as ctx:
+            gwt_genae.resolve_locality('Villazul', 'mu', gwt_genae.locality_map(page))
+        self.assertIn('711 Villazul', str(ctx.exception))
+        self.assertIn('712 Villazul', str(ctx.exception))
+
+    def test_options_parse_whatever_their_attribute_order(self):
+        page = '<option data-provincia="mu" class="x" value="701">Villazul</option>'
+        self.assertTrue(gwt_genae.is_locality_list(page))
+        self.assertEqual(gwt_genae.locality_map(page), {'mu': [('701', 'Villazul')]})
+
+    def test_an_option_without_a_numeric_id_is_not_a_locality(self):
+        page = '<option value="todas" data-provincia="mu">Todas</option>'
+        self.assertFalse(gwt_genae.is_locality_list(page))
+        self.assertEqual(gwt_genae.locality_map(page), {})
+
+    def test_a_province_the_form_does_not_list_is_a_changed_form_not_a_typo(self):
+        with self.assertRaises(gwt_genae.LocalityFormError):
+            gwt_genae.resolve_locality('Villazul', 'gr', self.MAP)
+
+    def test_a_name_of_another_province_is_unknown(self):
+        with self.assertRaises(gwt_genae.LocalityError):
+            gwt_genae.resolve_locality('Villarreal de Arriba', 'mu', self.MAP)
+
+    def test_an_ambiguous_name_stops_and_lists_the_options(self):
+        with self.assertRaises(gwt_genae.LocalityError) as ctx:
+            gwt_genae.resolve_locality('Peñafria', 'mu', self.MAP)
+        self.assertIn('Peñafria (Norte)', str(ctx.exception))
+        self.assertIn('Peñafria (Sur)', str(ctx.exception))
+
+    def test_an_unknown_name_stops(self):
+        with self.assertRaises(gwt_genae.LocalityError):
+            gwt_genae.resolve_locality('Noloconozco', 'mu', self.MAP)
+
+
+class Parse(unittest.TestCase):
+    def test_params_use_the_sites_own_names_and_skip_empty_ones(self):
+        self.assertEqual(gwt_genae.params('Ana', 'Zorvalo', '', 'mu', '', 1850, 1900),
+                         'n=Ana&a1=Zorvalo&r=mu&d=1850&h=1900')
+        self.assertIn('a2=Quirell&r=mu&l=Villazul', gwt_genae.params('', '', 'Quirell', 'mu', 'Villazul'))
+
+    def test_block_urls(self):
+        self.assertEqual(gwt_genae.block_url('bautismos', 'n=Ana'), 'https://genae.org/buscar/resultados?n=Ana')
+        self.assertEqual(gwt_genae.block_url('defunciones', 'n=Ana'),
+                         'https://genae.org/buscar/bloque?categoria=defunciones&n=Ana')
+
+    def test_highlight_marks_inside_a_name_add_no_spaces(self):
+        c = gwt_genae.candidates(PAGE['casados'].decode(), 'casados')
+        self.assertEqual(c[0]['name'], 'Pedro Zorvalo Brin')
+
+    def test_baptism_row_is_a_principal_with_parents_by_first_name(self):
+        c = gwt_genae.candidates(PAGE['bautismos'].decode(), 'bautismos')
+        self.assertEqual(c[0]['id'], 'bautismos-9000101')
+        self.assertEqual((c[0]['given'], c[0]['surnames']), ('Ana', ['Zorvalo', 'Quirell']))
+        self.assertEqual(c[0]['events'], {'birth': {'year': 1851, 'year_to': 1851, 'place': 'Villazul'}})
+        self.assertEqual(c[0]['relatives'], [{'role': 'father', 'name': 'Luis'}, {'role': 'mother', 'name': 'Rosa'}])
+        self.assertTrue(c[0]['principal'])
+
+    def test_phonetic_suggestion_is_kept_and_marked(self):
+        c = gwt_genae.candidates(PAGE['bautismos'].decode(), 'bautismos')
+        self.assertEqual([x['phonetic'] for x in c], [False, True])
+
+    def test_a_marriage_gives_one_candidate_per_spouse_and_never_splits_the_name(self):
+        c = gwt_genae.candidates(PAGE['casados'].decode(), 'casados')
+        self.assertEqual([x['id'] for x in c], ['matrimonios-9000201-esposo', 'matrimonios-9000201-esposa'])
+        self.assertIsNone(c[1]['given'])
+        self.assertIsNone(c[1]['surnames'])
+        self.assertEqual(c[0]['relatives'][0], {'role': 'spouse', 'name': 'Maria Antonia Lucero Vega'})
+        self.assertEqual(c[0]['events']['marriage']['year'], 1875)
+
+    def test_burial_row_is_a_death_event(self):
+        c = gwt_genae.candidates(PAGE['defunciones'].decode(), 'defunciones')
+        self.assertEqual(c[0]['events'], {'death': {'year': 1899, 'year_to': 1899, 'place': 'Villazul'}})
+
+    def test_a_candidate_points_at_the_search_that_found_it(self):
+        c = gwt_genae.candidates(PAGE['defunciones'].decode(), 'defunciones', 'https://genae.org/buscar/bloque?x=1')
+        self.assertEqual(c[0]['url'], 'https://genae.org/buscar/bloque?x=1')
+
+    def test_a_block_with_no_indexed_books_is_an_answer_with_no_rows(self):
+        self.assertTrue(gwt_genae.is_block(NO_BOOKS.decode(), 'casadas'))
+        self.assertEqual(gwt_genae.rows(NO_BOOKS.decode()), [])
+        self.assertFalse(gwt_genae.is_block(NO_BOOKS.decode(), 'casados'))
+
+    def test_a_full_page_is_flagged_as_cut(self):
+        self.assertFalse(gwt_genae.is_cut(14))
+        self.assertTrue(gwt_genae.is_cut(gwt_genae.PAGE_SIZE))
+
+    def test_only_the_block_asked_for_is_an_answer(self):
+        self.assertTrue(gwt_genae.is_block(PAGE['casados'].decode(), 'casados'))
+        self.assertFalse(gwt_genae.is_block(PAGE['casados'].decode(), 'defunciones'))   # another block
+        self.assertFalse(gwt_genae.is_block(EMPTY_FRAME.decode(), 'bautismos'))         # an empty frame
+        self.assertFalse(gwt_genae.is_block(SEARCH_FORM.decode(), 'bautismos'))         # the search form
+        # the table must be inside the section asked for, and an empty notice is no answer
+        self.assertFalse(gwt_genae.is_block('<section id="bloque-casadas" data-aviso-cobertura=""></section>'
+                                            '<section id="bloque-casados"><table></table></section>', 'casadas'))
+        self.assertFalse(gwt_genae.is_block('<form><table><tbody id="filas-bautismos"></tbody></table></form>', 'bautismos'))
+
+
+class Search(Genae):
+    def test_a_named_locality_is_resolved_before_the_search(self):
+        gate = FakeGate()
+        net = FakeNet(gate, (200, LOCALITIES), *ANSWERS)
+        code, lines, text = self.search(net, gate, ('--locality', 'Villazul'))
+        self.assertEqual(code, 0, text)
+        self.assertEqual(len(net.requests), 5)   # the form, then the four blocks
+        for req in net.requests[1:]:
+            self.assertIn('l=701', req.full_url)
+        self.assertEqual(lines['locality'], '701\tVillazul')   # the evidence shows which town was searched
+        self.assertIsNone(net.requests[0].get_header('Hx-request'))   # the full form, never an htmx fragment
+
+    def test_a_numeric_locality_is_checked_against_the_form(self):
+        gate = FakeGate()
+        net = FakeNet(gate, (200, LOCALITIES), *ANSWERS)
+        code, lines, text = self.search(net, gate, ('--locality', '701'))
+        self.assertEqual(code, 0, text)
+        self.assertEqual(len(net.requests), 5)
+        self.assertEqual(lines['locality'], '701\tVillazul')
+
+    def test_an_unknown_numeric_locality_stops_before_any_search_request(self):
+        gate = FakeGate()
+        net = FakeNet(gate, (200, LOCALITIES))
+        code, _, text = self.search(net, gate, ('--locality', '801'))   # listed, but under ab
+        self.assertEqual(code, 64, text)
+        self.assertEqual(len(net.requests), 1)
+
+    def test_a_form_without_the_province_is_a_source_error_not_a_usage_error(self):
+        gate = FakeGate()
+        net = FakeNet(gate, (200, LOCALITIES))
+        code, _, text = self.search(net, gate, ('--province', 'gr', '--locality', 'Villazul'))
+        self.assertEqual(code, 1, text)
+        self.assertIn('changed its form', text)
+        self.assertEqual(len(net.requests), 1)
+
+    def test_refresh_reads_the_locality_form_from_the_cache(self):
+        gate = FakeGate()
+        net = FakeNet(gate, (200, LOCALITIES), *ANSWERS)
+        self.assertEqual(self.search(net, gate, ('--locality', 'Villazul'))[0], 0)
+        gate = FakeGate()
+        net = FakeNet(gate, *ANSWERS)
+        o, e = io.StringIO(), io.StringIO()
+        argv = ['genae', '--cache-dir', self.cache, '--lane', 't', '--refresh', 'search', '--given', 'Ana',
+                '--surname', 'Zorvalo', '--locality', 'Villazul', '--out', self.out]
+        with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
+            code = gwt_read.main(argv, urlopen=net, gate=gate)
+        text = o.getvalue() + e.getvalue()
+        self.assertEqual(code, 0, text)
+        self.assertEqual(len(net.requests), 4)   # the four blocks again; the form came from the cache
+
+    def test_a_blank_locality_stops_before_any_request(self):
+        gate = FakeGate()
+        net = FakeNet(gate)
+        code, _, text = self.search(net, gate, ('--locality', '   '))
+        self.assertEqual(code, 64)
+        self.assertIn('blank', text)
+        self.assertEqual(net.requests, [])   # not even the form was asked for
+
+    def test_an_empty_locality_stops_before_any_request(self):
+        gate = FakeGate()
+        net = FakeNet(gate)
+        code, _, text = self.search(net, gate, ('--locality', ''))
+        self.assertEqual(code, 64)
+        self.assertIn('blank', text)
+        self.assertEqual(net.requests, [])
+
+    def test_an_omitted_locality_searches_regionally_on_purpose(self):
+        gate = FakeGate()
+        net = FakeNet(gate, *ANSWERS)
+        code, lines, text = self.search(net, gate)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(len(net.requests), 4)
+        for req in net.requests:
+            self.assertNotIn('l=', req.full_url)
+
+    def test_an_unknown_locality_stops_before_any_search_request(self):
+        gate = FakeGate()
+        net = FakeNet(gate, (200, LOCALITIES))
+        code, _, text = self.search(net, gate, ('--locality', 'Noloconozco'))
+        self.assertEqual(code, 64)
+        self.assertIn('not a listed locality', text)
+        self.assertEqual(len(net.requests), 1)   # only the form; no block was asked for
+
+    def test_search_reads_the_four_blocks_and_writes_candidates_gwt_rank_ranks(self):
+        gate = FakeGate()
+        net = FakeNet(gate, *ANSWERS)
+        code, lines, text = self.search(net, gate)
+        self.assertEqual(code, 0, text)
+        self.assertEqual([r.full_url for r in net.requests],
+                         [gwt_genae.block_url(b, 'n=Ana&a1=Zorvalo&r=mu&d=1503&h=1986') for b in gwt_genae.BLOCKS])
+        self.assertEqual(net.requests[0].get_header('Hx-request'), 'true')
+        self.assertIsNone(net.requests[0].get_header('Authorization'))
+        self.assertEqual(lines['source'], 'genae')
+        self.assertEqual(lines['results'], 'bautismos 2, casados 1, casadas 0, defunciones 1')
+        cands = json.load(open(lines['candidates']))['candidates']
+        self.assertEqual(len(cands), 5)
+        with contextlib.redirect_stdout(io.StringIO()) as ranked, contextlib.redirect_stderr(io.StringIO()):
+            rc = gwt_rank.main([lines['candidates'], '--given', 'Ana', '--surname', 'Zorvalo', '--surname', 'Quirell',
+                                '--facts', 'by=1851 bp=Villazul'])
+        self.assertEqual(rc, 0, ranked.getvalue())   # gwt-rank reads the file and finds the exact baptism strong
+        self.assertIn('bautismos-9000101', ranked.getvalue())
+
+    def test_a_repeat_costs_no_request(self):
+        gate = FakeGate()
+        net = FakeNet(gate, *ANSWERS)
+        self.search(net, gate)
+        gate2 = FakeGate()
+        net2 = FakeNet(gate2)
+        code, lines, text = self.search(net2, gate2)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(net2.requests, [])
+
+    def test_a_repeat_says_it_came_from_the_cache(self):
+        # without the mark a cached zero reads like a live one, and a lane logs it as a search it never ran
+        gate = FakeGate()
+        code, lines, text = self.search(FakeNet(gate, *ANSWERS), gate)
+        self.assertEqual(lines['results'], 'bautismos 2, casados 1, casadas 0, defunciones 1')
+        self.assertFalse(json.load(open(lines['evidence'], encoding='utf-8'))['from_cache'])
+        gate2 = FakeGate()
+        code, lines, text = self.search(FakeNet(gate2), gate2)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(lines['results'], 'bautismos 2, casados 1, casadas 0, defunciones 1 (cache)')
+        self.assertTrue(json.load(open(lines['evidence'], encoding='utf-8'))['from_cache'])
+
+    def test_one_live_block_means_the_answer_is_not_from_the_cache(self):
+        # a first run caches the four blocks; drop the burials entry so the repeat reads that one block live
+        gate = FakeGate()
+        self.search(FakeNet(gate, *ANSWERS), gate)
+        dropped = 0
+        for root, _, files in os.walk(self.cache):
+            for f in files:
+                if f.endswith('.json') and 'defunciones' in open(os.path.join(root, f), encoding='utf-8').read():
+                    for ext in ('.json', '.body'):
+                        os.remove(os.path.join(root, f[:-5] + ext))
+                    dropped += 1
+        self.assertEqual(dropped, 1)
+        gate2 = FakeGate()
+        net2 = FakeNet(gate2, (200, PAGE['defunciones']))
+        code, lines, text = self.search(net2, gate2)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(len(net2.requests), 1)
+        self.assertEqual(lines['results'], 'bautismos 2, casados 1, casadas 0, defunciones 1')
+        self.assertFalse(json.load(open(lines['evidence'], encoding='utf-8'))['from_cache'])
+
+    def test_no_rows_is_exit_2(self):
+        gate = FakeGate()
+        empty = open(os.path.join(FIX, 'genae-casadas.html'), 'rb').read()
+        net = FakeNet(gate, *[(200, empty.replace(b'casadas', b)) for b in gwt_genae.BLOCKS.__iter__()
+                              for b in [b.encode()]])
+        code, lines, text = self.search(net, gate)
+        self.assertEqual(code, 2, text)
+
+    def test_a_block_with_no_indexed_books_does_not_stop_the_search(self):
+        gate = FakeGate()
+        net = FakeNet(gate, (200, PAGE['bautismos']), (200, PAGE['casados']), (200, NO_BOOKS), (200, PAGE['defunciones']))
+        code, lines, text = self.search(net, gate)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(lines['results'], 'bautismos 2, casados 1, casadas 0, defunciones 1')
+
+    def test_a_marriage_found_in_both_blocks_is_one_pair_of_candidates(self):
+        gate = FakeGate()
+        both = PAGE['casados'].replace(b'bloque-casados', b'bloque-casadas').replace(b'filas-casados', b'filas-casadas')
+        net = FakeNet(gate, (200, PAGE['bautismos']), (200, PAGE['casados']), (200, both), (200, PAGE['defunciones']))
+        code, lines, text = self.search(net, gate)
+        ids = [c['id'] for c in json.load(open(lines['candidates']))['candidates']]
+        self.assertEqual(len(ids), len(set(ids)), ids)
+
+    def test_a_captcha_stops_the_run_and_saves_nothing(self):
+        gate = FakeGate()
+        net = FakeNet(gate, (200, CAPTCHA))
+        code, lines, text = self.search(net, gate)
+        self.assertEqual(code, 3)
+        self.assertEqual(len(net.requests), 1)
+        self.assertFalse(os.path.exists(self.out) and os.listdir(self.out))
+
+    def test_an_empty_frame_is_a_stop_not_zero_results(self):
+        gate = FakeGate()
+        net = FakeNet(gate, (200, EMPTY_FRAME))
+        code, lines, text = self.search(net, gate)
+        self.assertEqual(code, 3)
+
+    def test_a_search_needs_a_name(self):
+        gate = FakeGate()
+        code, lines, text = self.run_genae([], FakeNet(gate), gate)
+        self.assertEqual(code, 64)
+
+
+if __name__ == '__main__':
+    unittest.main()

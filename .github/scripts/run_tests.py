@@ -7,9 +7,13 @@ anywhere below it). For each one this runs `python -m pytest -q` inside the fold
 tool (a `gwt-*` wrapper or a pyproject.toml) and has no Python tests fails, unless
 UNTESTED names it with the reason.
 
-With --mutants, every row of `<pkg>/mutants.txt` is applied to a scratch copy of the
-package and its tests run there; a mutant the tests still pass "survived" and fails the
-run. A row is `file | exact text | replacement | why`; the text must occur exactly once.
+With --mutants, every row of `<pkg>/mutants.txt` and of each `<pkg>/mutants.d/*.txt` (one file
+per part, so parallel changes never edit the same list) is applied to a scratch copy of the
+repository (tests may import sibling packages) and the package's tests run there; a
+mutant the tests still pass "survived" and fails the run. Before its first mutant, each
+package's tests run once on an unmutated copy: if they fail there, every kill would be
+false, so the package fails the run instead. A row is `file | exact text | replacement |
+why`; the text must occur exactly once.
 
 Usage:
   python3 .github/scripts/run_tests.py [--only PKG[,PKG...]]
@@ -110,31 +114,49 @@ def read_mutants(path):
     return rows
 
 
-def sibling_path(name):
-    """PYTHONPATH for a mutant run: the other single-file tools (cross, dates, ...), never the package under test.
-    The run works on a scratch copy of one folder, so a tool that imports a sibling would not find it."""
-    dirs = [str(p) for p in sorted(ROOT.iterdir()) if p.is_dir() and p.name != name and any(p.glob("gwt_*.py"))]
-    outside = [d for d in os.environ.get("PYTHONPATH", "").split(os.pathsep) if d and Path(d).resolve() != (ROOT / name).resolve()]
-    return os.pathsep.join(dirs + outside)
+def mutant_listings(pkg):
+    """<pkg>/mutants.txt, then <pkg>/mutants.d/*.txt by name; a row's file is relative to the package either way."""
+    main = [pkg / "mutants.txt"] if (pkg / "mutants.txt").is_file() else []
+    return main + sorted(p for p in (pkg / "mutants.d").glob("*.txt") if p.is_file())
 
+
+COPY_IGNORE = shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache", "site", ".venv", "venv", "node_modules")
+
+
+def _copy_repo(tmp):
+    """Copy the whole repository into tmp, so a package's tests can reach its siblings."""
+    root = Path(tmp) / "repo"
+    shutil.copytree(ROOT, root, ignore=COPY_IGNORE)
+    return root
+
+
+def _control(name):
+    """Run the package's tests once on an unmutated copy of the repository."""
+    with tempfile.TemporaryDirectory() as tmp:
+        return subprocess.run(PYTEST + ["-x"], cwd=_copy_repo(tmp) / name, capture_output=True, text=True,
+                              env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
 
 def run_mutants(pkgs):
     total = killed = 0
     problems = []
     for name in pkgs:
-        listing = ROOT / name / "mutants.txt"
-        if not listing.is_file():
+        listings = mutant_listings(ROOT / name)
+        if not listings:
             continue
         try:
-            rows = read_mutants(listing)
+            rows = [(listing, *row) for listing in listings for row in read_mutants(listing)]
         except ValueError as exc:
             problems.append(str(exc))
             continue
-        for n, file, text, repl, why in rows:
-            where = f"{name}/mutants.txt:{n} ({file})"
+        control = _control(name)
+        if control.returncode != 0:
+            problems.append(f"{name}: the tests fail on an unmutated copy, so no mutant can be counted as killed:\n"
+                            f"{summary(control.stdout + control.stderr)}")
+            continue
+        for listing, n, file, text, repl, why in rows:
+            where = f"{listing.relative_to(ROOT)}:{n} ({file})"
             with tempfile.TemporaryDirectory() as tmp:
-                copy = Path(tmp) / name
-                shutil.copytree(ROOT / name, copy, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
+                copy = _copy_repo(tmp) / name
                 target = copy / file
                 src = target.read_text() if target.is_file() else None
                 hits = src.count(text) if src is not None else 0
@@ -143,7 +165,7 @@ def run_mutants(pkgs):
                     continue
                 target.write_text(src.replace(text, repl))
                 r = subprocess.run(PYTEST + ["-x"], cwd=copy, capture_output=True, text=True,
-                                   env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": sibling_path(name)})
+                                   env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
             total += 1
             if r.returncode == 0:
                 print(f"SURVIVED {where}: {why}", flush=True)

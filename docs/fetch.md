@@ -7,7 +7,9 @@ Python 3.11 or newer with `requests` for downloads. The offline `coverage` and `
 `iiif` works with any IIIF archive in any country. `digibib`, `gazeta`, `boe` and `geo` cover Spanish sources only. `europeana` searches every provider in any country; `--provider Hispana` narrows it to Spain.
 
 ```
-gwt-fetch iiif URL [--pages 1-5,9] [--labels REGEX] [--out DIR] [--list]
+gwt-fetch iiif URL [--pages 1-5,9] [--labels REGEX] [--native] [--out DIR] [--list]
+gwt-fetch iiif --image-base URL/info.json [--pages 1-20] [--out DIR] [--list]
+gwt-fetch crop IMG [...] (--box x,y,w,h [--from-size WxH] | --grid 2x3 [--overlap 10%] | --half left|right) [--max 1600] [--out DIR]
 gwt-fetch digibib URL [--pages ...] [--out DIR] [--list]
 gwt-fetch touraine search QUERY [--start N] [--limit N]
 gwt-fetch touraine catalogue "<place>" [--per-page 20|40|80] [--max-pages N]
@@ -21,13 +23,15 @@ gwt-fetch europeana QUERY [--provider any|NAME] [--data-provider NAME] [--countr
 gwt-fetch notarial-plan CATALOGUE.json --locality PLACE --from YEAR --to YEAR
 gwt-fetch geo PLACE [...] [--types Municipio,poblacion] [--province NAME] [--limit N]
 gwt-fetch --delay 2 ...   # seconds between requests to one host, default 1
+gwt-fetch iiif URL --out DIR --rawstore   # also digibib and gazeta fetch: images go to the bucket
 ```
 
 ## What every download does
 
 - **One row per file** in `DIR/manifest.tsv`: `file`, `label` (the canvas label or document title), `image_url` (the exact URL that served the bytes), `manifest_url` (the manifest or document page), `sha256`, `fetched_at` (UTC).
 - **It never overwrites.** Files are written as `*.part` and renamed when complete, so a finished file on disk is always whole.
-- **Re-running is resuming.** The same command skips finished files. A finished file without a row (the run died between rename and append) gets its row on the next run.
+- **Re-running is resuming.** The same command skips finished files. A finished file without a row (the run died between rename and append) gets its row on the next run. A file listed in the folder's `rawstore.tsv` counts as finished even when it is no longer on disk, so images moved to the bucket are not downloaded again.
+- **`--rawstore` keeps images out of the working tree.** After the run, every binary file `gwt-fetch` wrote in `--out` (images, PDF) is uploaded with [gwt-rawstore](rawstore.md) and deleted locally once a `HEAD` confirms the object, its size and its sha256. Text files stay. A file the bucket does not confirm stays on disk, has no `rawstore.tsv` row, and the run exits 1; the next `--rawstore` run tries it again. The bucket settings are gwt-rawstore's, and a missing one stops the run before anything is downloaded.
 - **Polite by default.** One request per second per host, retries on 429 and 5xx with backoff, honours `Retry-After`. The user agent is `Mozilla/5.0 (compatible; gwt-fetch/0.1; +https://github.com/GeiserX/gramps-web-toolkit)`; Antenati refuses agents that don't start with `Mozilla/5.0`.
 - **Exit status.** 0 when everything selected was fetched, 1 when some item failed (each failure is printed with the URLs tried and the HTTP status), 2 on a network or parse error.
 
@@ -39,9 +43,26 @@ Give it a IIIF Presentation manifest URL (v2 or v3), or a viewer URL from a port
 
 `--pages` takes 1-based canvas positions (`1-5,9,12-`); `--labels` takes a regular expression matched against the canvas label (`--labels '^pag\. (1|2)$'`). `--list` prints position, label and URL and downloads nothing.
 
+`full/max` is not always the native size: Antenati caps it at 10 megapixels. `--native` reads each canvas's `info.json` and asks for `full/<width>,/0/default.jpg` at the width it gives. The run checks the width of the image that comes back, and when the server sent another width (rescaled up or down) it saves nothing for that canvas, prints both widths and exits 1. Read names and dates at native width: a preview is for finding the act, not for reading it. A canvas already saved from `full/max` in the same `--out` folder is kept, and the native file goes beside it as `NNNN_<label>_native.jpg`; a canvas already saved at native width is skipped without a request. With `--list`, `--native` prints each canvas's `info.json` URL.
+
+The cap is the server's own `maxArea` in `info.json`, and `--native` asks above it, on servers that already take seconds per image. Use it for the pages you will read, not for whole registers.
+
+### `--image-base`: an Image API with no manifest
+
+Some viewers serve a IIIF Image API (`.../info.json`) and no Presentation manifest; French departmental archives are the common case. Their `full/max` and `full/full` can redirect to the HTML viewer, and a width above the native one comes back upscaled without an error. `--image-base` takes the image's base URL or its `info.json` and fetches it at native width, with the same width check as `--native`. Put `{page}` where the page number goes and give `--pages` with an end (`1-20`, not `12-`), since there is no manifest to count the pages:
+
+```
+gwt-fetch iiif --image-base 'https://archives.example.fr/iiif/ark:/00000/abc/f{page}/info.json' --pages 10-12 --out /tmp/reg
+```
+
+Where the archive pads its page numbers (`f_0007`), write `{page:04}`. `--pages` without `{page}` in the URL, a range that selects nothing, and `--labels` stop with a message.
+
+Each file is `NNNN_<last path part>.jpg` (`0010_f10.jpg`), and its row has the `info.json` URL as `manifest_url`. A page whose `info.json` fails is reported and the rest still download. Passing an `info.json` as the plain URL stops with a message that points here.
+
 | Portal | Works | Viewer URL to manifest |
 |---|---|---|
-| Portale Antenati (Italy) | Yes, tested | The unit page `https://antenati.cultura.gov.it/ark:/12657/an_ua4076426/` holds the link `https://dam-antenati.cultura.gov.it/antenati/containers/5vj8KVP/manifest`; `gwt-fetch` reads it from the page. Image requests need `Referer: https://antenati.cultura.gov.it/`, which `gwt-fetch` sends. `full/full` returns 403 and `full/max` works. The server caps output at 10 megapixels (`maxArea` in `info.json`), so a 4929×3781 scan arrives at 3610×2769. |
+| Portale Antenati (Italy) | Yes, tested | Paste the manifest URL, `https://dam-antenati.cultura.gov.it/antenati/containers/5vj8KVP/manifest` (the viewer's IIIF link). The unit page `https://antenati.cultura.gov.it/ark:/12657/an_ua4076426/` also works where the portal answers, but its firewall refuses many addresses outside Italy. The manifest and image servers answer 403 unless the Referer is `https://antenati.cultura.gov.it/`; `gwt-fetch` sends that for every `dam-antenati` and `iiif-antenati` URL. `full/full` returns 403 and `full/max` is capped at 10 megapixels (`maxArea` in `info.json`), so a 4929×3781 scan arrives at 3610×2769; add `--native` for the 4929 px original. |
+| Canadiana (Canada, LAC microfilm) | Yes, tested | `https://heritage.canadiana.ca/view/{id}/{page}` becomes `https://heritage.canadiana.ca/iiif/{id}/manifest` (Presentation 3). A reel's manifest is several megabytes. The site's robots.txt asks for 10 seconds between requests, so `gwt-fetch` waits at least that long on a Canadiana run; a longer `--delay` is kept. |
 | Memòria Digital de Catalunya (and any CONTENTdm site) | Yes, tested | `https://mdc.csuc.cat/digital/collection/{alias}/id/{id}` becomes `https://mdc.csuc.cat/iiif/2/{alias}:{id}/manifest.json`. Images arrive at native size. |
 | Europeana | Yes, tested | `https://www.europeana.eu/{lang}/item/{collection}/{id}` becomes `https://iiif.europeana.eu/presentation/{collection}/{id}/manifest`. When the provider has no Image API, Europeana's manifest points at its own thumbnail proxy (`api.europeana.eu/thumbnail/v2/url.json?uri=...`); `gwt-fetch` takes the original file from `uri` instead. The original can be a PDF. |
 | Any Mirador or Universal Viewer link | Yes | A `?manifest=` or `?iiif-content=` parameter is used as the manifest. |
@@ -51,11 +72,21 @@ Give it a IIIF Presentation manifest URL (v2 or v3), or a viewer URL from a port
 | Galiciana, Arquivo Dixital de Galicia | Yes, through `digibib` or Europeana | `arquivo.galiciana.gal/arpadweb` has no challenge; its single-file objects come back as PDF. |
 | Biblioteca Digital Hispánica (BNE) | Needs a browser | `bdh-rd.bne.es` returns a 403 block page to scripted clients for viewer pages and for `pdf.raw` image URLs, from a datacenter address and from a home connection alike. No IIIF endpoint was found. |
 
+These archives serve plain manifests that `gwt-fetch iiif` reads as they are; build the URL from the item's id. Each template answered with a manifest in November 2026:
+
+| Archive | Manifest URL |
+|---|---|
+| Riksarkivet (Sweden) | `https://lbiiif.riksarkivet.se/arkis!{bildid}/manifest` |
+| ANNO, Austrian National Library newspapers | `https://iiif.onb.ac.at/presentation/ANNO/{code}{yyyymmdd}/manifest/` |
+| Bayerische Staatsbibliothek (digitale-sammlungen) | `https://api.digitale-sammlungen.de/iiif/presentation/v2/{bsb_id}/manifest` |
+| National Diet Library (Japan) | `https://dl.ndl.go.jp/api/iiif/{pid}/manifest.json` |
+| Internet Archive | `https://iiif.archive.org/iiif/{identifier}/manifest.json` |
+
 Antenati traps from real downloads (two Italian birth registers of the 1850s and 1860s):
 
 - The image server is slow: 10 to 60 seconds per image, about 20 on average. Five pages take close to two minutes, so run big selections in the background and let the resume logic carry a run that gets cut off.
 - A plain `curl` gets 403 from both `antenati.cultura.gov.it` (search and unit pages) and the image server. The user agent has to start with `Mozilla/5.0`, and image requests need the portal as `Referer`.
-- The web viewer shows about 1600 px and `full/full` returns a Cloudflare 403, which led one researcher to settle for 1600 px. `full/max` returns the largest size allowed: 3530×2716 for one page, 2122×1684 for another, depending on the scan.
+- The web viewer shows about 1600 px and `full/full` returns a Cloudflare 403, which led one researcher to settle for 1600 px. `full/max` returns the largest size allowed: 3530×2716 for one page, 2122×1684 for another, depending on the scan. `--native` asks for `full/<width>,` and gets the scan's own width.
 - A canvas label is only `pag. N`. To find an act, list the canvases (`--list`), fetch a few pages around the estimate into `/tmp`, read the «Num. d'ordine» on each, then fetch just the right page into your research folder.
 
 ## `touraine`: civil registers of Indre-et-Loire (AD37)
@@ -70,6 +101,7 @@ gwt-fetch touraine pages ARK --list                # page number, page URL, page
 gwt-fetch touraine pages ARK --pages 40-44 --out /tmp/reg
 ```
 
+- `pages` uses 1-based image ordinals: image 1 is API index 0. The API uses inclusive zero-based ranges and may return a list for the first range or an object keyed by index for later ranges. These ordinals are not manuscript folio labels or proof of historical `vNNN` citations. Compare the exact image UUID before citing. Older downloads made before this correction omitted the first image and had shifted `pNNNN` filenames; do not reuse those filenames as view evidence or silently relabel old manifests.
 - `search --table` asks for the site's table mode sorted by cote (`mode=table`, `sort=referencecode_asc`), 20, 40 or 80 rows a page (`--per-page`, `--page` from 1; the stderr line names the next page). The ark and the cote stand in the same row, so the registers of one place are listed in cote order without opening each record. The site's own `-` for an empty cell becomes an empty cell; any other cell starting with `=`, `+`, `-` or `@` gets a leading quote. `--start` and `--limit` belong to the list mode and are refused with `--table`, as are `--page` and `--per-page` without it, whatever their value, even the default one (exit 2, before any request). A result count above 10 000 is shown as such by the site, so narrow the query.
 - `catalogue "<place>"` follows the same table search from page 1, with 20 rows requested per page by default. It sends the place as a query value unchanged, including a leading `=`. Output is TSV sorted by numeric year, cote and ARK: `year`, `cote`, `ark`, `date`, `place`, `kind`, `medias`, `title`, `conflict`, `query`, `record_url`, `source_url`, `source_page`, `source_row`. Each register has a row for each year of its inclusive range; unknown dates have one `year=unknown` row. Source page and row are 1-based; the source URL includes the query and pagination parameters. No records are deduplicated by cote: different ARKs with the same cote keep both records and flag both as conflicts. Different metadata for one ARK also flags a conflict. All TSV cells have whitespace flattened and leading spreadsheet formula characters quoted.
 - Catalogue completeness is currently **UNKNOWN**: this repository has no captured positive terminal-page contract for Touraine. Certification would require the expected complete site layout/structure together with a site-owned terminal/no-results marker established by captured source fixtures. Neither an empty (or header-only) `results-table`, nor absence of a `next` relation or known challenge wording proves completion. No live-site marker has been guessed. The parser stops at an empty table, retains earlier rows and provenance, and gives the missing contract as its incomplete reason. **All catalogue gap claims are withheld**, with exit 1, `pagination=incomplete`, `completeness=UNKNOWN`, `coverage=incomplete`, and no `uncovered=` output.
@@ -140,6 +172,27 @@ For 1800–1806, `chain` orders CAT-A (1800–1802), CAT-B (1802–1803), CAT-C 
 `catalogue_coverage` is `1800-1803,1805-1806`; `catalogue_gaps` is `1804`. Both reuse the existing inclusive-range helpers. `overlaps` identifies 1802 with CAT-A and CAT-B; adjacent overlap segments combine only when their catalogue IDs agree. `unknown_coverage` lists CAT-U, whose tentative dates never fill 1804. Gaps are years without exact coverage in the supplied metadata, not evidence that records were lost or never existed. With no matching entries, the entire period is a catalogue gap.
 
 Every chain entry has `status: "candidate"`, its clipped `search_period` (or `null`), the original `metadata`, supplied references and a `next_step`. Ordering is chronological, then office and ID, with unknown dates last; it is a search itinerary, not a claim that one office succeeded another. Consult the supplied references and record literal evidence yourself. Catalogue coverage never establishes that a contract was found, or supports marriage or parentage. There is no person matching, inferred relationship or queue/tree write. Exit 0 means a valid plan, including gaps or no candidates; input errors exit 2.
+
+## `crop`: cut a saved page into pieces
+
+A register page is often too big to read in one look, and a double page holds two. `crop` cuts a saved image and writes each piece as a JPEG beside it:
+
+- `--box x,y,w,h` cuts one box, in the image's pixels. With `--from-size WxH` the box was measured on a preview of that size and is scaled to the real image. A box that reaches past the edge is refused.
+- `--grid 2x3` cuts 2 columns by 3 rows. `--overlap 10%` makes each tile reach 10% of its size into its neighbours, so a line on a tile edge is whole in one of them.
+- `--half left|right` cuts the left or right half of a double page.
+- `--max 1600` shrinks each piece so its longest side is at most 1600 px. Leave it out to keep native pixels.
+
+`--from-size` without `--box`, and `--overlap` without `--grid`, are refused rather than ignored.
+
+```
+$ gwt-fetch crop /tmp/reg/0012_f12.jpg --grid 2x3 --overlap 10%
+/tmp/reg/0012_f12_grid2x3-r1c1.jpg
+...
+```
+
+Pieces are named `<original>_box-x-y-w-h.jpg`, `<original>_grid2x3-r1c2.jpg` or `<original>_left.jpg`. Each gets a row in the same folder's `manifest.tsv`, with the same columns as a download: `label` is `crop x,y,w,h of <original> sha256:<original's sha256>`, `image_url` is the original's URL from its own row (or its file name) with `#xywh=x,y,w,h` in the original's pixels, and `manifest_url` is the original's. Cropping a piece again keeps one `#xywh=` on the original: the new box is moved and scaled (after `--max`) into the original's pixels. Like a download, a piece is never overwritten, and re-running skips finished ones. If that folder's `manifest.tsv` was written by another tool (other columns), `crop` refuses to add to it; `--out DIR` writes the pieces and their rows to another folder, and `image_url` then names the original by its path from there.
+
+`crop` needs Pillow: `pipx install 'gramps-web-toolkit[crop]'`, or `pip install Pillow` beside a clone. Without it, `crop` prints how to install it and exits 2.
 
 ## `digibib`: DIGIBIB viewers without IIIF
 
@@ -451,3 +504,71 @@ Exit status is 0 for valid input, including zero people (JSON `[]`, TSV header o
 Empty input, a missing/duplicate header, an invalid date, an unreadable file or malformed
 TSV exits 2 with no partial result. All input blocks are validated before output.
 Notarial catalogue JSON rejects duplicate keys at every nesting level and NaN/Infinity constants before output (exit2).
+
+## Pure bounded search plans
+
+`gwt_fetch.search_plan.build(given, original, selected, sources)` returns a plan
+without searching, opening files, downloading pages or writing to a tree. It
+reuses `variants.suggest(..., rules=False)` and `names.queries`; existing APIs and
+CLI behavior are unchanged. This is a Python helper, with no executor or new CLI.
+
+```python
+from gwt_fetch.search_plan import build
+
+plan = build(
+    "Nuvio",
+    {"spelling": "Zunexa de Molquix Talvex", "provenance": "synthetic original reading"},
+    [{"spelling": "Zúnexa de Molquix Talvex", "provenance": "synthetic selected alternative"}],
+    ["gazeta", "boe"],
+)
+assert plan["status"] == "planned" and plan["executed"] is False
+```
+
+Each spelling is a **complete surname string**, including compound and second
+surnames. The helper does not guess surname boundaries. Select alternatives
+explicitly, including any proposed OCR glyph confusions, with their provenance.
+Resolve ambiguous cluster suggestions before selecting: the helper accepts no
+cluster documents, configuration maps or automatic observation-to-alias rules.
+There is no reverse or transitive expansion and no identity or filiation claim.
+Provenance records the supplied assertion; the helper does not verify it.
+
+Both existing query orders are planned. Entries are grouped by source and
+`names.fold(query)`. The original supplies the representative literal when it
+collides; other selections sort by literal spelling and provenance. Source order
+is `gazeta`, then `boe`. Every contribution retains `spelling`, `provenance` and
+its exact `query`, including accent/case alternatives that folding groups. Only
+identical spelling/provenance pairs are deduplicated. This is local grouping, not
+a guarantee of a remote service's matching semantics. An executor would send
+`entry["query"]`, not silently send every contributing alternative as well.
+
+Inputs require nonblank single-line text, at most 128 characters per query term
+and 512 per provenance. Query terms require canonical single spaces, no outer
+spaces, no double quotes and nonempty folded text. Controls, Unicode surrogates
+and unknown selection fields are rejected. `selected` and `sources` must be
+lists: at most eight alternatives plus the original, one or two distinct sources
+from `gazeta`/`boe`, at most 36 logical source/query entries. Excess is rejected,
+never truncated. Input order does not change the plan; inputs are not mutated.
+
+Each entry has `status: planned` and `coverage_status: unknown`. No timestamps,
+hits, tried status, negative result or image-viewed status are generated. A plan
+does not establish access permission. The logical entry bound is not an HTTP
+request budget; execution, pagination, retries and permission gates are separate
+future work. For a later authorized manual review, propose only **6–8 explicitly
+selected pages per batch**, preserving their supplied numbering and provenance.
+This helper neither selects pages nor emits download or lease commands.
+
+Keep coverage observations separate by source, record type and year, with an
+observation date and evidence reference. Existing [access coverage](access-coverage.md)
+retains supplied access assertions and conflicts; access status does not establish
+search completeness or an absence. This planner does not ingest or reinterpret
+those assertions. Public index hits, OCR references and persistent locators are
+leads: they prove neither viewed images nor confirmed people. A confirmed claim
+requires an actual act citation supporting that claim; an unverified hypothesis
+link without an act must remain explicitly marked **hypothesis — no act**.
+Restricted resources remain restricted; retain the custodian's requirements.
+
+## `geo-fr`: current French commune candidates, read-only
+
+`gwt-fetch geo-fr "Vouvray" --department 37` queries the [official commune API](https://geo.api.gouv.fr/decoupage-administratif/communes). `--insee-code` selects an exact current administrative code; `--limit` is1..30. No token, Gramps credentials, apply option or tree write. This command only prints a dry-run candidate table, as `geo` does for Spain.
+
+The API centre is a current commune centre in WGS84, not an act's address or proof that a historical place was this commune. Coordinates are read as longitude/latitude and printed latitude/longitude. Homonyms and fuzzy results stay ambiguous; population is never used to choose a winner. Department filters are exact. Truncation is explicit, never a complete-result claim. Every candidate requires human review. Old/merged communes such as Chemillé may need historical administrative evidence and a current code, not the first fuzzy hit. Compare department, spelling and source act before a separate writer proposes a small backed-up place edit.

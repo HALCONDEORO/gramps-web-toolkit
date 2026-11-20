@@ -1,0 +1,13 @@
+gwt_transcription_review.py | "auto_verified": False, | "auto_verified": True, | a packet is reported as automatically verified
+gwt_transcription_review.py | raise PermissionError(REFUSAL) | return _packet | auto_verify no longer refuses
+gwt_transcription_review.py | if (ea, ra) == (eb, rb): | if False: | same engine and reader is not warned as non independent
+gwt_transcription_review.py | elif ra == rb and ra not in NO_IDENTITY: | elif False: | a shared human reader is not warned as non independent
+gwt_transcription_review.py | s = "".join(c for c in s if unicodedata.category(c) != "Cf") | s = s | an invisible character spoofs a different reader
+gwt_transcription_review.py | if unc["a"] or unc["b"]: | if False: | identical illegible markers are called a match
+gwt_transcription_review.py | not SHA256_RE.fullmatch(sha) | not SHA256_RE.match(sha) | an image hash with a trailing newline is accepted
+gwt_transcription_review.py | if args.out and _same_file(args.input, args.out): | if False: | the output may overwrite the input file
+gwt_transcription_review.py | return os.path.exists(a) and os.path.exists(b) and os.path.samefile(a, b) | return False | a hardlink or symlink to the input is accepted as output
+gwt_transcription_review.py | if len(value.split()) > MAX_FIELD_TOKENS: | if len(value.split()) >= MAX_FIELD_TOKENS: | a field at the token limit is rejected
+gwt_transcription_review.py | if len(value) > limit: | if len(value) >= limit: | text exactly at the character limit is rejected
+gwt_transcription_review.py | if len(text) > MAX_INPUT_CHARS: | if len(text) >= MAX_INPUT_CHARS: | an input file exactly at the size limit is rejected
+gwt_transcription_review.py | os.link(tmp, path) | os.replace(tmp, path) | an existing output file is overwritten without --overwrite

@@ -694,7 +694,7 @@ def test_remove_tag_takes_one_tag_off_and_keeps_the_tag_and_the_rest(fake):
     assert place["tag_list"] == ["tag-other"] and place["name"] == {"value": "Springfield"}
     assert "tag-weak" in fake.store["tags"]  # the tag itself stays in the tree
     before = len(fake.writes())
-    res = run(fake, ops)[0]  # a rerun: the tag is already off
+    res = run(fake, [dict(op, expect="absent") for op in ops])[0]  # explicit rerun permission
     assert res.status == "skip" and "does not have the tag" in res.actions[-1], res.actions
     assert fake.writes()[before:] == []
 
@@ -1170,7 +1170,7 @@ def test_apply_on_a_current_snapshot_reads_almost_nothing(fake, scan, tmp_path, 
     # single reads: the stamp check before each PUT, and objects this run wrote, which the snapshot does not have
     # (Anna changed when her new family was written, so the update of her name reads her and checks her again)
     assert [c for c in gets if c[1] in ("/api/places/plc1", "/api/sources/src1")] == []
-    assert gets.count(("GET", "/api/people/anna")) == 2
+    assert gets.count(("GET", "/api/people/anna")) == 3  # pre-PUT recheck plus post-PUT verification
     john = fake.store["people"][stable_handle("p-john")]
     assert john["birth_ref_index"] == 0 and len(john["citation_list"]) == 1
 
@@ -2125,7 +2125,7 @@ def test_update_family_type(fake):
     op = {"op": "update_family", "key": "u", "ruling": R, "family": f["gramps_id"], "set": {"type": "Married"}}
     assert run(fake, [op])[0].status == "done" and fake.store["families"]["fam"]["type"] == "Married"
     assert run(fake, [op])[0].status == "skip"
-    assert validate([dict(op, key="b", set={"father": "I1"})]) and validate([dict(op, key="b", set={})])
+    assert validate([dict(op, key="b", set={"colour": "x"})]) and validate([dict(op, key="b", set={})])
 
 
 def test_update_child_ref_relations_and_confirming_a_probable_link(fake):
@@ -2158,7 +2158,7 @@ def test_detach_takes_a_reference_off_and_keeps_the_object(fake):
     op = {"op": "detach", "key": "d", "ruling": R, "target": {"person": "I0001"}, "object": {"note": n["gramps_id"]}}
     assert run(fake, [op])[0].status == "done"
     assert fake.store["people"]["anna"]["note_list"] == [] and "n1" in fake.store["notes"]
-    assert run(fake, [op])[0].status == "skip"
+    assert run(fake, [dict(op, expect="absent")])[0].status == "skip"
     # the way back is attach_existing
     back = {"op": "attach_existing", "key": "a", "ruling": R, "object": {"note": n["gramps_id"]}, "attach": [{"person": "I0001"}]}
     assert run(fake, [back])[0].status == "done" and fake.store["people"]["anna"]["note_list"] == ["n1"]
@@ -2842,7 +2842,7 @@ def test_an_op_that_gives_up_says_the_server_may_hold_each_lost_write(fake):
 
 
 @pytest.mark.parametrize("second, status, last", [
-    (None, "conflict", "conflict: Note N0001 no longer reads as expected"),
+    (None, "error", "error: update result differs from both preimage and intended object; no automatic retry"),
     (("GET", "/api/notes/", _crash), "error", "error: RuntimeError: the client broke"),
     (("PUT", "/api/notes/", lambda f: Resp(400, "bad request")), "error", "error: "),
 ])
@@ -3371,7 +3371,9 @@ def test_a_dry_run_and_a_snapshot_leave_no_log_anywhere(fake, tmp_path, env, sta
     changes = _changes(tmp_path, [{"op": "add_note", "key": "n", "ruling": R, "text": "x", "attach": [{"person": "I0001"}]}])
     assert main([str(changes)]) == 0
     assert main(["--save-snapshot", str(tmp_path / "s.json.gz")]) == 0
-    assert main(["--save-snapshot", str(tmp_path / "s2.json.gz"), "--apply"]) == 0  # --apply does not make it a write
+    with pytest.raises(SystemExit) as refused:
+        main(["--save-snapshot", str(tmp_path / "s2.json.gz"), "--apply"])
+    assert refused.value.code == 2  # upstream #198 refuses contradictory modes
     assert list(cwd.iterdir()) == []
     assert not state_home.exists()
 
@@ -3765,7 +3767,7 @@ def test_unlink_child_takes_both_sides_and_keeps_people_and_family(fake):
     assert note["type"] == "Research"
     assert not any(a.startswith("warning") for a in res[0].actions)  # the family still has its mother
     writes = len(fake.writes())
-    again = run(fake, [_unlink()])
+    again = run(fake, [dict(_unlink(), expect="absent")])
     assert again[0].status == "skip" and "not a child of Family F0001" in again[0].actions[-1]
     assert len(fake.writes()) == writes
     # linked again by mistake and taken out again under another key: the same note is reused, not repeated
@@ -4065,7 +4067,7 @@ def test_server_backup_202_task_that_never_finishes_writes_nothing(fake, tmp_pat
     _backup_202(fake, monkeypatch, [PENDING], GOOD)
     notes = set(fake.store["notes"])
     assert main([str(p), "--apply", "--server-backup", "--log", str(tmp_path / "a.jsonl")]) == 1
-    assert "did not finish in 60 s" in capsys.readouterr().err
+    assert "did not finish in 10 min" in capsys.readouterr().err
     assert set(fake.store["notes"]) == notes
 
 

@@ -13,7 +13,7 @@ reopens on its own, and counts as a failed attempt.
   gwt-queue done --id ID --token T --result hit [--evidence F]
   gwt-queue fail --id ID --token T [--note why]          back off, or park the task after --max-tries attempts
   gwt-queue release --id ID --token T [--retry-after M]  nothing ran (a gate pause, a shutdown): give the try back
-  gwt-queue list [--status S] [--person KEY] [--lane L]
+  gwt-queue list [--status S] [--person KEY] [--lane L] [--result R]
   gwt-queue report [--limit N]                           the open-leads report: what is due, by priority
   gwt-queue stats
 
@@ -26,8 +26,9 @@ import argparse, collections, datetime, fcntl, json, os, re, sys, unicodedata, u
 COLUMNS = ('id', 'person_key', 'person_label', 'kind', 'source', 'query', 'priority', 'status',
            'lane', 'claimed_at', 'done_at', 'result', 'evidence', 'tries', 'next_at', 'note', 'token',
            'lease_until', 'dedupe_key')
-RESULTS = ('hit', 'none', 'partial', 'blocked', 'denied')  # same words as gwt-ledger
-SEARCHED = ('hit', 'none', 'partial')  # results of a search that ran
+RESULTS = ('hit', 'none', 'partial', 'blocked', 'denied', 'restricted', 'paid', 'in-person', 'out-of-coverage',
+           'unproven')  # same words as gwt-ledger
+SEARCHED = ('hit', 'none', 'partial', 'out-of-coverage')  # results of a search that ran, as in gwt-ledger
 KINDS = ('search', 'sweep', 'verify', 'followup')
 STATUS = ('open', 'claimed', 'done', 'failed')
 DEFAULT_LEASE_MINUTES = 120
@@ -128,26 +129,33 @@ def write_rows(path, rows):
 
 def with_queue(path, fn, write=True):
     """Run fn(rows) under an exclusive lock on <queue>.lock (a file that is never replaced, so the lock
-    survives the atomic rename) and save the rows; fn returns (rows, exit_code)."""
+    survives the atomic rename) and save the rows; fn returns (rows, exit_code).
+    A refused command (exit 2) leaves the queue file unchanged or absent. The
+    parent directory and sidecar lock may still be created to coordinate access."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path + '.lock', 'a', encoding='utf-8') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
             rows, code = fn(read_file(path))
-            if write:
+            if write and code != 2:
                 write_rows(path, rows)
             return code
         finally:
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-def new_id(rows):
-    """q1, q2, ... one above the highest number in use, so a human can say 'claim q7' in a brief."""
+def top_id(rows):
+    """The highest N of the qN ids in use, 0 when there are none."""
     top = 0
     for r in rows:
         if r['id'].startswith('q') and r['id'][1:].isdigit():
             top = max(top, int(r['id'][1:]))
-    return 'q%d' % (top + 1)
+    return top
+
+
+def new_id(rows):
+    """q1, q2, ... one above the highest number in use, so a human can say 'claim q7' in a brief."""
+    return 'q%d' % (top_id(rows) + 1)
 
 
 def lease_end(r):
@@ -236,33 +244,29 @@ def at_least_one(value):
     return n
 
 
-def dedupe_match(rows, row, retry_failed):
-    """The existing row that stands for the same task, or None. A row matches on its dedupe_key when either
-    side has one, else on person + kind + source + query. A done row matches when its search ran (result hit,
-    none or partial); a done row that was blocked or denied does not stop a re-seed. Failed rows match too
-    unless retry_failed."""
-    statuses = ('open', 'claimed', 'done') if retry_failed else ('open', 'claimed', 'done', 'failed')
-    for r in rows:
-        if r['status'] not in statuses:
-            continue
-        if r['status'] == 'done' and r['result'] not in SEARCHED:
-            continue
-        if r['dedupe_key'] or row['dedupe_key']:
-            if r['dedupe_key'] == row['dedupe_key']:
-                return r
-        elif (r['person_key'] == row['person_key'] and r['kind'] == row['kind'] and r['source'] == row['source']
-              and normalize(r['query']) == row['query']):
-            return r
-    return None
+def priority_value(priority):
+    """The priority of a new row, parsed as `--priority` (argparse type=int) parses it. JSON adds floats and
+    bools, which int() would truncate or coerce (2.9 to 2, true to 1), so those are refused."""
+    if priority is None:
+        return ''
+    if isinstance(priority, bool):
+        raise ValueError('priority must be an integer, not %r' % (priority,))
+    if isinstance(priority, float):
+        raise ValueError('priority must be an integer, not %r' % (priority,))
+    return str(int(priority))
+
+
 
 
 def new_row(rows, person, label='', kind='search', source='', query='', priority=None, note='', next_at='',
-            dedupe_key=''):
+            dedupe_key='', task_id=None):
+    """A new open row. Its id is a placeholder until add_rows appends it; task_id skips scanning rows for it."""
     if kind not in KINDS:
         raise ValueError('kind must be one of %s, not %r' % (', '.join(KINDS), kind))
-    return {'id': new_id(rows), 'person_key': key(person), 'person_label': clean(label), 'kind': kind,
+    return {'id': new_id(rows) if task_id is None else task_id, 'person_key': key(person),
+            'person_label': clean(label), 'kind': kind,
             'source': key(source), 'query': normalize(query),
-            'priority': '' if priority is None else str(int(priority)), 'status': 'open',
+            'priority': priority_value(priority), 'status': 'open',
             'lane': '', 'claimed_at': '', 'done_at': '', 'result': '', 'evidence': '', 'tries': '0',
             'next_at': iso_or_empty(next_at), 'note': clean(note), 'token': '', 'lease_until': '',
             'dedupe_key': clean(dedupe_key)}
@@ -271,15 +275,45 @@ def new_row(rows, person, label='', kind='search', source='', query='', priority
 def add_rows(rows, wanted, dedupe, retry_failed):
     """Append each wanted row unless dedupe finds it already queued. A hit on an open row refreshes its label,
     query, note and priority, so a re-seed carries the latest gaps instead of the first seed's. Returns the rows
-    to print, one per wanted row."""
+    to print, one per wanted row.
+
+    With dedupe, a row matches the first existing row that stands for the same task: on its dedupe_key when
+    either side has one, else on person + kind + source + query. A done row matches when its search ran (result
+    hit, none or partial); a done row that was blocked or denied does not stop a re-seed. Failed rows match too
+    unless retry_failed. The rows that can match are indexed once, so a batch costs one pass over the queue,
+    not one pass per wanted row."""
+    by_key, by_task = {}, {}
+
+    def index(r):
+        if r['dedupe_key']:
+            by_key.setdefault(r['dedupe_key'], r)
+        else:
+            by_task.setdefault((r['person_key'], r['kind'], r['source']), []).append(r)
+
+    if dedupe:
+        statuses = ('open', 'claimed', 'done') if retry_failed else ('open', 'claimed', 'done', 'failed')
+        for r in rows:
+            if r['status'] in statuses and (r['status'] != 'done' or r['result'] in SEARCHED):
+                index(r)
+    top = None
     shown = []
     for row in wanted:
-        hit = dedupe_match(rows, row, retry_failed) if dedupe else None
+        hit = None
+        if dedupe and row['dedupe_key']:
+            hit = by_key.get(row['dedupe_key'])
+        elif dedupe:
+            # The query is compared at lookup time, as stored now: an open hit's query can change below.
+            hit = next((r for r in by_task.get((row['person_key'], row['kind'], row['source']), ())
+                        if normalize(r['query']) == row['query']), None)
         if hit is None:
-            row['id'] = new_id(rows)
+            top = top_id(rows) if top is None else top
+            top += 1
+            row['id'] = 'q%d' % top
             row['priority'] = row['priority'] or '0'
             rows.append(row)
             shown.append(row)
+            if dedupe:
+                index(row)
             continue
         if hit['status'] == 'open':
             for col in ('person_label', 'query', 'priority', 'note'):
@@ -292,7 +326,7 @@ def add_rows(rows, wanted, dedupe, retry_failed):
 def read_jsonl(stream, rows):
     """Rows from JSON lines: {"person", "label", "kind", "source", "query", "priority", "note", "next_at",
     "dedupe_key"}; only person is required. A bad line stops the whole batch before anything is written."""
-    out = []
+    out, task_id = [], None
     for n, line in enumerate(stream, 1):
         if not line.strip():
             continue
@@ -302,7 +336,9 @@ def read_jsonl(stream, rows):
                 raise ValueError('needs an object with a "person"')
             out.append(new_row(rows, obj['person'], obj.get('label', ''), obj.get('kind', 'search'),
                                obj.get('source', ''), obj.get('query', ''), obj.get('priority'),
-                               obj.get('note', ''), obj.get('next_at', ''), obj.get('dedupe_key', '')))
+                               obj.get('note', ''), obj.get('next_at', ''), obj.get('dedupe_key', ''),
+                               task_id))
+            task_id = out[-1]['id']  # every row of a batch gets the same placeholder id
         except (ValueError, TypeError, argparse.ArgumentTypeError) as e:
             raise ValueError('line %d: %s' % (n, e))
     return out
@@ -460,9 +496,11 @@ def main(argv=None):
         batch = None
         if args.jsonl:
             try:
-                stream = sys.stdin if args.jsonl == '-' else open(args.jsonl, encoding='utf-8')
-                with stream:
-                    batch = stream.readlines()
+                if args.jsonl == '-':
+                    batch = sys.stdin.readlines()  # stdin belongs to the caller; never close it
+                else:
+                    with open(args.jsonl, encoding='utf-8') as stream:
+                        batch = stream.readlines()
             except OSError as e:
                 p.error('cannot read %s: %s' % (args.jsonl, e))
 

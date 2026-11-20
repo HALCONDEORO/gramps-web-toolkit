@@ -51,7 +51,7 @@ def main(argv=None) -> int:
         for cmd in COMMANDS:
             for label, path in trees:
                 name, secs, peak, rc, last = run(cmd, path)
-                bad += rc > 1  # 1 is "findings"; more is a crash
+                bad += rc not in (0, 1)  # 1 is findings; negative means terminated by a signal
                 print(f"{label:9} {name:12} {secs:6.1f} {peak:5d} {rc:4d}  {last}")
     return 1 if bad else 0
 

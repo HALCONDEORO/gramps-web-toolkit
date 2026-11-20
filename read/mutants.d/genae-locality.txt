@@ -1,0 +1,2 @@
+gwt_read.py | if a.locality:   # an id too: the site ignores an l it does not know, and an id belongs to one province | if False: | a genae locality, name or id, is checked against the search form before searching: an unknown one stops the search, never a silent whole-region search
+gwt_genae.py | if not listed: | if False: | a form that lists no locality for the province is a changed form (exit 1), never the user's typo (exit 64)

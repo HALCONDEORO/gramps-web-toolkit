@@ -63,6 +63,16 @@ The toolkit works for genealogy in any country. `gwt-spanish-poller` and some `g
 - [gwt-check](check.md): reads the whole tree and reports orphans, dangling links, broken pointers, likely duplicates, dates that contradict each other and what changed.
 - [gwt-import-excel](import-excel.md): turns a research workbook into a change list for review.
 - [gwt-leads](leads.md): reads a tree dump offline and ranks its gaps as queue tasks.
+- [Archives catalogue](archives.md): where records are kept in about 80 countries, for `gwt-leads --archives builtin:CC`.
+- [gwt-report](report.md): how two people are related, in English, Spanish and French, and what is new since the family was last told.
+- [gwt-geocode](geocode.md): coordinates for the places events use, in any country, as a change list for gwt-apply.
+- [gwt-run](run.md): one change list through backup, dry run, apply, verify and check, in one command that goes on where it stopped.
+- [gwt-import-dna](import-dna.md): turns the DNA match lists a testing site lets you download into a change list for Gramps Web's DNA view.
+- [gwt-lint](lint.md): checks a change list against the tree before it is applied: scope, protected and living people, overlap with other lists, weak claims; every rule proves it can fail.
+- [gwt-import-gedcom](import-gedcom.md): a GEDCOM file as a change list for review, with anyone already in the tree held for a decision; audit, split, and export with living people anonymized.
+- [gwt-corpus](corpus.md): search everything already downloaded before going back to a site, and cross a book or gazette with the tree.
+
+- [gwt-report](report.md): how two people are related, in English, Spanish and French, and what is new since the family was last told.
 
 ## Research tools
 
@@ -73,11 +83,13 @@ The toolkit works for genealogy in any country. `gwt-spanish-poller` and some `g
 - [Military records](military.md): where conscription, decoration and war-death records are, and how to write a `matricule` card for `gwt-acts`.
 - [gwt-acts](acts.md): checks act cards before anything is written and says whether the person is already in the tree. Offline.
 - [Finding church and civil registers](finding-registers.md): public sources for Spanish parish and French civil registers, and how to record what you find.
+- [France: indexed registers](france-registers-indexed.md): which French parish and civil registers are online and which indexes cover them, with the spellings to search them under.
 - [gwt-rank](rank.md): orders record-search results by how well they fit a person, and never hides a row.
 - [gwt-fetch](fetch.md): archive images and text without a browser: IIIF, Europeana, and Spanish sources.
 - [gwt-surname-clusters](surname-clusters.md): offline surname search suggestions with literal spellings, provenance and explicit ambiguity, requiring human review.
 - [gwt-mh](myheritage.md): MyHeritage records through a signed-in browser, on a free or a paid account.
-- [gwt-read](read.md): record search and records on FamilySearch (with your own session token) and PARES, and index search on Genae, slow and cached by default.
+- [gwt-read](read.md): record search and records on FamilySearch (with your own session token) and PARES, index search on Genae, and a name in the BOE and Gaceta de Madrid, slow and cached by default; and INSEE's French deaths files, read offline.
+- [gwt-read sources](sources/index.md): every site gwt-read reads, its canary controls, and how to add one.
 - [gwt-rawstore](rawstore.md): source images in an S3-compatible bucket, a small manifest in git.
 - [ocr-bench](ocr-bench.md): scores OCR, HTR and LLM readings of the same pages on the names they recover.
 - [gwt-spanish-poller](spanish-poller.md): watches Spanish civil-registry requests and the DEHú inbox, read-only.
@@ -91,7 +103,21 @@ The toolkit works for genealogy in any country. `gwt-spanish-poller` and some `g
 ## Development
 
 - [Development](development.md): tests, building this site, and the rules for a change.
+- [Shared rules and locales](rules.md): one rule for who may be living, name folding and date reading, and a word table per language.
 
 ## License
 
 gramps-web-toolkit is released under the [GPL-3.0-or-later](https://github.com/HALCONDEORO/gramps-web-toolkit/blob/main/LICENSE) license, the same as the original [GeiserX/gramps-web-toolkit](https://github.com/GeiserX/gramps-web-toolkit), whose authors keep their copyright. This fork's changes are under the same license.
+
+## Offline evidence review
+
+- [act-packet](act-packet.md): review-only evidence and completeness checks; no network or tree writes.
+- [pagination-audit](pagination-audit.md): review-only evidence and completeness checks; no network or tree writes.
+- [genae-act-link](genae-act-link.md): review-only evidence and completeness checks; no network or tree writes.
+- [transcription-review](transcription-review.md): review-only evidence and completeness checks; no network or tree writes.
+
+## Offline maintenance checks
+
+- [Queue audit](queue-audit.md): review schema, dependencies and stale queue work without changing the queue.
+- [Install doctor](install-doctor.md): static packaging checks; uncertain dynamic targets remain UNKNOWN.
+- [Retry-After proposals](retry-after.md): parse server hints offline without sleeping or changing live gate state.
