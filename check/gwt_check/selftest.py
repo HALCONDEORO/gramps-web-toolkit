@@ -590,7 +590,18 @@ def p_event_type_description(d):
     d["events"].append(event)
 
 
+def p_same_act_person(d):
+    person = _new_person(d, "I0910", "Invented", "Alphard")
+    _event(d, person, "E0910", "Baptism", (1800, 1, 1))
+    event = _get(d, "events", "E0910")
+    event['citation_list'] = ['hC0001']
+    twin = copy.deepcopy(person)
+    twin.update(handle='hI0911', gramps_id='I0911')
+    d['people'].append(twin)
+
+
 PLANTS = [
+    (p_same_act_person, "same-act-person", "I0910,I0911", False),
     (p_event_type_description, "event-type-description", "E0950", False),
     (p_same_person_event, "same-person-event", "I0900 E0900,E0901", False),
     (p_same_person_citation, "same-person-citation", "I0902 I0902 C0900,C0901", False),

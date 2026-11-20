@@ -440,3 +440,54 @@ missing=$(git ls-tree -r origin/main -- <paths> | awk '{print $3}' |
 **Why.** A 403 alone does not say whether the account or the record is refused. A page alone does not say whether the site looked and found nothing, or never looked.
 
 **Rule.** Before a 403 reaches the gate, read what the refusal says, and read a record the account is known to see: if that one answers, the 403 is about the first record, and it is logged as `restricted` (a gate denial, no pause), not as a block. If the control read fails for any reason, the 403 stays a block ([gwt-read](read.md#a-403-for-one-record-restricted-or-blocked) does this for indexed records; it reads no images). Every reader names the marks of a page with rows and the site's own words for "nothing found"; any other page is a STOP. Run each source's canary searches before and after a batch, and treat the batch as void when one comes back short ([canary controls](read.md#canary-controls)).
+
+### 59. Separate research passes posted the same person more than once
+
+**What happened.** Repeated creates left distinct people with the same individual
+act, sometimes under a one-letter surname variant; another repeated create left
+two burial objects on one person. A triple person entry was not fixed by finding
+only the first pair.
+
+**Why.** A later pass checked a name but not the exact event/citation already
+stored, or retried a POST without reading whether it had landed.
+
+**Rule.** Before creating or retrying, compare current people, events and cited
+acts. Run `same-act-person` across the tree for exact individual-act review pairs
+and the existing same-person reports for repeated objects on one owner. Do not
+merge a couple because both are named in a marriage or a child's act. Keep
+same-name people with different records separate. Review originals and take a
+verified restorable backup plus checkpoint before a separately approved merge.
+
+### 60. A blocked image or an empty index became a whole-branch negative
+
+**What happened.** Parallel searches produced similar-looking empty results from
+very different causes: an index did not cover the requested years, an image could
+not be opened, a filtered query silently behaved like a global query, and a
+surname match belonged to someone else. A book title also looked like proof that
+a whole period had been searched.
+
+**Why.** Access, coverage, query behaviour and identity were collapsed into one
+word: "negative". An OCR result also hid whether the original page was read.
+
+**Rule.** Use `gwt-ledger assess` before logging: preserve the collection, period,
+section, variants, inspected image ranges and evidence reference. Blocked access
+is unresolved; partial coverage cannot answer the full scope; OCR/index negatives
+need a known positive control and checked filters. Even a hit does not prove
+identity or kinship. The assessment is advisory and offline, not authentication
+of its caller's evidence. Existing ledger callers remain unchanged.
+
+### 61. The requested viewer image was not the image on screen
+
+**What happened.** Image-number navigation appeared to change a URL or control,
+while the displayed record stayed elsewhere; an OCR date filter also hid pages
+whose year text had not been recognized. A dynamic table's loading shell looked
+like an empty search.
+
+**Why.** Navigation state, search text and rendered source content were treated
+as equivalent evidence.
+
+**Rule.** Verify the displayed image and reference after navigation. Use
+handwritten index references as clues, not acts, and test documented spelling
+variants and filter behaviour. Wait for an explicit result state. Keep the exact
+query and inspected images in the ledger. Stop on challenges or throttling;
+no fixed delay is a guarantee of permitted access.

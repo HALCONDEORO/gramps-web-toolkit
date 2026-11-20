@@ -48,6 +48,7 @@ VITAL = {"Birth", "Death", "Baptism", "Burial", "Marriage"}
 PARTICLES = {"de", "del", "la", "las", "los", "i", "e"}
 
 CHECKS = {
+    "same-act-person": "distinct people with compatible names and the same exact primary individual act; review only",
     "same-person-event": "same person with matching stored event type, date, place and role; review only",
     "same-person-citation": "same owner on one person with matching citation source, literal page and date; review only",
     "orphan-event": "event no person or family refers to",
@@ -115,7 +116,7 @@ CHECKS = {
 }
 
 # Checks reported without failing: a finding of these is never new, so it never sets the exit code.
-INFO_CHECKS = {"event-type-description", "same-person-event", "same-person-citation", "homonym-birth-gap", "unconnected", "parent-age", "marriage-age", "sibling-spacing", "lifespan", "dup-citation",
+INFO_CHECKS = {"same-act-person", "event-type-description", "same-person-event", "same-person-citation", "homonym-birth-gap", "unconnected", "parent-age", "marriage-age", "sibling-spacing", "lifespan", "dup-citation",
                "dup-source-ark", "date-false-precision", "place-vs-description", "note-marker-no-tag", "media-uniform", "media-dup-page"}
 
 # words in a note that a tag of the same stem is meant to mark; matched without accents, whole word
@@ -1171,6 +1172,8 @@ def run_checks(tree: Tree, scope: set[tuple[str, str]] | None = None,
 
     from .event_duplicates import check_person_duplicates
     check_person_duplicates(T, out, in_scope)
+    from .act_duplicates import check_same_act_people
+    check_same_act_people(T, out, in_scope)
     hygiene_checks(T, out, in_scope)
     from .modifier_notes import check_modifier_notes
     check_modifier_notes(T, out, in_scope)

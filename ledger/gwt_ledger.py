@@ -1135,6 +1135,50 @@ def run_reading(p, args):
         p.error(str(exc))
     return 0
 
+def assess_search(method, outcome, access, coverage, scope, ref,
+                  control_verified=False, filters_verified=False):
+    """Offline advice, not a search or proof of identity. Never expands the supplied scope."""
+    if not scope.strip() or not ref.strip():
+        raise ValueError('scope and ref must be non-empty')
+    reasons = []
+    result = outcome
+    if access != 'open':
+        result = 'blocked'
+        reasons.append('access not confirmed open: ' + access)
+    elif coverage != 'full':
+        result = 'partial'
+        reasons.append('coverage of the stated scope is ' + coverage)
+    elif method in ('ocr', 'index') and not (control_verified and filters_verified):
+        result = 'partial'
+        reasons.append('index/OCR positive control and applied filters need verification')
+    claims = {
+        'ocr': 'OCR query returned no matching result within the stated scope',
+        'index': 'index query returned no matching result within the stated scope',
+        'images': 'no matching entry located in the images actually reviewed',
+        'catalog': 'no matching description located in the inspected catalogue scope',
+    }
+    if result == 'blocked':
+        claim = 'search unresolved; access failure is not evidence of absence'
+    elif result == 'partial':
+        claim = 'incomplete search; no absence claim for the full stated scope'
+    elif outcome == 'hit':
+        claim = 'candidate located within the stated scope; identity and kinship remain unproved'
+    else:
+        claim = claims[method]
+    return dict(result=result, method=method, scope=scope, ref=ref, access=access,
+                coverage=coverage, reasons=reasons, claim=claim, kinship_proven=False)
+
+
+def run_assess(p, args):
+    try:
+        report = assess_search(args.method, args.outcome, args.access, args.coverage,
+                               args.scope, args.ref, args.control_verified, args.filters_verified)
+    except ValueError as exc:
+        p.error(str(exc))
+    print(json.dumps(report, ensure_ascii=False))
+    return 0
+
+
 def main(argv=None):
     try:
         load_registry()  # before parsing, so even --help fails when the shipped registry is missing
@@ -1150,6 +1194,16 @@ def main(argv=None):
     p.add_argument('--requests', default=os.environ.get('GWT_REQUESTS', ''),
                    help='the requests file (default: requests.tsv beside the ledger)')
     sub = p.add_subparsers(dest='cmd', required=True)
+    a = sub.add_parser('assess', help='offline advice for a scoped search result; no reads or writes')
+    a.add_argument('--method', required=True, choices=('ocr', 'index', 'images', 'catalog'))
+    a.add_argument('--outcome', required=True, choices=('hit', 'none'))
+    a.add_argument('--access', required=True,
+                   choices=('open', 'restricted', 'captcha', 'load-error', 'maintenance', 'unknown'))
+    a.add_argument('--coverage', required=True, choices=('full', 'partial', 'outside', 'unknown'))
+    a.add_argument('--scope', required=True, help='collection, place, period, query variants and reviewed images')
+    a.add_argument('--ref', required=True, help='recoverable evidence reference; not opened or authenticated')
+    a.add_argument('--control-verified', action='store_true', help='known positive query returned its expected record')
+    a.add_argument('--filters-verified', action='store_true', help='current response was checked for all requested filters')
 
     def agent_and_date(sp):
         sp.add_argument('--agent', default=os.environ.get('GWT_AGENT', ''))
@@ -1264,6 +1318,8 @@ def main(argv=None):
     q.add_argument('--total', type=positive_image,
                    help='known final image; without it the tail after known coverage stays unknown')
     args = p.parse_args(argv)
+    if args.cmd == 'assess':
+        return run_assess(p, args)
 
     def err(msg):
         sys.stderr.write('gwt-ledger: %s\n' % msg)

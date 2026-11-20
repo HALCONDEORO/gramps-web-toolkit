@@ -11,8 +11,10 @@ Every release has a **Change lists** heading. It names each change that makes a 
 - Integrates upstream through `5779911` while retaining fork privacy, conservative place/source merges, image-reading coverage and atomic same-UID ledger storage. Uncontrolled negative search rows become `unproven`; absent removals need explicit `expect` or verified landed-run evidence. Unreadable PARES queries remain distinct from gate denials.
 
 ### Fork additions retained
+- `gwt-ledger assess`: offline scoped-result advice separating blocked access, incomplete coverage and controlled index/OCR negatives; source and identity checklist.
 
 ### Added
+- `gwt-check` adds information-only same-act person candidates with exact event/citation evidence, conservative spelling compatibility and parent/partner exclusions.
 - Offline queue audit, static install doctor with explicit UNKNOWN results, and Retry-After proposals that never alter live gate state.
 
 ### Fixed
