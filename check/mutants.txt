@@ -104,18 +104,18 @@ gwt_check/citegaps.py | if key[0] > living_after: | if False: | nothing about pe
 gwt_check/citegaps.py | (held if prob else proposals) | (proposals if prob else held) | a citation of another act is held back, never proposed
 gwt_check/citegaps.py | if key not in found: | if False: | only a citation that writes the event's own date is proposed
 gwt_check/citegaps.py | if any(w in _fold(text) for w in NEGATIVE): | if False: | a citation that records a negative search is never proposed
-gwt_check/checks.py |         if len(ss) > 1 and any(in_scope("sources", x["handle"]) for x in ss): |         if len(ss) > 1: | a duplicate source ark is reported with no source in scope
-gwt_check/checks.py |         if len(ss) > 1 and any(in_scope("sources", x["handle"]) for x in ss): |         if len(ss) > 0 and any(in_scope("sources", x["handle"]) for x in ss): | one source alone is called a duplicate of its ark
-gwt_check/checks.py |     texts += [str(a.get("value") or "") for a in src.get("attribute_list", [])] |     texts += [] | a source attribute is not searched for an ark
+gwt_check/checks.py | if len(ss) > 1 and any(in_scope("sources", x["handle"]) for x in ss): | if len(ss) > 1: | a duplicate source ark is reported with no source in scope
+gwt_check/checks.py | if len(ss) > 1 and any(in_scope("sources", x["handle"]) for x in ss): | if len(ss) > 0 and any(in_scope("sources", x["handle"]) for x in ss): | one source alone is called a duplicate of its ark
+gwt_check/checks.py | texts += [str(a.get("value") or "") for a in src.get("attribute_list", [])] | texts += [] | a source attribute is not searched for an ark
 gwt_check/checks.py | _ARK_ID = re.compile(r"[A-Za-z0-9]{8,}(?:[-._=~*+@$][A-Za-z0-9]+)*") | _ARK_ID = re.compile(r"[A-Za-z0-9]{2,}(?:[-._=~*+@$][A-Za-z0-9]+)*") | an ark id of 2 characters counts as an ark
 gwt_check/checks.py | _ARK_ID = re.compile(r"[A-Za-z0-9]{8,}(?:[-._=~*+@$][A-Za-z0-9]+)*") | _ARK_ID = re.compile(r"[A-Za-z0-9]{8,}(?:[-._=~*+@$][A-Za-z0-9]+)?") | an id with two marks in it is refused
 gwt_check/checks.py | _ARK_ID = re.compile(r"[A-Za-z0-9]{8,}(?:[-._=~*+@$][A-Za-z0-9]+)*") | _ARK_ID = re.compile(r"[A-Za-z0-9]{8,}") | an id with a mark in it is refused
-gwt_check/checks.py |             out.add((m[1], name.lower())) |             out.add((m[1], name)) | an ark in capitals differs from the same ark in lower case
-gwt_check/checks.py |             out.add((m[1], name.lower())) |             out.add(("", name.lower())) | the archive number of an ark is ignored
-gwt_check/checks.py |         if _ARK_ID.fullmatch(name): |         if _ARK_ID.match(name): | an id is cut to the prefix that fits the format, so a double dash or a percent code gives a false duplicate
-gwt_check/checks.py |         name = m[2].rstrip(".,;:!?)]}'\"") |         name = m[2] | a closing stop or bracket is kept in the id
-gwt_check/checks.py |         if dt.get("quality") != 1 or not in_scope("events", e["handle"]): |         if dt.get("quality") != 1: | a false-precision date is reported with the event out of scope
-gwt_check/checks.py |         if dt.get("quality") != 1 or not in_scope("events", e["handle"]): |         if dt.get("quality") != 2 or not in_scope("events", e["handle"]): | a calculated date is taken for an estimated one
+gwt_check/checks.py | out.add((m[1], name.lower())) | out.add((m[1], name)) | an ark in capitals differs from the same ark in lower case
+gwt_check/checks.py | out.add((m[1], name.lower())) | out.add(("", name.lower())) | the archive number of an ark is ignored
+gwt_check/checks.py | if _ARK_ID.fullmatch(name): | if _ARK_ID.match(name): | an id is cut to the prefix that fits the format, so a double dash or a percent code gives a false duplicate
+gwt_check/checks.py | name = m[2].rstrip(".,;:!?)]}'\"") | name = m[2] | a closing stop or bracket is kept in the id
+gwt_check/checks.py | if dt.get("quality") != 1 or not in_scope("events", e["handle"]): | if dt.get("quality") != 1: | a false-precision date is reported with the event out of scope
+gwt_check/checks.py | if dt.get("quality") != 1 or not in_scope("events", e["handle"]): | if dt.get("quality") != 2 or not in_scope("events", e["handle"]): | a calculated date is taken for an estimated one
 gwt_check/actmedia.py | DIRECT = (EVENT, EVENT_CITATION) | DIRECT = (EVENT, EVENT_CITATION, PERSON) | media on the person is never a candidate for the act of an event
 gwt_check/actmedia.py | DIRECT = (EVENT, EVENT_CITATION) | DIRECT = (EVENT, EVENT_CITATION, EVENT_SOURCE) | media on a source is never a candidate for the act of an event
 gwt_check/actmedia.py | if len(direct) > 1: | if len(direct) > 5: | several media on the event or its citations are ambiguous, none chosen
@@ -139,9 +139,9 @@ gwt_check/actmedia.py | if missing: | if False: | an event that is not an own ev
 gwt_check/actmedia.py | if tree.partial: | if False: | a .gramps backup has no media or note details and is refused
 gwt_check/actmedia.py | for r in rep["targets"][:limit]: | for r in rep["targets"]: | --limit caps the printed rows
 gwt_check/cli.py | print_media(rep, args.limit) | print_media(rep, 10**9) | act-media prints only --limit rows
-gwt_check/checks.py |         if dt.get("modifier") == 3: |         if dt.get("modifier") in (1, 3): | before and estimated are called about and estimated
-gwt_check/checks.py |         elif v[0]: |         elif v[0] or v[1]: | an estimated date with a month and no day is said to name a day
-gwt_check/checks.py |         elif v[0]: |         elif False: | an estimated date with a day is not reported
+gwt_check/checks.py | if dt.get("modifier") == 3: | if dt.get("modifier") in (1, 3): | before and estimated are called about and estimated
+gwt_check/checks.py | elif v[0]: | elif v[0] or v[1]: | an estimated date with a month and no day is said to name a day
+gwt_check/checks.py | elif v[0]: | elif False: | an estimated date with a day is not reported
 # Focused before/after note guards (offline tests/test_modifier_notes.py).
 gwt_check/modifier_notes.py | _BOUND_NOTE.fullmatch(_fold(text).strip()) | _BOUND_NOTE.search(_fold(text).strip()) | negated or ambiguous prose must not become a positive bound
 gwt_check/modifier_notes.py | 1 if word in _BEFORE else 2 | 2 if word in _BEFORE else 1 | modifier 1 is before and 2 is after
@@ -154,12 +154,74 @@ gwt_check/modifier_notes.py | assertions.append((bound, f"{origin} note {note.ge
 gwt_check/dates.py | or date.get("quality", 0) | or False | estimated and calculated boundaries are not firm comparisons
 gwt_check/dates.py | or span(date) is None: | or False: | invalid or dual-dated boundaries must be rejected by the shared date reader
 gwt_check/modifier_notes.py | if month == "00" or day == "00": | if False: | explicit zero month or day is invalid ISO rather than missing precision
-gwt_check/actmedia.py |             if media_ref.get("private"): |             if False: | private media subreference must not expose public target
+gwt_check/actmedia.py | if media_ref.get("private"): | if False: | private media subreference must not expose public target
 gwt_check/actmedia.py | if r.get("private") else E[r["ref"]] | if False else E[r["ref"]] | private event reference must withhold the event report
 gwt_check/actmedia.py | UNKNOWN if private_name else slug | UNKNOWN if False else slug | private name components must not leak through the filename
 gwt_check/actmedia.py | parsed = span(d) | parsed = span({**d, 'dateval': v[:3] + [False], 'newyear': 0}) | dual year and non January newyear must remain unknown
 
 gwt_check/checks.py | and self.duplicate_guard(key): | and False: | incompatible homonyms never emit a duplicate hint
+gwt_check/homonyms.py | return anniversary.toordinal() | return s.hi + 10 * 365.25 | exact civil anniversaries must stay quiet even across leap years
+gwt_check/homonyms.py | self.gap_count += 1 | self.gap_count = 1 | summary must count every incompatible scoped pair
+gwt_check/homonyms.py | self.witness = (p, q, a, b) | self.witness = (p, q, a, b); self.out.add("homonym-birth-gap", f"{p['gramps_id']},{q['gramps_id']}") | informational pair rows must not escape the name-group output bound
+
+# Vital pointer fallback guards (synthetic offline tests).
+gwt_check/checks.py | accepted = {typ} if primaries else {typ}.union(fallbacks) | accepted = {typ} | a primary baptism fallback without a primary birth is accepted
+gwt_check/checks.py | accepted = {typ} if primaries else {typ}.union(fallbacks) | accepted = {typ}.union(fallbacks) | an exact primary vital event takes precedence over a fallback
+gwt_check/checks.py | e.get("type") not in accepted | False | wrong-side and unrelated events stay findings
+gwt_check/checks.py | and not _parent_and_child(T, p["handle"], q["handle"]) and not _births_apart(T, p, q): | and not _parent_and_child(T, p["handle"], q["handle"]): | namesakes whose births cannot overlap get no same-relative hint
+gwt_check/checks.py | if near or (kin_shared and not (yp and yq) and not _births_apart(T, T["people"][h], T["people"][c])): | if near or (kin_shared and not (yp and yq)): | namesakes whose births cannot overlap get no fuzzy same-relative hint
+gwt_check/checks.py | return bool(a and b) and (a.hi < b.lo or b.hi < a.lo) | return bool(a and b) and (a.hi <= b.lo or b.hi <= a.lo) | two births on the same day overlap
+gwt_check/homonyms.py | if span is None: | if False: | one unreadable birth date leaves the birth unknown
+gwt_check/homonyms.py | min(s.lo for s in spans), max(s.hi for s in spans) | spans[-1].lo, spans[-1].hi | every birth alternative widens the interval
+gwt_check/homonyms.py | dates.kind(e.get("type")) not in dates.BIRTH | dates.kind(e.get("type")) not in dates.BIRTH.union(dates.BAPTISM) | a baptism alone never sets two namesakes apart
+gwt_check/homonyms.py | not e or r.get("role") != "Primary" or | not e or | a birth the person only witnessed never sets two namesakes apart
+gwt_check/homonyms.py | not e or r.get("role") != "Primary" or | r.get("role") != "Primary" or | a dangling event reference never crashes the namesake check
+gwt_check/homonyms.py | max(s.hi for s in spans) | min(s.hi for s in spans) | the latest birth alternative widens the interval too
+gwt_check/media.py | or mimetypes.guess_type(o.get("path") or "")[0] or "").lower() | or "").lower() | a media object with no MIME stored is judged by its file name
+gwt_check/media.py | return sum(hist[max(0, top - TONE_WINDOW):top + TONE_WINDOW + 1]) / total | return sum(hist[max(0, top - TONE_WINDOW):top + TONE_WINDOW]) / total | the tone window reaches as far above the top tone as below it
+gwt_check/media.py | (a > b) | (a < b) | the dHash bit is set where the left neighbour is brighter
+gwt_check/media.py | got["file_missing"] = o["handle"] in missing | got["file_missing"] = False | a file the server lists as missing is marked missing
+gwt_check/media.py | todo = [o for o in media if is_image(o) and not status[o["handle"]].get("file_missing")] | todo = list(media) | no thumbnail is asked for a missing file or one that is not an image
+gwt_check/media.py | if in_scope("media", h): | if True: | a run is not blamed for old media
+gwt_check/media.py | if "file_missing" not in got: | if False: | media the server was never asked about are counted
+gwt_check/media.py | max(got["w"], got["h"]) < MIN_SIDE: | min(got["w"], got["h"]) < MIN_SIDE: | tiny is the longer side, so a long thin strip is not tiny
+gwt_check/media.py | got["h"]) < MIN_SIDE: | got["h"]) <= MIN_SIDE: | an image of exactly MIN_SIDE px is not tiny
+gwt_check/media.py | got["tone"] >= UNIFORM_SHARE: | got["tone"] > UNIFORM_SHARE: | a share of exactly UNIFORM_SHARE is uniform
+gwt_check/media.py | if M[a].get("checksum") and M[a].get("checksum") == M[b].get("checksum"): | if False: | the same file twice is dup-media, not a same-page pair
+gwt_check/media.py | if not (in_scope("media", a) or in_scope("media", b)): | if False: | a same-page pair needs one side in scope
+gwt_check/media.py | if bits <= DUP_BITS: | if bits < DUP_BITS: | two images exactly DUP_BITS apart are the same page
+gwt_check/media.py | if bits <= DUP_BITS: | if True: | two images more than DUP_BITS apart are not a pair
+gwt_check/cli.py | f["info"] or f["check"] in media.AFTER_READ | f["info"] | what the server says about files survives a read that settled while someone wrote
+gwt_check/media.py | "pagesize": random.randrange(1, 2**62)}) | "pagesize": 1}) | a file deleted after an earlier run is not hidden by the server's cached answer
+gwt_check/media.py | NO_THUMB = frozenset([*range(400, 500), 501]) - {401, 429} | NO_THUMB = frozenset({404, 413, 415}) | a thumbnail the server cannot make (422, 501) is counted, not the end of the run
+gwt_check/media.py | frozenset([*range(400, 500), 501]) - {401, 429} | frozenset({404, 413, 415}) - {401, 429} | a thumbnail the server cannot make (422, 501) is counted, not the end of the run
+gwt_check/client.py | if status in none_on: | if False: | a status the caller expects answers None instead of ending the run
+gwt_check/media.py | unread += bool(got.get("unread")) | unread += 0 | thumbnails --download could not read are counted in the report
+gwt_check/cli.py | if hasattr(args, "download"): | if True: | only check and dump ask the server which media files are missing
+gwt_check/media.py | except ApiError as exc: | except ImportError as exc: | a failing list of missing files is a note, not the end of the check
+gwt_check/media.py | return _mime(o).startswith(( | return (o.get("mime") or "").lower().startswith(( | an image with no MIME stored is measured by its file name
+gwt_check/media.py | if mime.startswith(NON_VIEWABLE_PREFIXES) else | if True else | an archive or JSON file is not told to go into a Transcript note
+
+# Mutations tests/test_media_edges.py must catch (same row format as mutants.txt: file | exact text | replacement | why).
+gwt_check/media.py | if isinstance(status.get(h), dict) else {} | if True else {} | a status that is not a dict is unchecked, not a crash
+gwt_check/media.py | not isinstance(h, str) or | False or | a dhash that is not a string is no hash
+gwt_check/media.py | len(h) != HASH_SIDE * HASH_SIDE // 4: | len(h) == 0: | a dhash of the wrong length is no hash
+gwt_check/media.py | except ValueError: | except KeyError: | a dhash of the right length that is not hex is no hash
+gwt_check/media.py | isinstance(got.get("w"), int) and isinstance(got.get("h"), int) and | True and | a size that is not an int is never tiny
+gwt_check/media.py | isinstance(got.get("tone"), (int, float)) and | True and | a tone that is not a number is never uniform
+gwt_check/media.py | "application/xhtml+xml", "application/x-tar" | "application/x-tar" | an XHTML file is shown only as an icon
+gwt_check/media.py | "application/x-gzip", "application/zip"} | "application/zip"} | an x-gzip file is shown only as an icon
+gwt_check/media.py | "application/x-gzip", "application/zip"} | "application/x-gzip"} | a zip file is shown only as an icon
+gwt_check/media.py | ("text/", "message/") | ("text/",) | a message/ file is shown only as an icon
+gwt_check/media.py | ("text/", "message/") | ("message/",) | a text/ file is shown only as an icon
+gwt_check/media.py | if not isinstance(h, str) or len(h) != HASH_SIDE * HASH_SIDE // 4: | if not isinstance(h, str): | a dHash of the wrong length in a hand-edited dump is skipped, not compared
+gwt_check/media.py | .items() if k != "file_missing"} | .items()} | a failed list of missing files leaves an earlier dump's answer out, not reported again
+gwt_check/media.py | got.pop(k, None) | pass | a thumbnail not read now drops the measures an earlier dump had for it
+gwt_check/media.py | got.pop("unread", None) | pass | a thumbnail measured now is no longer counted as not read
+gwt_check/media.py | S = {h: status.get(h) if isinstance(status.get(h), dict) else {} for h in M} | S = {h: status.get(h) or {} for h in M} | a media status that is not a dict is skipped, not a crash
+gwt_check/media.py | frozenset([*range(400, 500), 501]) - {401, 429} | frozenset([*range(400, 500), 501]) | a 429 on a thumbnail is asked again, not counted as unread
+gwt_check/tree.py | media_status=status if isinstance(status, dict) else None) | media_status=status) | a dump whose media_status is not a dict is read without it, not a crash
+gwt_check/cli.py | seed.media_status if seed else None | None | check --from keeps the measures of the earlier dump
 gwt_check/homonyms.py |     return anniversary.toordinal() |     return s.hi + 10 * 365.25 | exact civil anniversaries must stay quiet even across leap years
 gwt_check/homonyms.py |             self.gap_count += 1 |             self.gap_count = 1 | summary must count every incompatible scoped pair
 gwt_check/homonyms.py |                 self.witness = (p, q, a, b) |                 self.witness = (p, q, a, b); self.out.add("homonym-birth-gap", f"{p['gramps_id']},{q['gramps_id']}") | informational pair rows must not escape the name-group output bound
