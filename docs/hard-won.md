@@ -433,6 +433,21 @@ missing=$(git ls-tree -r origin/main -- <paths> | awk '{print $3}' |
 
 **Rule.** Every request of a long read retries network errors with a growing wait, the same as a 5xx; `gwt-check` tries each request 6 times. On a loaded server, read with small pages and one request at a time (`--pagesize 100 --workers 1`), save the dump, and run the checks on the file.
 
+### 55. The requested viewer image was not the image on screen
+
+**What happened.** Image-number navigation appeared to change a URL or control,
+while the displayed record stayed elsewhere; an OCR date filter also hid pages
+whose year text had not been recognized. A dynamic table's loading shell looked
+like an empty search.
+
+**Why.** Navigation state, search text and rendered source content were treated
+as equivalent evidence.
+
+**Rule.** Verify the displayed image and reference after navigation. Use
+handwritten index references as clues, not acts, and test documented spelling
+variants and filter behaviour. Wait for an explicit result state. Keep the exact
+query and inspected images in the ledger. Stop on challenges or throttling;
+no fixed delay is a guarantee of permitted access.
 ### 53. A restricted record looked like a block, and a skeleton page looked like "no results"
 
 **What happened.** Some FamilySearch records and film images answer 403 to every account that is not at an affiliate library. Lanes read each such 403 as a block, and every lane on the account paused for 20 minutes, several times in one day. Elsewhere, a newspaper site under a soft block answered HTTP 200 with its empty results skeleton, and a reader logged each search as zero results with exit 0: a batch of negatives that proved nothing.
