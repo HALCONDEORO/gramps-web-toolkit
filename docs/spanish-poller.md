@@ -29,6 +29,14 @@ Per person it writes `<state_dir>/<id>.json` (the snapshot plus the events), `<s
 
 Exit status: **0** nothing changed, **10** something changed (the first poll counts, as the baseline), **2** a login or a page failed and nothing else changed. A part that fails keeps its previous snapshot, so a broken login never reads as every case disappearing.
 
+The summary only gives counts it read in this run. A side that failed (`sede`, `dehu`) prints as `NOT READ this run` with the time of the snapshot it keeps, never as `0 pending`. When there is no earlier snapshot of that side, it prints `NOT READ this run; no earlier snapshot of it to keep`. The first DEHú read that works after that reports every pending notification as `notification_pending`, as the first poll does. Each DEHú list is checked on its own:
+
+- The pending count is the number on the «Notificaciones pendientes» tab, checked against the rows on the page. The accepted and communications lists are checked against their tab counter, or their own «1-N de N elementos» line.
+- A list with fewer rows than its counter is an error (exit 2 when nothing else changed). It prints as `NOT READ` or `NOT FULLY READ`, with both numbers. A short accepted or communications list does not throw away the pending list: the rows that were read are still reported.
+- A list longer than one page (more than 10 rows) is the exception. Only its first page is read, so the summary says `NOT FULLY READ (N more on later pages, not read)`, and it is not an error.
+- When anything was not read, the last line says `no changes in what was read` and a `not read this run:` line names the parts. A plain `no changes` means every part was read.
+- A list read short keeps the rows of the previous snapshot next to the ones it read, so they are not reported as new on the next poll. Its page is saved in `<state_dir>/<id>-errors/` even without `--dump`, with a `.rows.json` that holds the rows the poller read. DEHú draws its rows inside shadow roots, so the `.html` and `.txt` do not hold them.
+
 ## Config
 
 Keep the config, the state and the certificates outside this repo.
@@ -72,11 +80,15 @@ Add the same entry for `pasarela-ident.clave.gob.es`, `se-pasarela.clave.gob.es`
 
 - **The sede and DEHú each get their own empty browser profile.** Cookies left by an earlier session made DEHú answer with empty responses, and with the sede's Cl@ve session still open the DEHú login kept landing back on its public page.
 - **The Cl@ve certificate step sometimes resets the connection** (`ERR_CONNECTION_RESET`) for a minute or two. The DEHú login waits, goes back to the public page and logs in again, up to five times.
+- **DEHú and Cl@ve leave about one request in a hundred unanswered**, from any network and any machine (`ERR_TIMED_OUT` after a few seconds with no answer). A login loads dozens of files, so without a retry about half the logins failed. When the lost request is a script of the DEHú app, the page stays blank for good. The login loads a page again when it times out or stays the same for about 18 seconds, and a login that still fails says what it showed: a blank page, the public page or an unknown page.
 - **Cl@ve may skip its question.** When it still holds a session it hands straight back to the sede or DEHú without asking for the certificate; the login loop accepts both paths.
 - **In `pkcs12` mode only the hosts that ask for a certificate are proxied.** Listing the sede and DEHú too made their pages fail now and then with `ERR_EMPTY_RESPONSE`. Those still happen at times on the DEHú hand-back, so it reloads.
 - **DEHú is built from web components.** Its tables live inside shadow roots and its buttons inside closed components, so rows are read through every shadow root and «Detalles» is clicked by position.
 - **DEHú shows a CAPTCHA after many logins in a short time** (we hit it after about a dozen test logins in one afternoon). The poller stops with a clear error. Poll once or twice a day, not in a tight loop.
 - **Only the first page of each DEHú list is read** (10 rows). If there are more the summary says so instead of dropping them silently.
+- **DEHú's accepted and communications lists show the last 30 days only.** Older entries need the search form, which the poller does not use.
+- **The click on the pending tab sometimes lands on a connection-reset page.** The poller goes back to the inbox home once and clicks again.
+- **The sede sometimes answers a search with its own «Página no encontrada» page** instead of the results. The error says so; the next poll usually reads fine.
 - **Every browser is closed by PID** when the run ends, on SIGTERM and SIGINT, and when the time budget runs out.
 
 ## Schedule it

@@ -480,11 +480,16 @@ class Client:
     def update(self, obj: dict) -> None:
         """Recheck, persist preimage, PUT, read back. This is not atomic compare-and-swap.
 
-        The GET ETag is not the stored-object hash that PUT's If-Match expects. API3.25.1
-        validates that header before DbTxn anyway. A concurrent writer can still race this
-        read/PUT: callers must choose an appropriate operational window and reviewed scope.
-        Normal CLI writes always supply a private durable log; direct library callers must
-        supply log_path for persistent preimages. No credentials are added to these records.
+        Before Gramps Web API 3.26.0, GET ETags do not match the stored-object hash
+        that PUT's If-Match expects. From 3.26.0 (Gramps Web 26.11.3), a GET returns
+        that hash with an optional ':gzip' or ':br' suffix that must be removed.
+        This client still sends no If-Match: a concurrent writer can race the
+        read/PUT window. Callers must choose an appropriate operational window
+        and reviewed scope. Snapshot change checks, semantic rechecks, durable
+        preimages and readback remain in place; none makes the PUT conditional.
+        Normal CLI writes always supply a private durable log; direct library
+        callers must supply log_path for persistent preimages. No credentials
+        are added to these records.
         """
         cls = obj["_class"]
         self._touched(cls, obj["handle"])
