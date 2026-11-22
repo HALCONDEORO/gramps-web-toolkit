@@ -6,6 +6,14 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ## [Unreleased]
 
+### Reviewed fork integration (2026-11-20)
+
+- #176 (`ef045c3f`) integrated same-act review candidates, offline scoped-search
+  assessment and rendered-record verification guidance, preserving fork safeguards.
+- The report-order regression excludes execution timing only, not findings or order.
+- #175, #126, #127 and #128 were closed as superseded on 2026-11-22. This is not a
+  new release or a tree-data change. #149, #138 and #137 remain held and unmerged.
+
 ### Integration contract
 
 - Integrates upstream through `5779911` while retaining fork privacy, conservative place/source merges, image-reading coverage and atomic same-UID ledger storage. Uncontrolled negative search rows become `unproven`; absent removals need explicit `expect` or verified landed-run evidence. Unreadable PARES queries remain distinct from gate denials.
