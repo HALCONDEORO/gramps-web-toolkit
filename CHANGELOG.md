@@ -8,7 +8,7 @@ Every release has a **Change lists** heading. It names each change that makes a 
 
 ### Integration contract
 
-- Integrates upstream through `5779911` while retaining fork privacy, conservative place/source merges, image-reading coverage and atomic same-UID ledger storage. Uncontrolled negative search rows become `unproven`; absent removals need explicit `expect` or verified landed-run evidence. Unreadable PARES queries remain distinct from gate denials.
+- Integrates upstream through `5bb6c89` while retaining fork privacy, conservative place/source merges, image-reading coverage and atomic same-UID ledger storage. Uncontrolled negative search rows become `unproven`; absent removals need explicit `expect` or verified landed-run evidence. Unreadable PARES queries remain distinct from gate denials.
 
 ### Fork additions retained
 - `gwt-ledger assess`: offline scoped-result advice separating blocked access, incomplete coverage and controlled index/OCR negatives; source and identity checklist.
